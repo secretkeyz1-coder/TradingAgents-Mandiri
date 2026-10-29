@@ -271,6 +271,10 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
             answered = true;
             await db.insert(agentMessages).values({ sessionId: id, role: "assistant", content: String(payload.content ?? ""), toolCalls });
             break;
+          case "error":
+            // The worker already said what went wrong, in the user's terms; no generic exit message on top.
+            answered = true;
+            break;
         }
         await send(type, payload);
       });

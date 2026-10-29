@@ -124,6 +124,12 @@ def build_llm_kwargs(config: dict) -> dict[str, Any]:
     if max_retries is not None and max_retries != "":
         kwargs["max_retries"] = _coerce_max_retries(max_retries)
 
+    # Per-request timeout (seconds) is cross-provider too. Forward it only when
+    # set, so a call that hangs at a gateway fails instead of stalling the run.
+    timeout = config.get("llm_timeout")
+    if timeout is not None and timeout != "":
+        kwargs["timeout"] = float(timeout)
+
     # Output-token cap is cross-provider, but Gemini names it
     # ``max_output_tokens``; forward under the right key when set (#1204).
     max_tokens = config.get("max_tokens")

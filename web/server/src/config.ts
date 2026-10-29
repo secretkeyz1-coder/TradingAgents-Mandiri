@@ -23,5 +23,10 @@ export const config = {
   workerScript: resolve(repoRoot, process.env.TA_WORKER_SCRIPT ?? join("web", "worker", "ta_worker.py")),
   // Each analysis makes many LLM calls; keep the number running at once small.
   maxConcurrent: Number(process.env.MAX_CONCURRENT_ANALYSES ?? 2),
+  // A job that sends no event for this long is stuck (a hung LLM call, a dead gateway) and is killed.
+  jobIdleMs: Number(process.env.JOB_IDLE_MINUTES ?? 15) * 60_000,
+  // A running job's heartbeat; another instance treats a row quiet for longer than `jobStaleMs` as orphaned.
+  heartbeatMs: 30_000,
+  jobStaleMs: 120_000,
   clientDist: join(repoRoot, "web", "client", "dist"),
 };

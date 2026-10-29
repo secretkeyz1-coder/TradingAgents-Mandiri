@@ -76,6 +76,8 @@ export const analyses = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
+    /** Refreshed by the server instance running the job; a running row whose heartbeat is stale has lost its server. */
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
   },
   (t) => [index("analyses_created_at_idx").on(t.createdAt), index("analyses_kind_ticker_idx").on(t.kind, t.ticker)],
 );

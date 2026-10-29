@@ -226,6 +226,10 @@ def _build_config(job: dict) -> dict:
     config["max_debate_rounds"] = int(job["depth"])
     config["max_risk_discuss_rounds"] = int(job["depth"])
     config["output_language"] = job.get("language") or "English"
+    # A call that hangs at a gateway must fail, not stall the job: the server
+    # only sees progress through events. Retries stay small for the same reason.
+    config["llm_timeout"] = float(os.environ.get("TA_LLM_TIMEOUT", "180"))
+    config["llm_max_retries"] = int(os.environ.get("TA_LLM_MAX_RETRIES", "2"))
     # The engine's benchmark map has no IDX entry, so .JK decisions were scored
     # against SPY; score them against the Jakarta Composite instead.
     config["benchmark_map"] = {".JK": "^JKSE", **config["benchmark_map"]}
@@ -427,11 +431,39 @@ def agent(job: dict) -> int:
     from tradingagents.llm_clients import create_tier_client
 
     config = _build_config({**job, "depth": 1})
+    # Someone is waiting on this turn: one retry, and a shorter clock than a run gets.
+    config["llm_timeout"] = float(os.environ.get("TA_AGENT_LLM_TIMEOUT", "120"))
+    config["llm_max_retries"] = 1
     with run_config(config):
         llm = create_tier_client(config, "deep").get_llm()
-        run_agent(llm, job, emit)
+        try:
+            run_agent(llm, job, emit)
+        except Exception as exc:
+            emit("error", message=_provider_error(exc, job["deepModel"], config["backend_url"], config["llm_timeout"]))
+            return 1
     emit("done")
     return 0
+
+
+def _provider_error(exc: Exception, model: str, url: str | None, timeout: float) -> str:
+    """What went wrong at the model provider, in the user's terms: the SDK's own
+    wording (``Request timed out.``, ``Error code: 503 - {...}``) hides whether the
+    model name, the URL, or the service itself is the problem."""
+    name = type(exc).__name__
+    where = f"model '{model}' di {url or 'endpoint bawaan provider'}"
+    if "Timeout" in name:
+        return f"Provider tidak menjawab dalam {timeout:.0f} detik ({where}). Periksa nama model dan URL, atau coba lagi."
+    if "Connection" in name:
+        return f"Tidak bisa terhubung ke provider ({where}): {exc}"
+    status = getattr(exc, "status_code", None)
+    body = getattr(exc, "body", None)
+    detail = body.get("error", body) if isinstance(body, dict) else None
+    if isinstance(detail, dict):
+        detail = detail.get("message") or json.dumps(detail, ensure_ascii=False)
+    if status:
+        hint = " Nama model tidak dikenal provider." if status in (404, 503) and "not found" in str(detail).lower() else ""
+        return f"Provider menjawab HTTP {status} ({where}): {str(detail or exc)[:500]}.{hint}"
+    return f"{name}: {str(exc)[:500]}"
 
 
 COMMANDS = {"run": run, "backtest": backtest, "agent": agent}
