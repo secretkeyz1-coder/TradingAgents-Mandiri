@@ -142,6 +142,32 @@ bun run start
 
 Server Bun menyajikan `client/dist` sekaligus API di http://127.0.0.1:3080.
 
+## Deploy dengan Docker
+
+Satu image (`web/Dockerfile`) berisi engine Python, server Bun, dan client yang sudah dibuild; `web/deploy/compose.yml` menambahkan Postgres sendiri. App hanya mendengar di `127.0.0.1:${APP_PORT}`, jadi taruh reverse proxy dengan TLS di depannya.
+
+```bash
+cd web/deploy
+cp .env.example .env      # isi POSTGRES_PASSWORD, APP_PASSWORD, key LLM, ALLOWED_BACKEND_URLS
+docker compose up -d --build
+```
+
+- **Login**: seluruh app (halaman dan API) di belakang HTTP Basic auth (`APP_USER` / `APP_PASSWORD`). Server menolak start di alamat non-loopback tanpa password. `/healthz` terbuka untuk health check.
+- **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim.
+- **Data**: volume `tradingagents_db` (Postgres) dan `tradingagents_data` (laporan, cache, dan memori keputusan engine).
+- **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.
+- File `.env` harus berakhiran baris LF; nilai dengan `\r` dari editor Windows membuat password tidak cocok.
+
+Deploy yang berjalan: **https://trading.petaproject.io** di VPS `129.225.11.44`, source di `~/tradingagents/src`, compose di `~/tradingagents/src/web/deploy`, vhost di `/etc/nginx/sites-available/trading.petaproject.io.conf` (sertifikat Let's Encrypt diperpanjang otomatis oleh certbot). Untuk memperbarui dari repo lokal:
+
+```bash
+git archive --format=tar.gz -o /tmp/ta.tar.gz HEAD
+scp /tmp/ta.tar.gz ubuntu@129.225.11.44:tradingagents/
+ssh ubuntu@129.225.11.44 "cd ~/tradingagents && tar -xzf ta.tar.gz -C src && rm ta.tar.gz && cd src/web/deploy && sudo docker compose up -d --build"
+```
+
+`.env` di VPS tidak tersentuh oleh pembaruan karena tidak ada di arsip git.
+
 ## Konfigurasi server
 
 Semua opsional, lewat environment variable:
