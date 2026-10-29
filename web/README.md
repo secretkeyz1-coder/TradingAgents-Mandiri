@@ -152,7 +152,7 @@ cp .env.example .env      # isi POSTGRES_PASSWORD, APP_PASSWORD, key LLM, ALLOWE
 docker compose up -d --build
 ```
 
-- **Login**: seluruh app (halaman dan API) di belakang HTTP Basic auth (`APP_USER` / `APP_PASSWORD`). Server menolak start di alamat non-loopback tanpa password. `/healthz` terbuka untuk health check.
+- **Login**: halaman login sendiri (`APP_USER` / `APP_PASSWORD`), sesi berupa cookie HttpOnly bertanda tangan HMAC selama 30 hari, tombol Keluar di header. Maksimal 10 percobaan gagal per IP per 15 menit. Semua `/api/*` butuh sesi; skrip boleh mengirim header HTTP Basic sebagai gantinya. Server menolak start di alamat non-loopback tanpa password. Mengganti password (atau `SESSION_SECRET`) mengakhiri semua sesi. `/healthz` terbuka untuk health check.
 - **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim.
 - **Data**: volume `tradingagents_db` (Postgres) dan `tradingagents_data` (laporan, cache, dan memori keputusan engine).
 - **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.

@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { Hono } from "hono";
-import { basicAuth } from "hono/basic-auth";
 import { serveStatic } from "hono/bun";
 import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
@@ -8,6 +7,7 @@ import { config } from "./config";
 import { runMigrations } from "./db";
 import { recover } from "./jobs";
 import { agentApi } from "./agent";
+import { authApi, requireAuth } from "./auth";
 import { api } from "./routes";
 import { getCatalog } from "./worker";
 
@@ -19,11 +19,13 @@ getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 const app = new Hono();
 // Unauthenticated, for the container's health check and a reverse proxy.
 app.get("/healthz", (c) => c.text("ok"));
-if (config.appPassword) {
-  // Browsers resend Basic credentials on same-origin fetch and EventSource, so the SSE streams need nothing extra.
-  app.use("*", basicAuth({ username: config.appUser, password: config.appPassword, realm: "TradingAgents" }));
-}
 app.use("/api/*", logger());
+// Login, logout and the session check come before the guard; every other API
+// route needs a session. The page itself is public: it holds no data and shows
+// the login form until /api/session says yes. Cookies ride on same-origin
+// fetch and EventSource, so the SSE streams need nothing extra.
+app.route("/api", authApi);
+app.use("/api/*", requireAuth);
 app.route("/api", api);
 app.route("/api", agentApi);
 app.onError((err, c) => {

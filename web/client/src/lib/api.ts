@@ -89,6 +89,8 @@ export type Backtest = BacktestSummary & {
   startedAt: string | null;
 };
 
+import { auth } from './auth.svelte';
+
 export const INTERVALS = ['1h', '4h', '1d', '1wk', '1mo'] as const;
 export type Interval = (typeof INTERVALS)[number];
 
@@ -195,6 +197,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'content-type': 'application/json', ...init?.headers },
   });
   const body = await res.json().catch(() => ({}));
+  if (res.status === 401) auth.expired();
   if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
   return body as T;
 }
@@ -244,6 +247,7 @@ export const api = {
       signal,
     });
     if (!res.ok || !res.body) {
+      if (res.status === 401) auth.expired();
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ?? `HTTP ${res.status}`);
     }

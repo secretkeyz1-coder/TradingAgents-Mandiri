@@ -1,27 +1,24 @@
 <script lang="ts">
-  // One workspace screen. Routing lives in the workspace store (URL hash), and
-  // old page links are translated there, so App only draws the frame.
-  import SymbolSearch from './lib/SymbolSearch.svelte';
-  import WorkspaceShell from './lib/workspace/WorkspaceShell.svelte';
+  // The gate: ask the server whether this browser is signed in, then show the
+  // login page or the workspace. The workspace is imported only after that,
+  // because its stores call the API the moment they load.
+  import { onMount } from 'svelte';
+  import { auth } from './lib/auth.svelte';
+  import LoginPage from './lib/LoginPage.svelte';
+
+  onMount(() => {
+    auth.check();
+  });
 </script>
 
-<div class="flex h-dvh flex-col bg-base-100">
-  <header class="flex shrink-0 items-center gap-3 border-b border-base-300 px-3 py-2 sm:px-4">
-    <a href="#/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight" aria-label="TradingAgents">
-      <svg class="size-7 shrink-0" viewBox="0 0 32 32" aria-hidden="true">
-        <rect width="32" height="32" rx="7" fill="var(--color-base-content)" />
-        <rect x="6.5" y="12" width="5" height="9" rx="1" fill="var(--color-base-100)" />
-        <path d="M9 7v18M16 5v20" stroke="var(--color-base-100)" stroke-width="1.5" stroke-linecap="round" />
-        <rect x="13.5" y="9" width="5" height="10" rx="1" fill="var(--color-base-100)" />
-        <path d="M23 4v15" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" />
-        <rect x="20.5" y="6" width="5" height="8" rx="1" fill="var(--color-accent)" />
-      </svg>
-      <span class="hidden sm:inline">TradingAgents</span>
-    </a>
-    <div class="ml-auto w-full max-w-80 min-w-0">
-      <SymbolSearch />
-    </div>
-  </header>
-
-  <WorkspaceShell />
-</div>
+{#if auth.state === 'in'}
+  {#await import('./lib/AppShell.svelte') then shell}
+    <shell.default />
+  {/await}
+{:else if auth.state === 'out'}
+  <LoginPage />
+{:else}
+  <div class="grid h-dvh place-items-center bg-base-100" aria-busy="true">
+    <span class="loading loading-spinner" aria-label="Memuat"></span>
+  </div>
+{/if}

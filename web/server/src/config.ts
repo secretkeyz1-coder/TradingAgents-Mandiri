@@ -28,7 +28,7 @@ export const config = {
   // A running job's heartbeat; another instance treats a row quiet for longer than `jobStaleMs` as orphaned.
   heartbeatMs: 30_000,
   jobStaleMs: 120_000,
-  // HTTP Basic auth for the whole app (API and pages). Required when the server
+  // The app's one login (see auth.ts: login page and session cookie). Required when the server
   // listens beyond loopback: every analysis spends the owner's LLM credits.
   appUser: process.env.APP_USER ?? "admin",
   appPassword: process.env.APP_PASSWORD ?? "",
