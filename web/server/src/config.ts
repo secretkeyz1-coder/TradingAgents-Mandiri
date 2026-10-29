@@ -28,5 +28,30 @@ export const config = {
   // A running job's heartbeat; another instance treats a row quiet for longer than `jobStaleMs` as orphaned.
   heartbeatMs: 30_000,
   jobStaleMs: 120_000,
+  // HTTP Basic auth for the whole app (API and pages). Required when the server
+  // listens beyond loopback: every analysis spends the owner's LLM credits.
+  appUser: process.env.APP_USER ?? "admin",
+  appPassword: process.env.APP_PASSWORD ?? "",
+  // The worker sends the provider's API key to the backend URL a request names,
+  // so on a shared server only these URLs are accepted (comma-separated; empty = any).
+  allowedBackendUrls: (process.env.ALLOWED_BACKEND_URLS ?? "")
+    .split(",")
+    .map((u) => u.trim().replace(/\/+$/, ""))
+    .filter(Boolean),
   clientDist: join(repoRoot, "web", "client", "dist"),
 };
+
+/** Why a request's backend URL is refused, or null when it may be used. */
+export function backendUrlRefused(url: string | undefined): string | null {
+  if (!url || config.allowedBackendUrls.length === 0) return null;
+  return config.allowedBackendUrls.includes(url.trim().replace(/\/+$/, ""))
+    ? null
+    : `Backend URL ini tidak diizinkan di server ini. Yang diizinkan: ${config.allowedBackendUrls.join(", ")}`;
+}
+
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
+if (!LOOPBACK.has(config.host) && !config.appPassword && process.env.ALLOW_NO_AUTH !== "1") {
+  throw new Error(
+    `HOST=${config.host} membuka server ke jaringan tanpa login. Set APP_PASSWORD (dan APP_USER), atau ALLOW_NO_AUTH=1 kalau sudah dilindungi di depan.`,
+  );
+}

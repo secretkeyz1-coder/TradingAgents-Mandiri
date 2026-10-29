@@ -1,0 +1,43 @@
+# Production: the web app and its own Postgres. Settings and secrets come from
+# .env next to this file (copy .env.example). From this directory:
+#   docker compose up -d --build
+# The app listens on 127.0.0.1:${APP_PORT} only; put a reverse proxy with TLS
+# in front of it (see web/README.md, "Deploy dengan Docker").
+name: tradingagents
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tradingagents
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: tradingagents
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradingagents"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../..
+      dockerfile: web/Dockerfile
+    image: tradingagents-web:latest
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://tradingagents:${POSTGRES_PASSWORD}@db:5432/tradingagents
+    ports:
+      - "127.0.0.1:${APP_PORT:-8410}:3080"
+    volumes:
+      - data:/home/appuser/.tradingagents
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db:
+  data:

@@ -1,0 +1,14 @@
+.git
+.venv
+.serena
+.claude
+**/.env
+**/.env.*
+**/node_modules
+**/__pycache__
+*.egg-info
+web/client/dist
+web/.hallmark
+results
+eval_results
+tests

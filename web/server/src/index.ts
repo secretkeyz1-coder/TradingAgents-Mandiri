@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { Hono } from "hono";
+import { basicAuth } from "hono/basic-auth";
 import { serveStatic } from "hono/bun";
+import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import { config } from "./config";
 import { runMigrations } from "./db";
@@ -15,10 +17,18 @@ await recover();
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
 const app = new Hono();
+// Unauthenticated, for the container's health check and a reverse proxy.
+app.get("/healthz", (c) => c.text("ok"));
+if (config.appPassword) {
+  // Browsers resend Basic credentials on same-origin fetch and EventSource, so the SSE streams need nothing extra.
+  app.use("*", basicAuth({ username: config.appUser, password: config.appPassword, realm: "TradingAgents" }));
+}
 app.use("/api/*", logger());
 app.route("/api", api);
 app.route("/api", agentApi);
 app.onError((err, c) => {
+  // Middleware answers (401 with its WWW-Authenticate challenge) go out as they are.
+  if (err instanceof HTTPException) return err.getResponse();
   console.error(err);
   return c.json({ error: err.message }, 500);
 });

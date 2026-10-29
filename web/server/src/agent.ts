@@ -6,6 +6,7 @@ import { and, asc, desc, eq, gt, isNull, max, ne, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { backendUrlRefused } from "./config";
 import { db } from "./db";
 import {
   agentMemories,
@@ -168,6 +169,8 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
   const provider = (await getCatalog()).providers.find((p) => p.key === turn.provider);
   if (!provider) return c.json({ error: `Provider tidak dikenal: ${turn.provider}` }, 400);
   if (provider.needsUrl && !turn.backendUrl) return c.json({ error: `${provider.label} butuh Backend URL` }, 400);
+  const refused = backendUrlRefused(turn.backendUrl);
+  if (refused) return c.json({ error: refused }, 400);
 
   const [session] = await db.select().from(agentSessions).where(eq(agentSessions.id, id));
   if (!session) return c.json({ error: "Not found" }, 404);

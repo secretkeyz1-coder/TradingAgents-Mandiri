@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { backendUrlRefused } from "./config";
 import { db } from "./db";
 import { analyses, analysisEvents, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
@@ -60,7 +61,7 @@ function checkProvider(catalog: Catalog, request: { provider: string; backendUrl
   const provider = catalog.providers.find((p) => p.key === request.provider);
   if (!provider) return `Provider tidak dikenal: ${request.provider}`;
   if (provider.needsUrl && !request.backendUrl) return `${provider.label} butuh Backend URL`;
-  return null;
+  return backendUrlRefused(request.backendUrl);
 }
 
 const issues = (error: z.ZodError) => error.issues.map((i) => i.message).join("; ");
