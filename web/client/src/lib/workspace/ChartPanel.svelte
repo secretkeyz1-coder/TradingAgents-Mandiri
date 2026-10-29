@@ -53,6 +53,8 @@
             showTable={false}
             refresh={ws.decisionsVersion}
             drawings={agent.visibleDrawings}
+            timeframe={ws.timeframe}
+            onTimeframe={(tf) => ws.setTimeframe(tf)}
           />
         {/key}
         {#if agent.drawings.length}

@@ -1,16 +1,29 @@
-// Daily candles from Yahoo Finance, the source the engine analyses, so the
-// decision markers sit on the prices the agents saw. Unofficial endpoint:
-// cached, and a failure is reported rather than retried in a loop.
+// Candles from Yahoo Finance, the source the engine analyses, so the decision
+// markers sit on the prices the agents saw. Daily by default; intraday and
+// weekly/monthly are only for looking, the engine itself stays daily.
+// Unofficial endpoint: cached, and a failure is reported rather than retried in a loop.
 
+/** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's own time zone for intraday. */
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
 
-export type CandleSeries = { symbol: string; currency: string | null; exchangeTimezone: string | null; candles: Candle[] };
+export type CandleSeries = {
+  symbol: string;
+  currency: string | null;
+  exchangeTimezone: string | null;
+  interval: Interval;
+  candles: Candle[];
+};
 
 const CACHE_TTL_MS = 15 * 60_000;
 const cache = new Map<string, { at: number; value: CandleSeries }>();
 
 export const SYMBOL_PATTERN = /^[A-Za-z0-9.\-=^]{1,20}$/;
 export const RANGES = ["6mo", "1y", "2y", "5y"] as const;
+export const INTERVALS = ["1h", "4h", "1d", "1wk", "1mo"] as const;
+export type Interval = (typeof INTERVALS)[number];
+export const INTRADAY: readonly Interval[] = ["1h", "4h"];
+// Yahoo serves hourly bars for 730 days at most; 1y keeps clear of that edge.
+const INTRADAY_MAX_RANGE = "1y";
 
 type YahooChart = {
   chart: {
@@ -26,12 +39,16 @@ type YahooChart = {
   };
 };
 
-export async function getCandles(symbol: string, range: (typeof RANGES)[number]): Promise<CandleSeries> {
-  const key = `${symbol}|${range}`;
+export async function getCandles(symbol: string, range: (typeof RANGES)[number], interval: Interval = "1d"): Promise<CandleSeries> {
+  const intraday = INTRADAY.includes(interval);
+  if (intraday && (range === "2y" || range === "5y")) range = INTRADAY_MAX_RANGE;
+  const key = `${symbol}|${range}|${interval}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d`;
+  // 4h is not a Yahoo interval; it is built from hourly bars below.
+  const yahooInterval = interval === "4h" ? "1h" : interval;
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${yahooInterval}`;
   const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(15_000) });
   const body = (await res.json().catch(() => null)) as YahooChart | null;
   const result = body?.chart?.result?.[0];
@@ -42,28 +59,51 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number])
   const quote = result.indicators.quote[0];
   // Dividend/split-adjusted, as the engine reads prices (yfinance auto_adjust),
   // so drawings and decision markers sit on the same series the agents used.
+  // Intraday responses carry no adjclose, so those bars stay as traded.
   const adjclose = result.indicators.adjclose?.[0]?.adjclose;
-  // Dates in the exchange's own time zone: a Jakarta session at 09:00 WIB is
+  // Times in the exchange's own time zone: a Jakarta session at 09:00 WIB is
   // still the previous day in UTC.
   const offset = (result.meta.gmtoffset ?? 0) * 1000;
-  const candles: Candle[] = [];
+  let candles: Candle[] = [];
   (result.timestamp ?? []).forEach((ts, i) => {
     const [open, high, low, close] = [quote.open[i], quote.high[i], quote.low[i], quote.close[i]];
     if (open == null || high == null || low == null || close == null) return;
-    const time = new Date(ts * 1000 + offset).toISOString().slice(0, 10);
+    const local = new Date(ts * 1000 + offset).toISOString();
+    const time = intraday ? local.slice(0, 19) : local.slice(0, 10);
     const f = adjclose?.[i] != null && close ? adjclose[i]! / close : 1;
     const candle = { time, open: open * f, high: high * f, low: low * f, close: close * f, volume: quote.volume[i] ?? 0 };
-    // Yahoo can repeat the current day; keep the latest row for a date.
+    // Yahoo can repeat the current bar; keep the latest row for a time.
     if (candles.at(-1)?.time === time) candles[candles.length - 1] = candle;
     else candles.push(candle);
   });
+  if (interval === "4h") candles = aggregate(candles, 4);
 
   const value = {
     symbol: result.meta.symbol,
     currency: result.meta.currency ?? null,
     exchangeTimezone: result.meta.exchangeTimezoneName ?? null,
+    interval,
     candles,
   };
   cache.set(key, { at: Date.now(), value });
   return value;
+}
+
+/** Merge hourly bars into `hours`-wide bars aligned to midnight in the exchange's time zone (00, 04, 08, …). */
+function aggregate(hourly: Candle[], hours: number): Candle[] {
+  const out: Candle[] = [];
+  for (const c of hourly) {
+    const hour = Number(c.time.slice(11, 13));
+    const bucket = `${c.time.slice(0, 10)}T${String(hour - (hour % hours)).padStart(2, "0")}:00:00`;
+    const last = out.at(-1);
+    if (last && last.time === bucket) {
+      last.high = Math.max(last.high, c.high);
+      last.low = Math.min(last.low, c.low);
+      last.close = c.close;
+      last.volume += c.volume;
+    } else {
+      out.push({ ...c, time: bucket });
+    }
+  }
+  return out;
 }

@@ -1,7 +1,10 @@
 <script lang="ts">
-  // Daily candles (Yahoo, the engine's own source) with every AI decision on the
+  // Candles (Yahoo, the engine's own source) with every AI decision on the
   // ticker marked where it was made, and how price moved over the next five
   // trading days. The TradingView widgets cannot take our markers; this can.
+  // Timeframes other than daily are only for looking: the engine, the markers
+  // and the agent's drawings are all made from daily bars, so here a date is
+  // placed on the first bar of its day.
   import {
     CandlestickSeries,
     ColorType,
@@ -16,9 +19,10 @@
     type ISeriesMarkersPluginApi,
     type SeriesMarker,
     type Time,
+    type UTCTimestamp,
   } from 'lightweight-charts';
   import { onMount } from 'svelte';
-  import { api, type Candle, type Decision, type Drawing } from './api';
+  import { api, type Candle, type Decision, type Drawing, type Interval } from './api';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
   import { theme, tokenColor } from './theme.svelte';
 
@@ -30,6 +34,8 @@
     showTable = true,
     refresh = 0,
     drawings = [],
+    timeframe: givenTimeframe = undefined,
+    onTimeframe = undefined,
   }: {
     /** Yahoo symbol, as the engine and the analyses store it (BBCA.JK). */
     symbol: string;
@@ -42,6 +48,9 @@
     refresh?: number;
     /** The chart agent's drawings for this symbol. */
     drawings?: Drawing[];
+    /** Candle timeframe, when the caller owns it (the workspace keeps it in the URL); else chosen here. */
+    timeframe?: Interval;
+    onTimeframe?: (tf: Interval) => void;
   } = $props();
 
   // The engine scores a decision over this many trading days from the first close after its date.
@@ -53,8 +62,20 @@
     { value: '5y', label: '5T', days: 1826 },
   ] as const;
   type Range = (typeof RANGES)[number]['value'];
+  const TIMEFRAMES: { value: Interval; label: string; title: string }[] = [
+    { value: '1h', label: '1j', title: '1 jam' },
+    { value: '4h', label: '4j', title: '4 jam' },
+    { value: '1d', label: '1H', title: '1 hari' },
+    { value: '1wk', label: '1M', title: '1 minggu' },
+    { value: '1mo', label: '1B', title: '1 bulan' },
+  ];
+  // Yahoo keeps hourly bars for two years at most; the server clamps, the buttons say so.
+  const INTRADAY_RANGES: Range[] = ['6mo', '1y'];
 
   let range = $state<Range>('1y');
+  let ownTimeframe = $state<Interval>('1d');
+  const timeframe = $derived(givenTimeframe ?? ownTimeframe);
+  const intraday = $derived(timeframe === '1h' || timeframe === '4h');
   let candles = $state<Candle[]>([]);
   let currency = $state<string | null>(null);
   let loadError = $state('');
@@ -62,15 +83,39 @@
   let fetched = $state<Decision[]>([]);
   const decisions = $derived(given ?? fetched);
 
+  function pickTimeframe(tf: Interval) {
+    if (onTimeframe) onTimeframe(tf);
+    else ownTimeframe = tf;
+    if ((tf === '1h' || tf === '4h') && !INTRADAY_RANGES.includes(range)) range = '1y';
+  }
+
+  // Candle times: a date for daily and up, the exchange's wall-clock time for
+  // intraday. The chart wants the latter as UTC seconds, so the wall-clock time
+  // is read as if it were UTC and the axis shows exchange time.
+  const day = (t: string) => t.slice(0, 10);
+  const toTime = (t: string): Time => (t.length > 10 ? (Math.floor(Date.parse(`${t}Z`) / 1000) as UTCTimestamp) : (t as Time));
+  /** The first bar on or after a date, where dated things (decisions, notes, trendline ends) go. */
+  const atDay = (date: string) => candles.find((c) => day(c.time) >= date)?.time;
+  /** Trading days on the chart, in order. */
+  const days = $derived.by(() => {
+    const out: string[] = [];
+    for (const c of candles) if (out.at(-1) !== day(c.time)) out.push(day(c.time));
+    return out;
+  });
+  const closeOfDay = (d: string) => candles.findLast((c) => day(c.time) === d)?.close;
+
   type Row = Decision & { markedAt: string | null; priceReturn: number | null; hit: boolean | null };
 
   const rows = $derived.by<Row[]>(() =>
     decisions.map((d) => {
-      // First trading day after the decision: the engine's entry close.
-      const entry = candles.findIndex((c) => c.time > d.date);
-      const exit = entry >= 0 ? entry + HOLDING_DAYS : -1;
-      const priceReturn = entry >= 0 && exit < candles.length ? candles[exit].close / candles[entry].close - 1 : null;
-      const markedAt = candles.find((c) => c.time >= d.date)?.time ?? null;
+      // First trading day after the decision: the engine's entry close. Weekly
+      // and monthly bars have no daily closes, so only the engine's alpha counts there.
+      const entry = days.findIndex((x) => x > d.date);
+      const exitDay = entry >= 0 ? days[entry + HOLDING_DAYS] : undefined;
+      const entryClose = exitDay ? closeOfDay(days[entry]) : undefined;
+      const exitClose = exitDay ? closeOfDay(exitDay) : undefined;
+      const priceReturn = !intraday && timeframe !== '1d' ? null : entryClose && exitClose ? exitClose / entryClose - 1 : null;
+      const markedAt = atDay(d.date) ?? null;
       const direction = RATING_DIRECTION[d.rating] ?? 0;
       // A settled backtest cell is judged on the engine's alpha; anything else on price alone.
       const measure = d.alpha ?? priceReturn;
@@ -131,7 +176,10 @@
         level(x.entry, p.ink, 'Entry', LineStyle.Solid);
         level(x.stop, p.down, 'Stop', LineStyle.Solid);
         level(x.target, p.up, `Target · R/R ${x.rr}`, LineStyle.Solid);
-      } else if (d.kind === 'trendline' && x.from.time < x.to.time) {
+      } else if (d.kind === 'trendline') {
+        const from = atDay(x.from.time);
+        const to = atDay(x.to.time);
+        if (!from || !to || from >= to) continue;
         const s = chart!.addSeries(LineSeries, {
           color: roleColor(x.role),
           lineWidth: 2,
@@ -140,8 +188,8 @@
           crosshairMarkerVisible: false,
         });
         s.setData([
-          { time: x.from.time as Time, value: x.from.price },
-          { time: x.to.time as Time, value: x.to.price },
+          { time: toTime(from), value: x.from.price },
+          { time: toTime(to), value: x.to.price },
         ]);
         lineSeries.push(s);
       }
@@ -173,6 +221,7 @@
     chart!.applyOptions({
       layout: { textColor: p.text, fontFamily: getComputedStyle(container).fontFamily },
       grid: { vertLines: { color: p.grid }, horzLines: { color: p.grid } },
+      timeScale: { timeVisible: intraday, secondsVisible: false },
     });
     candleSeries!.applyOptions({ upColor: p.up, downColor: p.down, wickUpColor: p.up, wickDownColor: p.down });
   });
@@ -209,17 +258,19 @@
     if (rangeChosen || decisions.length === 0) return;
     const oldest = decisions.reduce((min, d) => (d.date < min ? d.date : min), decisions[0].date);
     const ageDays = (Date.now() - new Date(oldest).getTime()) / 86_400_000;
-    range = (RANGES.find((r) => r.days > ageDays + 30) ?? RANGES[RANGES.length - 1]).value;
+    const fit = (RANGES.find((r) => r.days > ageDays + 30) ?? RANGES[RANGES.length - 1]).value;
+    range = intraday && !INTRADAY_RANGES.includes(fit) ? '1y' : fit;
     rangeChosen = true;
   });
 
   $effect(() => {
     const s = symbol;
     const r = range;
+    const tf = timeframe;
     loading = true;
     loadError = '';
     api
-      .candles(s, r)
+      .candles(s, r, tf)
       .then((series) => {
         candles = series.candles;
         currency = series.currency;
@@ -233,10 +284,10 @@
 
   $effect(() => {
     if (!mounted) return;
-    candleSeries!.setData(candles.map((c) => ({ time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close })));
+    candleSeries!.setData(candles.map((c) => ({ time: toTime(c.time), open: c.open, high: c.high, low: c.low, close: c.close })));
     volumeSeries!.setData(
       candles.map((c) => ({
-        time: c.time as Time,
+        time: toTime(c.time),
         value: c.volume,
         color: c.close >= c.open ? palette.upVolume : palette.downVolume,
       })),
@@ -246,13 +297,13 @@
 
   $effect(() => {
     if (!mounted) return;
-    const list: SeriesMarker<Time>[] = rows
+    const list: (SeriesMarker<Time> & { at: string })[] = rows
       .filter((r) => r.markedAt)
-      .sort((a, b) => a.markedAt!.localeCompare(b.markedAt!))
       .map((r) => {
         const direction = RATING_DIRECTION[r.rating] ?? 0;
         return {
-          time: r.markedAt as Time,
+          at: r.markedAt!,
+          time: toTime(r.markedAt!),
           position: direction > 0 ? 'belowBar' : 'aboveBar',
           shape: direction > 0 ? 'arrowUp' : direction < 0 ? 'arrowDown' : 'circle',
           color: direction > 0 ? palette.up : direction < 0 ? palette.down : palette.neutral,
@@ -260,14 +311,14 @@
           size: r.date === highlightDate ? 2 : 1,
         };
       });
-    // The agent's notes ride on the same marker layer, on the first candle at or after their date.
+    // The agent's notes ride on the same marker layer, on the first bar at or after their date.
     for (const d of drawings) {
       if (d.kind !== 'note') continue;
-      const at = candles.find((c) => c.time >= d.data.time)?.time;
-      if (at) list.push({ time: at as Time, position: 'aboveBar', shape: 'square', color: palette.accent, text: d.label });
+      const at = atDay(d.data.time);
+      if (at) list.push({ at, time: toTime(at), position: 'aboveBar', shape: 'square', color: palette.accent, text: d.label });
     }
-    list.sort((a, b) => String(a.time).localeCompare(String(b.time)));
-    markers!.setMarkers(list);
+    list.sort((a, b) => a.at.localeCompare(b.at));
+    markers!.setMarkers(list.map(({ at: _, ...m }) => m));
   });
 </script>
 
@@ -283,17 +334,29 @@
         </span>
       {/if}
     </div>
-    <div class="join">
-      {#each RANGES as r (r.value)}
-        <button
-          class="btn btn-xs join-item"
-          class:btn-active={range === r.value}
-          onclick={() => {
-            range = r.value;
-            rangeChosen = true;
-          }}>{r.label}</button
-        >
-      {/each}
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="join" role="group" aria-label="Timeframe candle">
+        {#each TIMEFRAMES as t (t.value)}
+          <button class="btn btn-xs join-item" class:btn-active={timeframe === t.value} aria-pressed={timeframe === t.value} title={t.title} onclick={() => pickTimeframe(t.value)}>
+            {t.label}
+          </button>
+        {/each}
+      </div>
+      <div class="join" role="group" aria-label="Rentang waktu">
+        {#each RANGES as r (r.value)}
+          <button
+            class="btn btn-xs join-item"
+            class:btn-active={range === r.value}
+            aria-pressed={range === r.value}
+            disabled={intraday && !INTRADAY_RANGES.includes(r.value)}
+            title={intraday && !INTRADAY_RANGES.includes(r.value) ? 'Candle per jam tersedia maksimal 1 tahun' : undefined}
+            onclick={() => {
+              range = r.value;
+              rangeChosen = true;
+            }}>{r.label}</button
+          >
+        {/each}
+      </div>
     </div>
   </div>
 
@@ -307,6 +370,12 @@
       <div class="absolute inset-0 grid place-items-center p-6 text-center text-sm text-error">{loadError}</div>
     {/if}
   </div>
+
+  {#if timeframe !== '1d'}
+    <p class="text-xs text-base-content/70">
+      Engine, marker keputusan, dan gambar agent dihitung dari candle harian; di timeframe ini sebuah tanggal ditaruh di candle pertama hari itu.
+    </p>
+  {/if}
 
   {#if showTable && rows.length}
     <div class="overflow-x-auto">

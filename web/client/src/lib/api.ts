@@ -89,9 +89,19 @@ export type Backtest = BacktestSummary & {
   startedAt: string | null;
 };
 
+export const INTERVALS = ['1h', '4h', '1d', '1wk', '1mo'] as const;
+export type Interval = (typeof INTERVALS)[number];
+
+/** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's time zone for intraday. */
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
 
-export type CandleSeries = { symbol: string; currency: string | null; exchangeTimezone: string | null; candles: Candle[] };
+export type CandleSeries = {
+  symbol: string;
+  currency: string | null;
+  exchangeTimezone: string | null;
+  interval: Interval;
+  candles: Candle[];
+};
 
 export type Decision = {
   source: 'analysis' | 'backtest';
@@ -203,8 +213,8 @@ export const api = {
   getBacktest: (id: string) => request<Backtest>(`/analyses/${id}`),
   createBacktest: (body: BacktestRequest) =>
     request<{ id: string; cells: number }>('/backtests', { method: 'POST', body: JSON.stringify(body) }),
-  candles: (symbol: string, range: string) =>
-    request<CandleSeries>(`/candles?symbol=${encodeURIComponent(symbol)}&range=${range}`),
+  candles: (symbol: string, range: string, interval: Interval = '1d') =>
+    request<CandleSeries>(`/candles?symbol=${encodeURIComponent(symbol)}&range=${range}&interval=${interval}`),
   decisions: (ticker: string) => request<Decision[]>(`/decisions?ticker=${encodeURIComponent(ticker)}`),
   agentSessions: (symbol: string) => request<AgentSession[]>(`/agent/sessions?symbol=${encodeURIComponent(symbol)}`),
   createAgentSession: (symbol: string) =>

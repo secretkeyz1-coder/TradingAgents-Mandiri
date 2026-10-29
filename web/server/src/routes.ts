@@ -5,7 +5,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { analyses, analysisEvents, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
-import { getCandles, RANGES, SYMBOL_PATTERN } from "./market";
+import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
 import { getCatalog, type Catalog } from "./worker";
 
 // Every backtest cell is one full analysis (many LLM calls), so a sweep is capped.
@@ -121,10 +121,12 @@ api.post("/backtests", async (c) => {
 api.get("/candles", async (c) => {
   const symbol = c.req.query("symbol") ?? "";
   const range = (c.req.query("range") ?? "1y") as (typeof RANGES)[number];
+  const interval = (c.req.query("interval") ?? "1d") as Interval;
   if (!SYMBOL_PATTERN.test(symbol)) return c.json({ error: "Simbol tidak valid" }, 400);
   if (!RANGES.includes(range)) return c.json({ error: "Range tidak valid" }, 400);
+  if (!INTERVALS.includes(interval)) return c.json({ error: "Interval tidak valid" }, 400);
   try {
-    return c.json(await getCandles(symbol.toUpperCase(), range));
+    return c.json(await getCandles(symbol.toUpperCase(), range, interval));
   } catch (e) {
     return c.json({ error: (e as Error).message }, 502);
   }

@@ -1,11 +1,12 @@
 // The workspace's shared state: which symbol is in focus, which analysis and
 // backtest are open, and how the panels are arranged. Panels read and change
 // this; they never navigate. The state lives in the URL hash so links can be
-// shared and Back works:  #/?s=IDX:BBCA&run=<id>&bt=<id>&dock=log&m=crypto
+// shared and Back works:  #/?s=IDX:BBCA&run=<id>&bt=<id>&dock=log&m=crypto&tf=4h
 //
 // Old page links (#/analyses/:id, #/backtests/:id, #/chart?symbol=…,
 // #/markets?tab=…, #/?ticker=…) are read too, then rewritten to that form.
 // A TradingView widget click arrives as ?tvwidgetsymbol=… and only changes the symbol.
+import { INTERVALS, type Interval } from '../api';
 import { MARKET_TABS, toTradingView, toYahoo } from '../tv';
 import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
@@ -28,6 +29,8 @@ class Workspace {
   yahoo = $derived(toYahoo(this.symbol));
   market = $state('idx');
   chartView = $state<ChartView>('tv');
+  /** Candle timeframe of the AI chart; the engine itself only ever sees daily bars. */
+  timeframe = $state<Interval>('1d');
   aiMode = $state<AiMode>('analysis');
   dock = $state<DockTab>('history');
   dockSize = $state<DockSize>('normal');
@@ -109,6 +112,11 @@ class Workspace {
     this.#write('replace');
   }
 
+  setTimeframe(tf: Interval) {
+    this.timeframe = tf;
+    this.#write('replace');
+  }
+
   setAiMode(mode: AiMode) {
     this.aiMode = mode;
     this.#write('replace');
@@ -165,6 +173,9 @@ class Workspace {
     const view = q.get('v');
     if (view === 'ai' || view === 'tv') this.chartView = view;
     else if (canonical) this.chartView = 'tv';
+    const tf = q.get('tf') as Interval | null;
+    if (tf && INTERVALS.includes(tf)) this.timeframe = tf;
+    else if (canonical) this.timeframe = '1d';
     // An old link to one analysis or backtest also shows it in the AI panel.
     const ai =
       q.get('ai') ??
@@ -212,6 +223,7 @@ class Workspace {
     if (this.dock !== 'history') q.set('dock', this.dock);
     if (this.market !== 'idx') q.set('m', this.market);
     if (this.chartView !== 'tv') q.set('v', this.chartView);
+    if (this.timeframe !== '1d') q.set('tf', this.timeframe);
     if (this.aiMode !== 'analysis') q.set('ai', this.aiMode);
     const hash = `#/?${q}`;
     if (location.hash === hash) return;
