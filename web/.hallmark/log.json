@@ -1,0 +1,13 @@
+[
+  {
+    "date": "2026-10-29",
+    "macrostructure": "Workbench (app shell: form + history, detail with verdict-first)",
+    "theme": "Cobalt palette + Geist type",
+    "theme_axes": "light / grotesk-sans (Geist) / cool (cobalt 256)",
+    "genre": "modern-minimal",
+    "nav": "N13 inline ⌘K",
+    "footer": "Ft2 inline single line",
+    "enrichment": "none",
+    "brief": "TradingAgents web app · audit fixes: replaced stock daisyUI purple/pink + system font"
+  }
+]

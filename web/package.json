@@ -1,0 +1,16 @@
+{
+  "name": "tradingagents-web",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter client build",
+    "start": "bun run --filter server start",
+    "dev:demo": "TA_WORKER_SCRIPT=web/worker/demo_worker.py bun run --filter '*' dev"
+  }
+}

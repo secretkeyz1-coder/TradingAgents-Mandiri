@@ -1,0 +1,618 @@
+"""The chart agent: a tool-calling LLM that reads the market with deterministic
+skills, draws its analysis on the chart, and remembers what the user tells it.
+
+Numbers never come from the model. Every price and date it draws must come
+from a skill's output, and every drawing is checked against the real price
+history before it is sent. The agent analyses; it cannot place orders.
+
+Run through ``ta_worker.py agent`` with one job as JSON on stdin; events go to
+stdout as JSON lines (see ``run_agent``).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import uuid
+from collections.abc import Callable
+from datetime import date, timedelta
+
+import pandas as pd
+
+MAX_STEPS = 8
+MAX_TOOL_CALLS = 24
+FIB_RATIOS = (0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
+
+Emit = Callable[..., None]
+
+
+# --------------------------------------------------------------------------- market data
+
+
+class Market:
+    """Daily candles for one symbol, up to today, loaded once per turn."""
+
+    def __init__(self, symbol: str):
+        from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv
+
+        df = load_ohlcv(symbol, date.today().isoformat())
+        df = df.dropna(subset=["Close"]).copy()
+        df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d")
+        self.symbol = symbol
+        self.df = df.reset_index(drop=True)
+        self.first_date = self.df["Date"].iloc[0]
+        self.last_date = self.df["Date"].iloc[-1]
+        self.low = float(self.df["Low"].min())
+        self.high = float(self.df["High"].max())
+
+    def window(self, lookback: int) -> pd.DataFrame:
+        return self.df.tail(max(20, min(int(lookback), len(self.df)))).reset_index(drop=True)
+
+    @property
+    def last_close(self) -> float:
+        return float(self.df["Close"].iloc[-1])
+
+
+def _r(x: float) -> float:
+    """Round a price for the model: enough digits for forex and crypto, not noise."""
+    x = float(x)
+    return round(x, 2 if abs(x) >= 10 else 5)
+
+
+# --------------------------------------------------------------------------- analysis skills
+
+
+def market_summary(m: Market) -> dict:
+    df = m.df
+    close = df["Close"]
+    last = m.last_close
+    year = df.tail(252)
+    return {
+        "symbol": m.symbol,
+        "last_date": m.last_date,
+        "last_close": _r(last),
+        "change_1d_pct": round((last / float(close.iloc[-2]) - 1) * 100, 2) if len(df) > 1 else None,
+        "change_20d_pct": round((last / float(close.iloc[-21]) - 1) * 100, 2) if len(df) > 21 else None,
+        "high_52w": _r(year["High"].max()),
+        "low_52w": _r(year["Low"].min()),
+        "data_from": m.first_date,
+    }
+
+
+def find_pivots(m: Market, lookback: int = 120, window: int = 5) -> dict:
+    df = m.window(lookback)
+    w = max(2, min(int(window), 15))
+    highs, lows = [], []
+    for i in range(w, len(df) - w):
+        seg = df.iloc[i - w : i + w + 1]
+        if df["High"].iloc[i] == seg["High"].max():
+            highs.append({"date": df["Date"].iloc[i], "price": _r(df["High"].iloc[i])})
+        if df["Low"].iloc[i] == seg["Low"].min():
+            lows.append({"date": df["Date"].iloc[i], "price": _r(df["Low"].iloc[i])})
+    return {"swing_highs": highs[-10:], "swing_lows": lows[-10:], "lookback_days": len(df)}
+
+
+def support_resistance(m: Market, lookback: int = 180, tolerance_pct: float = 1.5) -> dict:
+    piv = find_pivots(m, lookback, 5)
+    points = [(p["price"], p["date"]) for p in piv["swing_highs"] + piv["swing_lows"]]
+    # Pivots from the whole window, not only the last ten, for touch counts.
+    df = m.window(lookback)
+    for i in range(5, len(df) - 5):
+        seg = df.iloc[i - 5 : i + 6]
+        if df["High"].iloc[i] == seg["High"].max():
+            points.append((float(df["High"].iloc[i]), df["Date"].iloc[i]))
+        if df["Low"].iloc[i] == seg["Low"].min():
+            points.append((float(df["Low"].iloc[i]), df["Date"].iloc[i]))
+    tol = max(0.1, float(tolerance_pct)) / 100
+    clusters: list[dict] = []
+    for price, day in sorted(set(points)):
+        if clusters and abs(price - clusters[-1]["mean"]) / clusters[-1]["mean"] <= tol:
+            c = clusters[-1]
+            c["prices"].append(price)
+            c["mean"] = sum(c["prices"]) / len(c["prices"])
+            c["last"] = max(c["last"], day)
+        else:
+            clusters.append({"prices": [price], "mean": price, "last": day})
+    last = m.last_close
+    levels = [
+        {
+            "price": _r(c["mean"]),
+            "touches": len(c["prices"]),
+            "last_touch": c["last"],
+            "role": "support" if c["mean"] < last else "resistance",
+            "distance_pct": round((c["mean"] / last - 1) * 100, 2),
+        }
+        for c in clusters
+    ]
+    levels.sort(key=lambda lv: (-lv["touches"], abs(lv["distance_pct"])))
+    return {"last_close": _r(last), "levels": levels[:8]}
+
+
+def fit_trendline(m: Market, kind: str = "support", lookback: int = 120) -> dict:
+    piv = find_pivots(m, lookback, 4)
+    pts = piv["swing_lows"] if kind == "support" else piv["swing_highs"]
+    df = m.window(lookback)
+    index = {d: i for i, d in enumerate(df["Date"])}
+    best = None
+    pts = pts[-6:]
+    for a in range(len(pts)):
+        for b in range(a + 1, len(pts)):
+            p1, p2 = pts[a], pts[b]
+            i1, i2 = index[p1["date"]], index[p2["date"]]
+            slope = (p2["price"] - p1["price"]) / (i2 - i1)
+            violations = 0
+            for i in range(i1, len(df)):
+                line = p1["price"] + slope * (i - i1)
+                v = df["Low"].iloc[i] if kind == "support" else df["High"].iloc[i]
+                if (kind == "support" and v < line * 0.99) or (kind == "resistance" and v > line * 1.01):
+                    violations += 1
+            score = (violations, -(i2 - i1))
+            if best is None or score < best[0]:
+                best = (score, p1, p2, slope, i1)
+    if best is None:
+        return {"found": False, "reason": "kurang dari dua pivot di rentang ini"}
+    (violations, _), p1, p2, slope, i1 = best
+    now = p1["price"] + slope * (len(df) - 1 - i1)
+    return {
+        "found": True,
+        "kind": kind,
+        "from": {"date": p1["date"], "price": p1["price"]},
+        "to": {"date": p2["date"], "price": p2["price"]},
+        "projected_today": {"date": m.last_date, "price": _r(now)},
+        "slope_per_day": _r(slope),
+        "violations_since_start": violations,
+    }
+
+
+def fibonacci(m: Market, lookback: int = 120) -> dict:
+    df = m.window(lookback)
+    hi_i, lo_i = int(df["High"].idxmax()), int(df["Low"].idxmin())
+    high, low = float(df["High"].iloc[hi_i]), float(df["Low"].iloc[lo_i])
+    up = lo_i < hi_i
+    return {
+        "trend": "naik (low lalu high)" if up else "turun (high lalu low)",
+        "high": {"date": df["Date"].iloc[hi_i], "price": _r(high)},
+        "low": {"date": df["Date"].iloc[lo_i], "price": _r(low)},
+        "levels": [{"ratio": r, "price": _r(high - (high - low) * r)} for r in FIB_RATIOS],
+    }
+
+
+def indicators(m: Market) -> dict:
+    df = m.df
+    c = df["Close"]
+    delta = c.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1 / 14, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / 14, adjust=False).mean()
+    rsi = 100 - 100 / (1 + gain / loss.replace(0, float("nan")))
+    ema12, ema26 = c.ewm(span=12, adjust=False).mean(), c.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    sma20, std20 = c.rolling(20).mean(), c.rolling(20).std()
+    tr = pd.concat([df["High"] - df["Low"], (df["High"] - c.shift()).abs(), (df["Low"] - c.shift()).abs()], axis=1).max(axis=1)
+    vol20 = df["Volume"].rolling(20).mean()
+
+    def last(s):
+        v = s.iloc[-1]
+        return None if pd.isna(v) else _r(v)
+
+    return {
+        "date": m.last_date,
+        "close": _r(c.iloc[-1]),
+        "sma20": last(sma20),
+        "sma50": last(c.rolling(50).mean()),
+        "sma200": last(c.rolling(200).mean()),
+        "rsi14": None if pd.isna(rsi.iloc[-1]) else round(float(rsi.iloc[-1]), 1),
+        "macd": last(macd),
+        "macd_signal": last(signal),
+        "bb_upper": last(sma20 + 2 * std20),
+        "bb_lower": last(sma20 - 2 * std20),
+        "atr14": last(tr.rolling(14).mean()),
+        "volume_vs_20d": None if pd.isna(vol20.iloc[-1]) or not vol20.iloc[-1] else round(float(df["Volume"].iloc[-1] / vol20.iloc[-1]), 2),
+    }
+
+
+def latest_decisions(symbol: str, limit: int = 3) -> dict:
+    """The engine's own memory log: past TradingAgents decisions on this ticker and how they turned out."""
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.memory import TradingMemoryLog
+
+    entries = [e for e in TradingMemoryLog(DEFAULT_CONFIG).load_entries() if e["ticker"] == symbol]
+    return {
+        "decisions": [
+            {
+                "date": e["date"],
+                "rating": e["rating"],
+                "pending": e["pending"],
+                "return": e.get("raw"),
+                "alpha": e.get("alpha"),
+                "decision": (e.get("decision") or "")[:400],
+            }
+            for e in entries[-limit:]
+        ]
+    }
+
+
+# --------------------------------------------------------------------------- drawings
+
+
+class DrawingError(ValueError):
+    pass
+
+
+class Canvas:
+    """Turns draw_* calls into checked drawings: prices inside the instrument's
+    real range, dates inside its history (a trendline may project 90 days ahead)."""
+
+    def __init__(self, m: Market, emit: Emit):
+        self.m = m
+        self.emit = emit
+        self.count = 0
+
+    def price(self, value, name: str) -> float:
+        try:
+            v = float(value)
+        except (TypeError, ValueError) as exc:
+            raise DrawingError(f"{name} bukan angka") from exc
+        if not (self.m.low * 0.5 <= v <= self.m.high * 1.5):
+            raise DrawingError(f"{name}={v} di luar rentang harga {self.m.symbol} ({_r(self.m.low)}–{_r(self.m.high)})")
+        return _r(v)
+
+    def day(self, value, name: str, future_days: int = 0) -> str:
+        try:
+            d = date.fromisoformat(str(value))
+        except ValueError as exc:
+            raise DrawingError(f"{name} harus YYYY-MM-DD") from exc
+        latest = date.fromisoformat(self.m.last_date) + timedelta(days=future_days)
+        if not (self.m.first_date <= d.isoformat() <= latest.isoformat()):
+            raise DrawingError(f"{name}={d} di luar data ({self.m.first_date}–{self.m.last_date})")
+        return d.isoformat()
+
+    def add(self, kind: str, label: str, data: dict) -> str:
+        if self.count >= 30:
+            raise DrawingError("terlalu banyak gambar dalam satu jawaban")
+        self.count += 1
+        drawing = {"id": str(uuid.uuid4()), "kind": kind, "label": str(label or "")[:60], "data": data}
+        self.emit("drawing", drawing=drawing)
+        return f"digambar ({kind}, id {drawing['id'][:8]})"
+
+
+# --------------------------------------------------------------------------- the agent
+
+
+def _system_prompt(job: dict, m: Market) -> str:
+    language = job.get("language") or "Indonesian"
+    memories = job.get("memories") or []
+    user_mem = "\n".join(f"- [{x['id'][:8]}] {x['content']}" for x in memories if x.get("scope") == "user") or "(belum ada)"
+    sym_mem = "\n".join(f"- [{x['id'][:8]}] {x['content']}" for x in memories if x.get("scope") == "symbol") or "(belum ada)"
+    drawings = job.get("drawings") or []
+    on_chart = "\n".join(f"- {d['kind']}: {d.get('label') or ''}" for d in drawings[-15:]) or "(kosong)"
+    summary = job.get("summary") or "(tidak ada)"
+    skills = "\n".join(
+        f"- {s['definition']['name']} (v{s['version']}): {s['definition']['description']} — dipakai saat: {s['definition']['when_to_use']}"
+        for s in job.get("skills") or []
+    ) or "(belum ada)"
+    return f"""You are the chart analyst inside a trading research web app. Answer in {language}.
+
+Symbol in focus: {m.symbol}. Latest daily close: {m.last_date}. Today: {date.today().isoformat()}.
+
+Rules:
+- Every price or date you state or draw must come from a tool result in this conversation. Never estimate numbers yourself.
+- To show analysis on the chart, call the draw_* tools. Draw only what supports your answer; prefer a few clear drawings.
+- You analyse; you never place, suggest placing, or simulate orders. This is research, not financial advice; say so briefly when you give a trade plan.
+- When the user states a lasting preference or fact about themselves or this symbol, store it with remember. Use forget when asked.
+- Keep answers short: what you found, what you drew, the key levels.
+
+What you remember about the user:
+{user_mem}
+
+What you remember about {m.symbol}:
+{sym_mem}
+
+Already on the chart:
+{on_chart}
+
+Summary of earlier conversation:
+{summary}
+
+Saved skills (approved by the user; call use_skill to load one when it fits):
+{skills}
+
+Skills: when the user asks to save a way of working as a skill, or agrees when you offer, call propose_skill.
+It is tested on real prices and saved as a draft; the user approves it in the Skill panel before it can be used.
+Never claim a proposed skill is active."""
+
+
+# --------------------------------------------------------------------------- recipe skills
+#
+# A recipe skill is data, never code: a few analysis steps (the skills above,
+# with parameters) plus an instruction for the agent. use_skill runs the steps
+# and hands back their results with the instruction; the agent then draws with
+# the ordinary draw_* tools, so every number still comes from a tool.
+
+SKILL_STEPS: dict[str, Callable] = {
+    "get_market_summary": lambda m: market_summary(m),
+    "find_pivots": find_pivots,
+    "support_resistance": support_resistance,
+    "fit_trendline": fit_trendline,
+    "fibonacci": fibonacci,
+    "indicators": lambda m: indicators(m),
+    "latest_decisions": lambda m: latest_decisions(m.symbol),
+}
+SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
+
+
+class SkillError(ValueError):
+    pass
+
+
+def validate_skill(raw: dict) -> dict:
+    """A clean skill definition, or SkillError naming what is wrong."""
+    import inspect
+
+    name = str(raw.get("name") or "").strip().lower()
+    if not SKILL_NAME.match(name):
+        raise SkillError("name: 3–40 huruf kecil, angka, atau tanda hubung")
+    text = {k: str(raw.get(k) or "").strip() for k in ("title", "description", "when_to_use", "instruction")}
+    for key, limit in (("title", 60), ("description", 200), ("when_to_use", 200), ("instruction", 1500)):
+        if not text[key]:
+            raise SkillError(f"{key} wajib diisi")
+        if len(text[key]) > limit:
+            raise SkillError(f"{key} maksimal {limit} karakter")
+    params = raw.get("params") or {}
+    if not isinstance(params, dict) or len(params) > 6:
+        raise SkillError("params: objek dengan maksimal 6 parameter")
+    for key, value in params.items():
+        if not SKILL_NAME.match(key.replace("_", "-")) or not isinstance(value, (int, float, str)) or isinstance(value, bool):
+            raise SkillError(f"parameter {key}: nama huruf kecil, nilai angka atau teks")
+    steps = raw.get("steps") or []
+    if not isinstance(steps, list) or not 1 <= len(steps) <= 6:
+        raise SkillError("steps: 1–6 langkah analisa")
+    clean_steps = []
+    for i, step in enumerate(steps, 1):
+        tool = (step or {}).get("tool")
+        if tool not in SKILL_STEPS:
+            raise SkillError(f"langkah {i}: alat {tool!r} tidak boleh; pilih dari {', '.join(SKILL_STEPS)}")
+        args = step.get("args") or {}
+        accepted = set(inspect.signature(SKILL_STEPS[tool]).parameters) - {"m"}
+        unknown = set(args) - accepted
+        if unknown:
+            raise SkillError(f"langkah {i} ({tool}): argumen tidak dikenal {sorted(unknown)}")
+        for value in args.values():
+            if isinstance(value, str) and value.startswith("$") and value[1:] not in params:
+                raise SkillError(f"langkah {i}: {value} tidak ada di params")
+        clean_steps.append({"tool": tool, "args": args})
+    return {"name": name, **text, "params": params, "steps": clean_steps}
+
+
+def _fill(value, params: dict):
+    """Replace $param references with their values (whole-value in args, inline in text)."""
+    if isinstance(value, str) and value.startswith("$") and value[1:] in params:
+        return params[value[1:]]
+    if isinstance(value, str):
+        for key, v in params.items():
+            value = value.replace(f"${key}", str(v))
+    return value
+
+
+def run_skill(m: Market, definition: dict, overrides: dict | None = None) -> dict:
+    """Run a skill's analysis steps; returns the filled instruction and each step's output or error."""
+    params = {**definition["params"], **{k: v for k, v in (overrides or {}).items() if k in definition["params"]}}
+    results = []
+    for step in definition["steps"]:
+        args = {k: _fill(v, params) for k, v in step["args"].items()}
+        try:
+            results.append({"tool": step["tool"], "args": args, "output": SKILL_STEPS[step["tool"]](m, **args)})
+        except Exception as exc:  # report, do not abort: the instruction may still be usable
+            results.append({"tool": step["tool"], "args": args, "error": f"{type(exc).__name__}: {exc}"})
+    return {"skill": definition["name"], "params": params, "instruction": _fill(definition["instruction"], params), "results": results}
+
+
+def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], skills: list[dict] | None = None):
+    from langchain_core.tools import tool
+
+    @tool
+    def get_market_summary() -> str:
+        """Latest close, 1-day and 20-day change, and the 52-week high/low of the symbol."""
+        return json.dumps(market_summary(m))
+
+    @tool("find_pivots")
+    def find_pivots_tool(lookback: int = 120, window: int = 5) -> str:
+        """Swing highs and lows (date, price) over the last `lookback` trading days; `window` bars each side."""
+        return json.dumps(find_pivots(m, lookback, window))
+
+    @tool("support_resistance")
+    def support_resistance_tool(lookback: int = 180, tolerance_pct: float = 1.5) -> str:
+        """Support/resistance levels: pivots clustered within `tolerance_pct`, with touch counts and distance from the last close."""
+        return json.dumps(support_resistance(m, lookback, tolerance_pct))
+
+    @tool("fit_trendline")
+    def fit_trendline_tool(kind: str = "support", lookback: int = 120) -> str:
+        """Best trendline through two swing lows (kind=support) or highs (kind=resistance), with its projected value today."""
+        return json.dumps(fit_trendline(m, "resistance" if kind == "resistance" else "support", lookback))
+
+    @tool("fibonacci")
+    def fibonacci_tool(lookback: int = 120) -> str:
+        """Fibonacci retracement levels between the highest high and lowest low of the last `lookback` days."""
+        return json.dumps(fibonacci(m, lookback))
+
+    @tool("indicators")
+    def indicators_tool() -> str:
+        """Latest SMA20/50/200, RSI14, MACD and signal, Bollinger bands, ATR14 and volume versus its 20-day average."""
+        return json.dumps(indicators(m))
+
+    @tool("latest_decisions")
+    def latest_decisions_tool() -> str:
+        """Past TradingAgents team decisions on this symbol (rating, outcome) from the engine's memory log."""
+        return json.dumps(latest_decisions(m.symbol))
+
+    @tool
+    def draw_level(price: float, label: str, role: str = "neutral") -> str:
+        """Draw a horizontal level. role: support, resistance or neutral."""
+        return canvas.add("level", label, {"price": canvas.price(price, "price"), "role": role if role in ("support", "resistance") else "neutral"})
+
+    @tool
+    def draw_trendline(from_date: str, from_price: float, to_date: str, to_price: float, label: str, role: str = "neutral") -> str:
+        """Draw a straight line between two (date YYYY-MM-DD, price) points; the end may be up to 90 days ahead."""
+        return canvas.add("trendline", label, {
+            "from": {"time": canvas.day(from_date, "from_date"), "price": canvas.price(from_price, "from_price")},
+            "to": {"time": canvas.day(to_date, "to_date", 90), "price": canvas.price(to_price, "to_price")},
+            "role": role if role in ("support", "resistance") else "neutral",
+        })
+
+    @tool
+    def draw_zone(top: float, bottom: float, label: str, role: str = "neutral") -> str:
+        """Draw a horizontal price zone between `bottom` and `top`. role: supply, demand or neutral."""
+        t, b = canvas.price(top, "top"), canvas.price(bottom, "bottom")
+        return canvas.add("zone", label, {"top": max(t, b), "bottom": min(t, b), "role": role if role in ("supply", "demand") else "neutral"})
+
+    @tool
+    def draw_fib(high: float, low: float, label: str = "Fibonacci") -> str:
+        """Draw Fibonacci retracement levels between a swing `high` and swing `low` price."""
+        h, lo = canvas.price(high, "high"), canvas.price(low, "low")
+        h, lo = max(h, lo), min(h, lo)
+        return canvas.add("fib", label, {"high": h, "low": lo, "levels": [{"ratio": r, "price": _r(h - (h - lo) * r)} for r in FIB_RATIOS]})
+
+    @tool
+    def draw_trade_plan(entry: float, stop: float, target: float, side: str = "long", note: str = "") -> str:
+        """Draw entry, stop and target lines for a hypothetical long or short idea (research only)."""
+        e, s, t = canvas.price(entry, "entry"), canvas.price(stop, "stop"), canvas.price(target, "target")
+        long_ = side != "short"
+        if long_ and not (s < e < t) or not long_ and not (t < e < s):
+            raise DrawingError("untuk long: stop < entry < target; untuk short: target < entry < stop")
+        rr = round(abs(t - e) / abs(e - s), 2)
+        return canvas.add("trade_plan", note or f"Rencana {'long' if long_ else 'short'}", {"side": "long" if long_ else "short", "entry": e, "stop": s, "target": t, "rr": rr})
+
+    @tool
+    def annotate(on_date: str, text: str) -> str:
+        """Put a short note on the chart at a date (YYYY-MM-DD)."""
+        return canvas.add("note", text, {"time": canvas.day(on_date, "on_date"), "text": str(text)[:60]})
+
+    @tool
+    def remember(content: str, scope: str = "user") -> str:
+        """Store a lasting fact or preference. scope=user for the person, scope=symbol for this symbol."""
+        memory = {"id": str(uuid.uuid4()), "scope": "symbol" if scope == "symbol" else "user", "content": str(content)[:300]}
+        emit("memory", memory=memory)
+        memories.append(memory)
+        return "disimpan"
+
+    @tool
+    def forget(memory_id: str) -> str:
+        """Delete a stored memory by the id prefix shown in brackets."""
+        match = next((x for x in memories if x["id"].startswith(memory_id.strip("[] "))), None)
+        if not match:
+            return "memori tidak ditemukan"
+        emit("forget", id=match["id"])
+        return "dihapus"
+
+    approved = {s["definition"]["name"]: s["definition"] for s in skills or []}
+
+    @tool
+    def use_skill(name: str, params: dict | None = None) -> str:
+        """Load an approved skill: runs its analysis steps on this symbol and returns its instruction and their results. Then follow the instruction, drawing with the draw_* tools."""
+        definition = approved.get(name)
+        if not definition:
+            return f"ditolak: skill {name!r} tidak ada atau belum disetujui; yang aktif: {', '.join(approved) or 'tidak ada'}"
+        return json.dumps(run_skill(m, definition, params))
+
+    @tool
+    def propose_skill(
+        name: str, title: str, description: str, when_to_use: str, instruction: str, steps: list[dict], params: dict | None = None
+    ) -> str:
+        """Save a reusable way of working as a draft skill (only when the user asks or agrees).
+        name: lowercase-with-dashes. steps: 1-6 of {"tool": one of get_market_summary, find_pivots, support_resistance,
+        fit_trendline, fibonacci, indicators, latest_decisions, "args": {...}}; an arg may be "$param".
+        instruction: what to conclude and draw from the step results; may use $param. params: defaults, e.g. {"lookback": 120}.
+        It is tested on this symbol now; the user approves it before it can be used."""
+        try:
+            definition = validate_skill(
+                {"name": name, "title": title, "description": description, "when_to_use": when_to_use,
+                 "instruction": instruction, "steps": steps, "params": params or {}}
+            )
+        except SkillError as exc:
+            return f"ditolak: {exc}"
+        test = run_skill(m, definition)
+        errors = [r["error"] for r in test["results"] if "error" in r]
+        report = {"symbol": m.symbol, "ok": not errors, "errors": errors,
+                  "steps": [{"tool": r["tool"], "output": json.dumps(r.get("output"))[:240]} for r in test["results"]]}
+        emit("skill_proposed", definition=definition, test=report)
+        return ("diuji dan disimpan sebagai draf; tunggu persetujuan pengguna" if not errors
+                else f"disimpan sebagai draf tetapi uji gagal: {errors}")
+
+    return [
+        get_market_summary, find_pivots_tool, support_resistance_tool, fit_trendline_tool, fibonacci_tool,
+        indicators_tool, latest_decisions_tool, draw_level, draw_trendline, draw_zone, draw_fib,
+        draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
+    ]
+
+
+def _text(message) -> str:
+    from cli.display import extract_content_string
+
+    return extract_content_string(getattr(message, "content", None)) or ""
+
+
+def summarize(llm, previous: str, messages: list[dict], language: str) -> str:
+    """Fold older turns into the running summary, so long sessions keep their gist without the tokens."""
+    from langchain_core.messages import HumanMessage
+
+    transcript = "\n".join(f"{x['role']}: {x['content'][:1500]}" for x in messages)
+    prompt = (
+        f"Update this running summary of a chart-analysis chat in {language}. Keep the user's goals, "
+        f"the levels and conclusions reached, and open questions. At most 120 words.\n\n"
+        f"Current summary:\n{previous or '(none)'}\n\nNew turns:\n{transcript}"
+    )
+    return _text(llm.invoke([HumanMessage(content=prompt)])).strip()
+
+
+def run_agent(llm, job: dict, emit: Emit, market: Market | None = None) -> str:
+    """One user turn: optional summary refresh, then the tool loop. Returns the final answer."""
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+    m = market or Market(job["symbol"])
+    canvas = Canvas(m, emit)
+    memories = list(job.get("memories") or [])
+
+    if job.get("toSummarize"):
+        summary = summarize(llm, job.get("summary") or "", job["toSummarize"], job.get("language") or "Indonesian")
+        emit("summary", summary=summary)
+        job = {**job, "summary": summary}
+
+    tools = build_tools(m, canvas, emit, memories, job.get("skills"))
+    by_name = {t.name: t for t in tools}
+    bound = llm.bind_tools(tools)
+
+    messages = [SystemMessage(content=_system_prompt(job, m))]
+    for turn in job.get("history") or []:
+        messages.append(HumanMessage(content=turn["content"]) if turn["role"] == "user" else AIMessage(content=turn["content"]))
+    messages.append(HumanMessage(content=job["message"]))
+
+    calls = 0
+    for _ in range(MAX_STEPS):
+        reply = bound.invoke(messages)
+        messages.append(reply)
+        tool_calls = getattr(reply, "tool_calls", None) or []
+        if not tool_calls:
+            answer = _text(reply)
+            emit("message", content=answer)
+            return answer
+        for call in tool_calls:
+            calls += 1
+            name, args = call["name"], call.get("args") or {}
+            emit("tool_call", name=name, args=args)
+            if calls > MAX_TOOL_CALLS:
+                result = "batas pemanggilan alat tercapai; jawab dengan yang sudah ada"
+            elif name not in by_name:
+                result = f"alat {name} tidak ada"
+            else:
+                try:
+                    result = by_name[name].invoke(args)
+                except DrawingError as exc:
+                    result = f"ditolak: {exc}"
+                except Exception as exc:  # a skill failing must not end the turn
+                    result = f"gagal: {type(exc).__name__}: {exc}"
+            emit("tool_result", name=name, summary=str(result)[:300])
+            messages.append(ToolMessage(content=str(result), tool_call_id=call["id"]))
+
+    answer = "Batas langkah tercapai sebelum jawaban selesai. Coba persempit pertanyaannya."
+    emit("message", content=answer)
+    return answer

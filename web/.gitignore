@@ -1,0 +1,5 @@
+node_modules/
+client/dist/
+*.log
+# The root .gitignore drops Python lib/ folders; this one is source.
+!client/src/lib/
