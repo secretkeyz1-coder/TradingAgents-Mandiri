@@ -603,6 +603,8 @@ Summary of earlier conversation:
 Saved skills (approved by the user; call use_skill to load one when it fits):
 {skills}
 
+The user's own indicator scripts (run one with custom_script when asked about it): {", ".join(s["name"] for s in job.get("scripts") or []) or "(belum ada)"}
+
 Skills: when the user asks to save a way of working as a skill, or agrees when you offer, call propose_skill.
 It is tested on real prices and saved as a draft; the user approves it in the Skill panel before it can be used.
 Never claim a proposed skill is active."""
@@ -701,7 +703,8 @@ def run_skill(m: Market, definition: dict, overrides: dict | None = None) -> dic
     return {"skill": definition["name"], "params": params, "instruction": _fill(definition["instruction"], params), "results": results}
 
 
-def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], skills: list[dict] | None = None):
+def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], skills: list[dict] | None = None,
+                scripts: list[dict] | None = None):
     from langchain_core.tools import tool
 
     @tool
@@ -753,6 +756,24 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
         QM Failed, Manipulation, with CK2/CK3 labels. Returns the active signal and recent ones with frozen entry, stop loss,
         take profit and outcome, plus a per-setup tally over the loaded bars (a quick check, not a backtest)."""
         return json.dumps(pob_signal(m, timeframe, recent))
+
+    user_scripts = {s["name"]: s["code"] for s in scripts or []}
+
+    @tool("custom_script")
+    def custom_script_tool(name: str, timeframe: str = "1d") -> str:
+        """Run one of the user's own indicator scripts (by name) on this symbol, timeframe 15m, 1h, 4h or 1d: its inputs,
+        latest plotted values, the active signal and recent ones with entry, stop, target and outcome, and a tally."""
+        code = user_scripts.get(name)
+        if code is None:
+            return f"skrip {name!r} tidak ada; skrip pengguna: {', '.join(user_scripts) or 'belum ada'}"
+        import os
+        import subprocess
+
+        bun = os.environ.get("TA_BUN_BIN") or "bun"
+        cli = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server", "src", "script-cli.ts")
+        done = subprocess.run([bun, cli], input=json.dumps({"code": code, "symbol": m.symbol, "timeframe": timeframe}),
+                              capture_output=True, text=True, timeout=60, encoding="utf-8")
+        return done.stdout.strip() or f"skrip gagal dijalankan: {done.stderr.strip()[-300:]}"
 
     @tool("fib_golden_zone")
     def fib_golden_zone_tool(timeframe: str = "1d", recent: int = 5) -> str:
@@ -856,7 +877,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     return [
         get_market_summary, find_pivots_tool, support_resistance_tool, fit_trendline_tool, fibonacci_tool,
-        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, fib_golden_zone_tool, draw_level, draw_trendline, draw_zone, draw_fib,
+        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, fib_golden_zone_tool, custom_script_tool, draw_level, draw_trendline, draw_zone, draw_fib,
         draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
     ]
 
@@ -908,7 +929,7 @@ def run_agent(llm, job: dict, emit: Emit, market: Market | None = None) -> str:
         emit("summary", summary=summary)
         job = {**job, "summary": summary}
 
-    tools = build_tools(m, canvas, emit, memories, job.get("skills"))
+    tools = build_tools(m, canvas, emit, memories, job.get("skills"), job.get("scripts"))
     by_name = {t.name: t for t in tools}
     bound = llm.bind_tools(tools)
 

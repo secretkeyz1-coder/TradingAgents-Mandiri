@@ -16,6 +16,7 @@ import {
   agentSessions,
   agentSkills,
   chartDrawings,
+  userScripts,
   type AgentToolCall,
   type DrawingKind,
   type SkillDefinition,
@@ -286,6 +287,8 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
       .select({ version: agentSkills.version, definition: agentSkills.definition })
       .from(agentSkills)
       .where(and(eq(agentSkills.userId, user.id), eq(agentSkills.status, "active")));
+    // The user's own indicator scripts: the agent runs them through web/server/src/script-cli.ts.
+    const scripts = await db.select({ name: userScripts.name, code: userScripts.code }).from(userScripts).where(eq(userScripts.userId, user.id));
 
     await db.insert(agentMessages).values({ sessionId: id, role: "user", content: turn.message });
     await db
@@ -304,6 +307,7 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
       memories,
       drawings,
       skills,
+      scripts,
     };
 
     return streamSSE(c, async (stream) => {

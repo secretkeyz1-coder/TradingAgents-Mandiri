@@ -10,6 +10,8 @@ COPY web/package.json web/bun.lock ./
 COPY web/client/package.json client/
 COPY web/server/package.json server/
 RUN bun install --frozen-lockfile
+# Code the client and the server share (the indicator script runtime).
+COPY web/shared shared
 COPY web/client client
 RUN bun run --filter client build
 
@@ -34,6 +36,7 @@ COPY cli cli
 RUN pip install --no-cache-dir .
 
 COPY web/worker web/worker
+COPY web/shared web/shared
 COPY web/server web/server
 COPY --from=web /src/web/node_modules web/node_modules
 COPY --from=web /src/web/server/node_modules web/server/node_modules

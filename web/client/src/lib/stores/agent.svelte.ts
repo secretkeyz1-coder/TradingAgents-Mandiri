@@ -25,8 +25,8 @@ export const LAYERS: { key: DrawingKind; label: string }[] = [
   { key: 'note', label: 'Catatan' },
 ];
 
-/** The model settings the analysis form last used, else the engine's defaults. */
-function settings(): Omit<AgentTurn, 'message'> | null {
+/** The model settings the analysis form last used, else the engine's defaults (also the Pine translator's). */
+export function settings(): Omit<AgentTurn, 'message'> | null {
   let saved: Record<string, any> = {};
   try {
     saved = JSON.parse(localStorage.getItem(FORM_KEY) ?? '{}');

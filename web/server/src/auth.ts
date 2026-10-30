@@ -152,7 +152,11 @@ export const publicUser = (u: User) => ({
 export const authApi = new Hono<AppEnv>();
 
 authApi.get("/session", async (c) => {
-  if (!authEnabled()) return c.json({ auth: false, user: localAdmin ? publicUser(localAdmin) : null });
+  if (!authEnabled()) {
+    // Read fresh: localAdmin is the row as it was at boot.
+    const [fresh] = localAdmin ? await db.select().from(users).where(eq(users.id, localAdmin.id)) : [];
+    return c.json({ auth: false, user: fresh ?? localAdmin ? publicUser(fresh ?? localAdmin!) : null });
+  }
   const user = await sessionUser(c);
   return user ? c.json({ auth: true, user: publicUser(user) }) : c.json({ error: "Belum masuk" }, 401);
 });

@@ -13,8 +13,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
-import { signalAlerts, signalEvents, users, type SignalIndicator, type SignalStatus } from "./db/schema";
+import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
 import { SYMBOL_PATTERN } from "./market";
+import { runOnSymbol, type ScriptTimeframe } from "./script-run";
 import { escape, publicUrl, sendTelegram, telegramBot } from "./watch";
 import { runCommand } from "./worker";
 
@@ -34,8 +35,11 @@ export const COMBOS: { indicator: SignalIndicator; timeframe: "15m" | "1h" | "1d
   { indicator: "fib", timeframe: "1h", label: "Fib Golden Zone 1j" },
   { indicator: "fib", timeframe: "1d", label: "Fib Golden Zone harian" },
 ];
-const NAMES: Record<SignalIndicator, string> = { pob: "PoB BYSTRA", scalper: "Scalper Pro+", fib: "Fib Golden Zone" };
-const TF_LABEL: Record<string, string> = { "15m": "15m", "1h": "1j", "1d": "harian" };
+const NAMES: Record<string, string> = { pob: "PoB BYSTRA", scalper: "Scalper Pro+", fib: "Fib Golden Zone" };
+const TF_LABEL: Record<string, string> = { "15m": "15m", "1h": "1j", "4h": "4j", "1d": "harian" };
+/** Timeframes a user's own script can be watched on. */
+const SCRIPT_TFS = ["15m", "1h", "4h", "1d"] as const;
+const SCRIPT_ID = /^script:([0-9a-f-]{36})$/;
 
 type ScanSignal = {
   time: string;
@@ -55,8 +59,10 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "
 const when = (t: string) => `${Number(t.slice(8, 10))} ${MONTHS[Number(t.slice(5, 7)) - 1]} ${t.length > 10 ? t.slice(11, 16) : t.slice(0, 4)}`;
 const price = (v: number) => v.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
 
-function head(a: Alert) {
-  return `${NAMES[a.indicator]} · ${a.tvSymbol} · ${TF_LABEL[a.timeframe] ?? a.timeframe}`;
+/** "PoB BYSTRA · OANDA:XAUUSD · 15m"; a script alert names its script. */
+function head(a: Alert, scriptName?: string) {
+  const name = scriptName ? `Skrip ${scriptName}` : (NAMES[a.indicator] ?? a.indicator);
+  return `${name} · ${a.tvSymbol} · ${TF_LABEL[a.timeframe] ?? a.timeframe}`;
 }
 
 function link(a: Alert) {
@@ -66,11 +72,11 @@ function link(a: Alert) {
   return `<a href="${base}/#/?${q}">Buka chart</a>`;
 }
 
-function openMessage(a: Alert, s: ScanSignal) {
+function openMessage(a: Alert, s: ScanSignal, scriptName?: string) {
   const futures = a.symbol.endsWith("=F") ? `, harga futures ${escape(a.symbol)}, bisa beda beberapa poin dari spot` : "";
   return [
     `<b>🔔 ${escape(s.label)}</b>`,
-    escape(head(a)),
+    escape(head(a, scriptName)),
     s.time.length > 10 ? `Candle ${when(s.time)} (jam bursa), sudah tutup` : `Candle harian ${when(s.time)}, sudah tutup`,
     `Entry <b>${price(s.entry)}</b> · SL ${price(s.stop_loss)} · TP ${price(s.take_profit)}`,
     link(a),
@@ -80,7 +86,13 @@ function openMessage(a: Alert, s: ScanSignal) {
     .join("\n");
 }
 
-function closeMessage(a: Alert, e: { label: string; signalTime: string; entry: number; stopLoss: number; takeProfit: number }, status: SignalStatus, exit: string | null) {
+function closeMessage(
+  a: Alert,
+  e: { label: string; signalTime: string; entry: number; stopLoss: number; takeProfit: number },
+  status: SignalStatus,
+  exit: string | null,
+  scriptName?: string,
+) {
   const risk = Math.abs(e.entry - e.stopLoss);
   const what: Record<string, string> = {
     win: `✅ TP kena · ${price(e.takeProfit)} (+${(Math.abs(e.takeProfit - e.entry) / risk).toFixed(2).replace(".", ",")}R)`,
@@ -90,7 +102,7 @@ function closeMessage(a: Alert, e: { label: string; signalTime: string; entry: n
   };
   return [
     `<b>${what[status] ?? status}</b>`,
-    escape(head(a)),
+    escape(head(a, scriptName)),
     `${escape(e.label)} dari ${when(e.signalTime)} · entry ${price(e.entry)}${exit ? ` · selesai ${when(exit)}` : ""}`,
     link(a),
   ]
@@ -116,24 +128,63 @@ async function scan(only?: string[], withHourly = true) {
 
     const pairs = new Map<string, { symbol: string; timeframe: string; indicators: Set<string> }>();
     for (const { alert } of wanted) {
+      if (SCRIPT_ID.test(alert.indicator)) continue;
       const key = `${alert.symbol}|${alert.timeframe}`;
       if (!pairs.has(key)) pairs.set(key, { symbol: alert.symbol, timeframe: alert.timeframe, indicators: new Set() });
       pairs.get(key)!.indicators.add(alert.indicator);
     }
     const found = new Map<string, ScanSignal[]>();
-    const handle = runCommand(
-      "signals",
-      { pairs: [...pairs.values()].map((p) => ({ ...p, indicators: [...p.indicators] })) },
-      async (e) => {
-        if (e.type === "signals") found.set(`${e.symbol}|${e.timeframe}|${e.indicator}`, e.signals as ScanSignal[]);
-        else if (e.type === "signals_error") console.error(`signals ${e.symbol} ${e.timeframe} ${e.indicator}: ${e.message}`);
-      },
-    );
-    const timer = setTimeout(() => handle.kill(), SCAN_TIMEOUT_MS);
-    const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
-    if (exitCode !== 0) console.error(`signal scan exited ${exitCode}: ${stderrTail.trim().split("\n").slice(-2).join(" ")}`);
+    if (pairs.size) {
+      const handle = runCommand(
+        "signals",
+        { pairs: [...pairs.values()].map((p) => ({ ...p, indicators: [...p.indicators] })) },
+        async (e) => {
+          if (e.type === "signals") found.set(`${e.symbol}|${e.timeframe}|${e.indicator}`, e.signals as ScanSignal[]);
+          else if (e.type === "signals_error") console.error(`signals ${e.symbol} ${e.timeframe} ${e.indicator}: ${e.message}`);
+        },
+      );
+      const timer = setTimeout(() => handle.kill(), SCAN_TIMEOUT_MS);
+      const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
+      if (exitCode !== 0) console.error(`signal scan exited ${exitCode}: ${stderrTail.trim().split("\n").slice(-2).join(" ")}`);
+    }
+
+    // Users' own scripts run here, in the same sandbox and on the same candles as the chart.
+    const scriptNames = new Map<string, string>();
+    for (const { alert } of wanted) {
+      const id = alert.indicator.match(SCRIPT_ID)?.[1];
+      const key = `${alert.symbol}|${alert.timeframe}|${alert.indicator}`;
+      if (!id || found.has(key)) continue;
+      const [script] = await db.select().from(userScripts).where(and(eq(userScripts.id, id), eq(userScripts.userId, alert.userId!)));
+      if (!script) continue;
+      scriptNames.set(alert.indicator, script.name);
+      try {
+        const run = await runOnSymbol(script.code, alert.symbol, alert.timeframe as ScriptTimeframe);
+        if (!run.ok) {
+          console.error(`script ${script.name} on ${alert.symbol} ${alert.timeframe}: ${run.error}`);
+          continue;
+        }
+        const last = run.bars.length - 1;
+        found.set(
+          key,
+          run.result.signals.slice(-10).map((s) => ({
+            time: s.time,
+            side: s.side,
+            label: s.label,
+            entry: s.entry,
+            stop_loss: s.stopLoss,
+            take_profit: s.takeProfit,
+            outcome: s.outcome,
+            exit_time: s.exitIndex == null ? null : run.bars[s.exitIndex].time,
+            bars_ago: last - s.index,
+          })),
+        );
+      } catch (e) {
+        console.error(`script ${script.name} on ${alert.symbol}: ${(e as Error).message}`);
+      }
+    }
 
     for (const { alert, chat } of wanted) {
+      const scriptName = scriptNames.get(alert.indicator);
       const signals = found.get(`${alert.symbol}|${alert.timeframe}|${alert.indicator}`);
       if (!signals) continue; // this pair failed; try again next slot
       const known = new Map(
@@ -161,19 +212,19 @@ async function scan(only?: string[], withHourly = true) {
             .onConflictDoNothing()
             .returning();
           if (!row || !fresh) continue;
-          const sent = await sendTelegram(chat, openMessage(alert, s));
+          const sent = await sendTelegram(chat, openMessage(alert, s, scriptName));
           if (!sent.ok) {
             console.error(`signal alert ${alert.id}: ${sent.error}`);
             continue;
           }
           await db.update(signalEvents).set({ notifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
           // Seen for the first time already finished (it fired and ended between scans).
-          if (s.outcome !== "open" && (await sendTelegram(chat, closeMessage(alert, row, s.outcome, s.exit_time))).ok) {
+          if (s.outcome !== "open" && (await sendTelegram(chat, closeMessage(alert, row, s.outcome, s.exit_time, scriptName))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
           }
         } else if (seen.status === "open" && s.outcome !== "open") {
           await db.update(signalEvents).set({ status: s.outcome, exitTime: s.exit_time }).where(eq(signalEvents.id, seen.id));
-          if (seen.notifiedAt && !seen.closeNotifiedAt && (await sendTelegram(chat, closeMessage(alert, seen, s.outcome, s.exit_time))).ok) {
+          if (seen.notifiedAt && !seen.closeNotifiedAt && (await sendTelegram(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, seen.id));
           }
         }
@@ -217,7 +268,12 @@ alertsApi.get("/alerts", async (c) => {
       };
     }),
     max: MAX_ALERTS,
-    combos: COMBOS,
+    combos: [
+      ...COMBOS,
+      ...(await db.select().from(userScripts).where(eq(userScripts.userId, user.id)).orderBy(asc(userScripts.name))).flatMap((s) =>
+        SCRIPT_TFS.map((tf) => ({ indicator: `script:${s.id}`, timeframe: tf, label: `Skrip ${s.name} ${TF_LABEL[tf]}` })),
+      ),
+    ],
     telegram: { bot: telegramBot(), chat: Boolean(user.telegramChatId), configured: telegramBot() && Boolean(user.telegramChatId) },
   });
 });
@@ -225,21 +281,27 @@ alertsApi.get("/alerts", async (c) => {
 const alertSchema = z.object({
   symbol: z.string().regex(SYMBOL_PATTERN),
   tvSymbol: z.string().min(1).max(40),
-  indicator: z.enum(["pob", "scalper", "fib"]),
-  timeframe: z.enum(["15m", "1h", "1d"]),
+  indicator: z.union([z.enum(["pob", "scalper", "fib"]), z.string().regex(SCRIPT_ID)]),
+  timeframe: z.enum(["15m", "1h", "4h", "1d"]),
 });
 
 alertsApi.post("/alerts", async (c) => {
   const body = alertSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "Data notifikasi tidak valid" }, 400);
   const { symbol, tvSymbol, indicator, timeframe } = body.data;
-  if (!COMBOS.some((x) => x.indicator === indicator && x.timeframe === timeframe)) return c.json({ error: "Kombinasi indikator dan timeframe ini belum didukung" }, 400);
   const user = c.get("user");
+  const scriptId = indicator.match(SCRIPT_ID)?.[1];
+  if (scriptId) {
+    const [mine] = await db.select({ id: userScripts.id }).from(userScripts).where(and(eq(userScripts.id, scriptId), eq(userScripts.userId, user.id)));
+    if (!mine) return c.json({ error: "Skrip tidak ditemukan" }, 404);
+  } else if (!COMBOS.some((x) => x.indicator === indicator && x.timeframe === timeframe)) {
+    return c.json({ error: "Kombinasi indikator dan timeframe ini belum didukung" }, 400);
+  }
   const count = (await db.select({ id: signalAlerts.id }).from(signalAlerts).where(eq(signalAlerts.userId, user.id))).length;
   if (count >= MAX_ALERTS) return c.json({ error: `Maksimal ${MAX_ALERTS} notifikasi per akun` }, 409);
   const [row] = await db
     .insert(signalAlerts)
-    .values({ userId: user.id, symbol: symbol.toUpperCase(), tvSymbol: tvSymbol.toUpperCase(), indicator, timeframe })
+    .values({ userId: user.id, symbol: symbol.toUpperCase(), tvSymbol: tvSymbol.toUpperCase(), indicator: indicator as SignalIndicator, timeframe })
     .onConflictDoNothing()
     .returning();
   // Record what already exists now, silently, so the first message is a truly new signal.

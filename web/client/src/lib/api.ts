@@ -109,13 +109,24 @@ export type Backtest = BacktestSummary & {
 
 import { auth } from './auth.svelte';
 
+/** A user's own indicator script (web/shared/script.ts). */
+export type UserScript = { id: string; name: string; code: string; pine: string | null; updatedAt: string };
+export type UserScripts = {
+  items: UserScript[];
+  max: number;
+  templates: { name: string; code: string }[];
+  reference: string;
+  limits: { timeMs: number; maxCode: number };
+};
+
 /** A Telegram notification for new signals of one indicator on one symbol and timeframe. */
 export type SignalAlert = {
   id: string;
   symbol: string;
   tvSymbol: string;
-  indicator: 'pob' | 'scalper' | 'fib';
-  timeframe: '15m' | '1h' | '1d';
+  /** A built-in engine, or `script:<id>` for a user's script. */
+  indicator: string;
+  timeframe: '15m' | '1h' | '4h' | '1d';
   primed: boolean;
   last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'expired' | 'replaced' } | null;
 };
@@ -308,6 +319,20 @@ export const api = {
   skills: () => request<AgentSkill[]>('/agent/skills'),
   skillAction: (id: string, action: 'approve' | 'reject' | 'disable' | 'enable' | 'restore') =>
     request<{ ok: true }>(`/agent/skills/${id}/${action}`, { method: 'POST' }),
+  scripts: () => request<UserScripts>('/scripts'),
+  createScript: (body: { name: string; code: string; pine?: string | null }) =>
+    request<UserScript>('/scripts', { method: 'POST', body: JSON.stringify(body) }),
+  updateScript: (id: string, body: { name?: string; code?: string; pine?: string | null }) =>
+    request<UserScript>(`/scripts/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteScript: (id: string) => request<{ ok: true }>(`/scripts/${id}`, { method: 'DELETE' }),
+  /** The server's run of a script, to compare with the chart's. */
+  runScriptOnServer: (body: { code: string; symbol: string; timeframe: string }) =>
+    request<{ ok: boolean; error?: string; bars?: number; stats?: { count: number }; signals?: { time: string; label: string; entry: number }[] }>(
+      '/scripts/run',
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  translateScript: (body: { pine: string; provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string }) =>
+    request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
   addAlert: (body: Pick<SignalAlert, 'symbol' | 'tvSymbol' | 'indicator' | 'timeframe'>) =>
     request<{ ok: true; id: string | null }>('/alerts', { method: 'POST', body: JSON.stringify(body) }),

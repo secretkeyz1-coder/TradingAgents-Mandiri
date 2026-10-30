@@ -27,6 +27,8 @@ class Indicators {
   pobOn = $state(false);
   /** Fibonacci golden zone pullbacks (indicators/fib.ts). */
   fibOn = $state(false);
+  /** The user's own scripts drawn on the AI chart, by id. */
+  scriptIds = $state<string[]>([]);
   settingsOpen = $state(false);
   #timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -60,13 +62,18 @@ class Indicators {
     this.save();
   }
 
+  toggleScript(id: string, on = !this.scriptIds.includes(id)) {
+    this.scriptIds = on ? [...new Set([...this.scriptIds, id])] : this.scriptIds.filter((x) => x !== id);
+    this.save();
+  }
+
   resetScalper() {
     this.scalper = { ...SCALPER_DEFAULTS };
     this.save();
   }
 
   save() {
-    const value = { scalperOn: this.scalperOn, scalper: { ...this.scalper }, pobOn: this.pobOn, fibOn: this.fibOn };
+    const value = { scalperOn: this.scalperOn, scalper: { ...this.scalper }, pobOn: this.pobOn, fibOn: this.fibOn, scriptIds: [...this.scriptIds] };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
     } catch {
@@ -86,10 +93,11 @@ class Indicators {
 
   #apply(raw: unknown) {
     if (!raw || typeof raw !== 'object') return;
-    const r = raw as { scalperOn?: unknown; scalper?: unknown; pobOn?: unknown; fibOn?: unknown };
+    const r = raw as { scalperOn?: unknown; scalper?: unknown; pobOn?: unknown; fibOn?: unknown; scriptIds?: unknown };
     this.scalperOn = r.scalperOn === true;
     this.pobOn = r.pobOn === true;
     this.fibOn = r.fibOn === true;
+    this.scriptIds = Array.isArray(r.scriptIds) ? r.scriptIds.filter((x): x is string => typeof x === 'string').slice(0, 20) : [];
     this.scalper = merge(r.scalper);
   }
 }

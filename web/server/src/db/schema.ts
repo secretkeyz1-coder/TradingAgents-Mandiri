@@ -244,7 +244,24 @@ export const watchRuns = pgTable(
   (t) => [uniqueIndex("watch_runs_user_day_idx").on(t.userId, t.day)],
 );
 
-export type SignalIndicator = "pob" | "scalper" | "fib";
+/** A user's own indicator script (web/shared/script.ts runs it in a sandbox). */
+export const userScripts = pgTable(
+  "user_scripts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
+    name: text("name").notNull(),
+    code: text("code").notNull(),
+    /** The Pine source it was translated from, if any. */
+    pine: text("pine"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_scripts_user_name_idx").on(t.userId, t.name)],
+);
+
+/** Built-in engines, or "script:<user_scripts.id>" for a user's own script. */
+export type SignalIndicator = "pob" | "scalper" | "fib" | `script:${string}`;
 export type SignalStatus = "open" | "win" | "loss" | "expired" | "replaced";
 
 /** A user's request to hear about new signals of one indicator on one symbol and timeframe. */

@@ -12,7 +12,7 @@ export type WorkerHandle = {
 
 const STDERR_TAIL_CHARS = 4000;
 
-type WorkerCommand = "run" | "backtest" | "agent" | "signals" | "catalog";
+type WorkerCommand = "run" | "backtest" | "agent" | "signals" | "translate" | "catalog";
 
 function spawnWorker(command: WorkerCommand) {
   return Bun.spawn([config.pythonBin, "-u", config.workerScript, command], {
@@ -20,7 +20,8 @@ function spawnWorker(command: WorkerCommand) {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    // TA_BUN_BIN: the agent runs the user's scripts through this same Bun (web/server/src/script-cli.ts).
+    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1", TA_BUN_BIN: process.execPath },
   });
 }
 

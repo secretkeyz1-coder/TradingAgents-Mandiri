@@ -483,7 +483,29 @@ def signals(job: dict) -> int:
     return scan(job, emit)
 
 
-COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals}
+def translate(job: dict) -> int:
+    """Pine Script to the app's indicator script language, on the deep model tier (script_translate.py)."""
+    from script_translate import translate_pine
+
+    from tradingagents.dataflows.config import run_config
+    from tradingagents.llm_clients import create_tier_client
+
+    config = _build_config({**job, "depth": 1})
+    config["llm_timeout"] = float(os.environ.get("TA_AGENT_LLM_TIMEOUT", "120")) * 2
+    config["llm_max_retries"] = 1
+    with run_config(config):
+        llm = create_tier_client(config, "deep").get_llm()
+        try:
+            code = translate_pine(llm, job["pine"], job.get("reference") or "", job.get("example") or "", job.get("language") or "Indonesian")
+        except Exception as exc:
+            emit("error", message=_provider_error(exc, job["deepModel"], config["backend_url"], config["llm_timeout"]))
+            return 1
+    emit("code", code=code)
+    emit("done")
+    return 0
+
+
+COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals, "translate": translate}
 
 
 def main(argv: list[str]) -> int:
