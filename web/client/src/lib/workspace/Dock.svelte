@@ -84,7 +84,7 @@
                   showChart: true,
                   showSymbolLogo: true,
                   largeChartUrl: appUrl('/'),
-                  tabs: [{ title: market.label, symbols: market.quotes.map(([s, d]) => ({ s, d })) }],
+                  tabs: market.groups.map((g) => ({ title: g.name, symbols: g.symbols.map(([s, d]) => ({ s, d })) })),
                 }}
           />
         {/key}

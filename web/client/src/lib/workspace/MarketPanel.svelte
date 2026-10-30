@@ -40,7 +40,7 @@
           height: '100%',
           showSymbolLogo: true,
           largeChartUrl: chartUrl,
-          symbolsGroups: [{ name: active.label, symbols: active.quotes.map(([name, displayName]) => ({ name, displayName })) }],
+          symbolsGroups: active.groups.map((g) => ({ name: g.name, symbols: g.symbols.map(([name, displayName]) => ({ name, displayName })) })),
         }}
       />
     {/key}
