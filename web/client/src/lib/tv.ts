@@ -365,6 +365,14 @@ export const MARKET_TABS: MarketTab[] = [
         ],
       },
       {
+        // Brokers quote spot metals as currency pairs, so traders look for them here too.
+        name: 'Emas & perak',
+        symbols: [
+          ['OANDA:XAUUSD', 'XAU/USD · Emas'],
+          ['OANDA:XAGUSD', 'XAG/USD · Perak'],
+        ],
+      },
+      {
         name: 'Mayor',
         symbols: [
           ['FX:EURUSD', 'EUR/USD'],
