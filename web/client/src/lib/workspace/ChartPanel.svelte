@@ -16,9 +16,21 @@
     return { background: tokenColor('--color-base-100'), grid: tokenColor('--color-base-300', 0.6) };
   });
 
-  // Per TradingView's widget FAQ only forex and crypto stream in real time; the
-  // OANDA/FOREXCOM CFDs (gold, oil, index CFDs) are broker quotes that stream too.
-  const realtime = $derived(/^(BINANCE|COINBASE|BYBIT|KRAKEN|BITSTAMP|CRYPTO|FX|FX_IDC|OANDA|FOREXCOM):/.test(ws.symbol));
+  // How fresh TradingView's embedded data is. Per its widget FAQ forex and crypto
+  // stream in real time, and the OANDA/FOREXCOM CFDs are broker quotes that stream
+  // too. IDX comes end-of-day only (the chart itself says "Data penghujung hari");
+  // other exchanges are delayed (US stocks: Cboe One, "Data tertunda").
+  const freshness = $derived(
+    /^(BINANCE|COINBASE|BYBIT|KRAKEN|BITSTAMP|CRYPTO|FX|FX_IDC|OANDA|FOREXCOM):/.test(ws.symbol)
+      ? { label: 'Realtime', status: 'status-success', title: 'Harga mengalir realtime di chart TradingView' }
+      : ws.symbol.startsWith('IDX:')
+        ? {
+            label: 'Akhir hari',
+            status: 'status-warning',
+            title: 'Chart TradingView untuk IDX hanya memuat data penutupan harian. Chart Keputusan AI (Yahoo) tertunda ±10–25 menit.',
+          }
+        : { label: 'Tertunda ~15 mnt', status: 'status-neutral', title: 'Data bursa ini tertunda di chart TradingView' },
+  );
   const view = $derived(ws.chartView === 'ai' && ws.yahoo ? 'ai' : 'tv');
   const watched = $derived(watch.has(ws.yahoo));
   watch.load();
@@ -31,9 +43,9 @@
       <button class="btn btn-ghost btn-xs" onclick={onmarket}>Pasar</button>
     {/if}
     <h2 class="truncate font-mono text-sm font-semibold">{ws.symbol}</h2>
-    <span class="badge badge-xs badge-ghost hidden gap-1 whitespace-nowrap sm:inline-flex">
-      <span class="status status-xs {realtime ? 'status-success' : 'status-neutral'}" aria-hidden="true"></span>
-      {realtime ? 'Realtime' : 'Tertunda ~15 mnt'}
+    <span class="badge badge-xs badge-ghost hidden gap-1 whitespace-nowrap sm:inline-flex" title={freshness.title}>
+      <span class="status status-xs {freshness.status}" aria-hidden="true"></span>
+      {freshness.label}
     </span>
     {#if ws.yahoo}
       <button
