@@ -7,6 +7,7 @@
 // #/markets?tab=…, #/?ticker=…) are read too, then rewritten to that form.
 // A TradingView widget click arrives as ?tvwidgetsymbol=… and only changes the symbol.
 import { INTERVALS, type Interval } from '../api';
+import { acceptHandoffs } from '../tabs';
 import { MARKET_TABS, toTradingView, toYahoo } from '../tv';
 import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
@@ -47,6 +48,8 @@ class Workspace {
     // Reading twice is harmless: #read only assigns what the URL names.
     window.addEventListener('popstate', () => this.#read(location.hash));
     window.addEventListener('hashchange', () => this.#read(location.hash));
+    // A symbol clicked in a TradingView widget opens a new tab, which hands it here instead.
+    acceptHandoffs((symbol) => this.setSymbol(symbol));
   }
 
   setSymbol(tv: string) {
