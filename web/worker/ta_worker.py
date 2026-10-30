@@ -91,6 +91,7 @@ def catalog() -> dict:
     from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS
     from tradingagents.llm_clients.openai_client import OPENAI_COMPATIBLE_PROVIDERS
 
+    default_provider = DEFAULT_CONFIG["llm_provider"].lower()
     providers = []
     for label, key, url in _llm_provider_table():
         if key in UNSUPPORTED_PROVIDERS:
@@ -99,6 +100,10 @@ def catalog() -> dict:
         spec = OPENAI_COMPATIBLE_PROVIDERS.get(key)
         key_optional = env_var is None or (spec is not None and spec.key_optional)
         models = MODEL_OPTIONS.get(key, {"quick": [], "deep": []})
+        # The server's own endpoint for its default provider (TRADINGAGENTS_LLM_BACKEND_URL)
+        # stands in for the URL a user would otherwise have to type.
+        if key == default_provider and DEFAULT_CONFIG["backend_url"]:
+            url = DEFAULT_CONFIG["backend_url"]
         providers.append({
             "key": key,
             "label": label,
@@ -116,10 +121,13 @@ def catalog() -> dict:
         "analysts": [{"value": k, "label": ANALYST_LABELS[k]} for k in ANALYST_ORDER],
         "depths": DEPTHS,
         "languages": LANGUAGES,
+        # From TRADINGAGENTS_LLM_PROVIDER / _QUICK_THINK_LLM / _DEEP_THINK_LLM /
+        # _LLM_BACKEND_URL when set: what a browser with nothing remembered starts with.
         "defaults": {
             "provider": DEFAULT_CONFIG["llm_provider"],
             "quickModel": DEFAULT_CONFIG["quick_think_llm"],
             "deepModel": DEFAULT_CONFIG["deep_think_llm"],
+            "backendUrl": DEFAULT_CONFIG["backend_url"],
         },
     }
 
@@ -220,9 +228,11 @@ def _build_config(job: dict) -> dict:
     config["llm_provider"] = provider
     config["quick_think_llm"] = job["quickModel"]
     config["deep_think_llm"] = job["deepModel"]
-    config["backend_url"] = resolve_backend_url(
-        provider, job.get("backendUrl") or None, env_url=DEFAULT_CONFIG["backend_url"]
-    )
+    # The engine lets TRADINGAGENTS_LLM_BACKEND_URL override every provider. Here the
+    # user picks the provider per run, so that URL only stands in for the server's
+    # default provider when the request names none; a URL in the request always wins.
+    env_url = DEFAULT_CONFIG["backend_url"] if provider == DEFAULT_CONFIG["llm_provider"].lower() else None
+    config["backend_url"] = resolve_backend_url(provider, job.get("backendUrl") or env_url)
     config["max_debate_rounds"] = int(job["depth"])
     config["max_risk_discuss_rounds"] = int(job["depth"])
     config["output_language"] = job.get("language") or "English"

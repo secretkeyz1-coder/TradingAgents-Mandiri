@@ -98,7 +98,7 @@ export type Catalog = {
   analysts: { value: string; label: string }[];
   depths: { value: number; label: string; description: string }[];
   languages: string[];
-  defaults: { provider: string; quickModel: string; deepModel: string };
+  defaults: { provider: string; quickModel: string; deepModel: string; backendUrl: string | null };
 };
 
 let cached: { at: number; value: Catalog } | null = null;

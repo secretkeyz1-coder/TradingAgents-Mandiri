@@ -96,12 +96,35 @@
     }
   });
 
+  /** The settings both forms share, and the chat agent reads (stores/agent.svelte.ts). */
+  function settings() {
+    return {
+      analysts,
+      depth,
+      provider: providerKey,
+      quickModel: quickChoice === CUSTOM ? quickCustom.trim() : quickChoice,
+      deepModel: deepChoice === CUSTOM ? deepCustom.trim() : deepChoice,
+      language,
+      backendUrl: showUrl ? backendUrl.trim() : '',
+    };
+  }
+
+  // Remembered as soon as anything changes (every field's change event reaches
+  // the form), so the chat agent uses a new model without running an analysis first.
+  function persist() {
+    if (!restored) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings()));
+    } catch {
+      /* remembering the form is a convenience */
+    }
+  }
+
   async function submit(event: SubmitEvent) {
     event.preventDefault();
     submitError = '';
-    const quickModel = quickChoice === CUSTOM ? quickCustom.trim() : quickChoice;
-    const deepModel = deepChoice === CUSTOM ? deepCustom.trim() : deepChoice;
-    if (!quickModel || !deepModel) {
+    const shared = settings();
+    if (!shared.quickModel || !shared.deepModel) {
       submitError = 'Isi ID model untuk quick dan deep thinking di Pengaturan.';
       return;
     }
@@ -113,15 +136,6 @@
       submitError = 'Isi ticker dan rentang tanggal yang menghasilkan minimal satu sel.';
       return;
     }
-    const shared = {
-      analysts,
-      depth,
-      provider: providerKey,
-      quickModel,
-      deepModel,
-      language,
-      backendUrl: showUrl ? backendUrl.trim() : '',
-    };
     submitting = true;
     try {
       if (mode === 'analysis') {
@@ -133,11 +147,7 @@
         ws.openBacktest(id);
       }
       jobs.refresh();
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(shared));
-      } catch {
-        /* remembering the form is a convenience */
-      }
+      persist();
     } catch (e) {
       submitError = (e as Error).message;
     } finally {
@@ -146,7 +156,7 @@
   }
 </script>
 
-<form class="flex flex-col gap-3" onsubmit={submit}>
+<form class="flex flex-col gap-3" onsubmit={submit} onchange={persist}>
   {#if catalog.error}
     <p role="alert" class="text-sm text-error">Opsi model gagal dimuat: {catalog.error}</p>
   {/if}

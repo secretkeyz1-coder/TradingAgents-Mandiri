@@ -15,7 +15,8 @@ export type Catalog = {
   analysts: { value: string; label: string }[];
   depths: { value: number; label: string; description: string }[];
   languages: string[];
-  defaults: { provider: string; quickModel: string; deepModel: string };
+  /** From the server's .env when set; `backendUrl` belongs to `provider` and the server fills it in itself. */
+  defaults: { provider: string; quickModel: string; deepModel: string; backendUrl: string | null };
 };
 
 export type AnalysisRequest = {
