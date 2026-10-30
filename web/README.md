@@ -158,12 +158,12 @@ docker compose up -d --build
 - **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.
 - File `.env` harus berakhiran baris LF; nilai dengan `\r` dari editor Windows membuat password tidak cocok.
 
-Deploy yang berjalan: **https://trading.petaproject.io** di VPS `129.225.11.44`, source di `~/tradingagents/src`, compose di `~/tradingagents/src/web/deploy`, vhost di `/etc/nginx/sites-available/trading.petaproject.io.conf` (sertifikat Let's Encrypt diperpanjang otomatis oleh certbot). Untuk memperbarui dari repo lokal:
+Pola deploy yang dipakai: source di `~/tradingagents/src` pada VPS, compose di `~/tradingagents/src/web/deploy`, nginx sebagai reverse proxy dengan vhost per domain dan sertifikat Let's Encrypt dari certbot. Untuk memperbarui dari repo lokal (ganti `<user>@<vps>`):
 
 ```bash
 git archive --format=tar.gz -o /tmp/ta.tar.gz HEAD
-scp /tmp/ta.tar.gz ubuntu@129.225.11.44:tradingagents/
-ssh ubuntu@129.225.11.44 "cd ~/tradingagents && tar -xzf ta.tar.gz -C src && rm ta.tar.gz && cd src/web/deploy && sudo docker compose up -d --build"
+scp /tmp/ta.tar.gz <user>@<vps>:tradingagents/
+ssh <user>@<vps> "cd ~/tradingagents && tar -xzf ta.tar.gz -C src && rm ta.tar.gz && cd src/web/deploy && sudo docker compose up -d --build"
 ```
 
 `.env` di VPS tidak tersentuh oleh pembaruan karena tidak ada di arsip git.
