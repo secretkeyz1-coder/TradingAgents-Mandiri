@@ -161,12 +161,29 @@ docker compose up -d --build
 Pola deploy yang dipakai: source di `~/tradingagents/src` pada VPS, compose di `~/tradingagents/src/web/deploy`, nginx sebagai reverse proxy dengan vhost per domain dan sertifikat Let's Encrypt dari certbot. Untuk memperbarui dari repo lokal (ganti `<user>@<vps>`):
 
 ```bash
-git archive --format=tar.gz -o /tmp/ta.tar.gz HEAD
+git -c core.autocrlf=false archive --format=tar.gz -o /tmp/ta.tar.gz HEAD
 scp /tmp/ta.tar.gz <user>@<vps>:tradingagents/
 ssh <user>@<vps> "cd ~/tradingagents && tar -xzf ta.tar.gz -C src && rm ta.tar.gz && cd src/web/deploy && sudo docker compose up -d --build"
 ```
 
-`.env` di VPS tidak tersentuh oleh pembaruan karena tidak ada di arsip git.
+`.env` di VPS tidak tersentuh oleh pembaruan karena tidak ada di arsip git. `core.autocrlf=false` mencegah Git di Windows mengubah akhiran baris jadi CRLF di arsip (skrip shell gagal jalan dengan CRLF).
+
+### Backup
+
+`web/deploy/backup.sh` menyimpan dump database (`db-<waktu>.dump`, format pg_dump custom) dan isi volume data engine (`data-<waktu>.tar.gz`), lalu menghapus yang lebih tua dari `KEEP_DAYS` (default 14 hari). Di VPS dijalankan cron setiap hari pukul 02.30 WIB:
+
+```
+# /etc/cron.d/tradingagents-backup
+30 19 * * * root BACKUP_DIR=/home/<user>/tradingagents/backups sh /home/<user>/tradingagents/src/web/deploy/backup.sh >> /var/log/tradingagents-backup.log 2>&1
+```
+
+Memulihkan database (hentikan app dulu: `docker compose stop app`):
+
+```bash
+docker exec -i tradingagents-db-1 pg_restore -U tradingagents -d tradingagents --clean --if-exists < db-<waktu>.dump
+```
+
+Backup ini masih di disk VPS yang sama; kalau disk atau VPS-nya hilang, backup ikut hilang. Salin berkala ke tempat lain (laptop, object storage) untuk perlindungan penuh.
 
 ## Konfigurasi server
 
