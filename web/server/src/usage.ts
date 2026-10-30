@@ -1,19 +1,26 @@
-// A daily cap on what spends the owner's LLM credits: analyses (a backtest
+// Daily caps on what spends the owner's LLM credits: analyses (a backtest
 // counts each of its cells, since each cell is a full analysis) and chat turns
-// with the chart agent. Counted from the rows already stored, per day in WIB,
-// so it survives restarts. A limit of 0 turns that cap off.
-import { and, count, eq, gte } from "drizzle-orm";
+// with the chart agent. Each user has a cap (their own, or the server default),
+// and the server has a total cap across users. Counted from the rows already
+// stored, per day in WIB, so it survives restarts. A limit of 0 turns that cap off.
+import { and, count, eq, gte, type SQL } from "drizzle-orm";
+import type { User } from "./auth";
 import { db } from "./db";
-import { agentMessages, analyses } from "./db/schema";
+import { agentMessages, agentSessions, analyses } from "./db/schema";
 
 const DAY_MS = 86_400_000;
 // Asia/Jakarta has no daylight saving: the day starts at 00:00 UTC+7.
 const WIB_MS = 7 * 3_600_000;
 
+/** Per-user defaults, and the server's total across users. */
 export const limits = {
   analyses: Number(process.env.DAILY_ANALYSIS_LIMIT ?? 60),
   chat: Number(process.env.DAILY_CHAT_LIMIT ?? 300),
+  totalAnalyses: Number(process.env.DAILY_TOTAL_ANALYSIS_LIMIT ?? 200),
+  totalChat: Number(process.env.DAILY_TOTAL_CHAT_LIMIT ?? 1000),
 };
+
+type Kind = "analyses" | "chat";
 
 export type Usage = {
   analyses: { used: number; limit: number };
@@ -25,32 +32,60 @@ function dayStart(now = Date.now()): Date {
   return new Date(Math.floor((now + WIB_MS) / DAY_MS) * DAY_MS - WIB_MS);
 }
 
-export async function usage(): Promise<Usage> {
-  const since = dayStart();
+async function analysesUsed(since: Date, userId?: string): Promise<number> {
   const rows = await db
     .select({ kind: analyses.kind, status: analyses.status, startedAt: analyses.startedAt, progress: analyses.progress })
     .from(analyses)
-    .where(gte(analyses.createdAt, since));
+    .where(and(gte(analyses.createdAt, since), userId ? eq(analyses.userId, userId) : undefined));
   // Cancelled before it started: no model was called.
-  const analysesUsed = rows
+  return rows
     .filter((r) => !(r.status === "cancelled" && !r.startedAt))
     .reduce((sum, r) => sum + (r.kind === "backtest" ? (r.progress?.total ?? 1) : 1), 0);
-  const [chat] = await db
+}
+
+async function chatUsed(since: Date, userId?: string): Promise<number> {
+  const where: SQL[] = [eq(agentMessages.role, "user"), gte(agentMessages.createdAt, since)];
+  if (userId) where.push(eq(agentSessions.userId, userId));
+  const [row] = await db
     .select({ n: count() })
     .from(agentMessages)
-    .where(and(eq(agentMessages.role, "user"), gte(agentMessages.createdAt, since)));
+    .innerJoin(agentSessions, eq(agentMessages.sessionId, agentSessions.id))
+    .where(and(...where));
+  return row?.n ?? 0;
+}
+
+const limitFor = (user: User, kind: Kind) =>
+  (kind === "analyses" ? user.dailyAnalysisLimit : user.dailyChatLimit) ?? (kind === "analyses" ? limits.analyses : limits.chat);
+
+/** One user's use today against their own caps. */
+export async function usage(user: User): Promise<Usage> {
+  const since = dayStart();
   return {
-    analyses: { used: analysesUsed, limit: limits.analyses },
-    chat: { used: chat?.n ?? 0, limit: limits.chat },
+    analyses: { used: await analysesUsed(since, user.id), limit: limitFor(user, "analyses") },
+    chat: { used: await chatUsed(since, user.id), limit: limitFor(user, "chat") },
     resetsAt: new Date(since.getTime() + DAY_MS).toISOString(),
   };
 }
 
-/** Why `add` more analyses (or chat turns) would go over today's cap, or null when they fit. */
-export async function overLimit(kind: "analyses" | "chat", add = 1): Promise<string | null> {
-  const { used, limit } = (await usage())[kind];
-  if (!limit || used + add <= limit) return null;
+/** How many more of `kind` this user can start today, within both their cap and the server's total. */
+export async function room(user: User, kind: Kind): Promise<number> {
+  const since = dayStart();
+  const mine = (await usage(user))[kind];
+  const total = kind === "analyses" ? limits.totalAnalyses : limits.totalChat;
+  const own = mine.limit ? mine.limit - mine.used : Infinity;
+  const all = total ? total - (kind === "analyses" ? await analysesUsed(since) : await chatUsed(since)) : Infinity;
+  return Math.max(0, Math.min(own, all));
+}
+
+/** Why `add` more analyses (or chat turns) would go over a cap today, or null when they fit. */
+export async function overLimit(user: User, kind: Kind, add = 1): Promise<string | null> {
+  const left = await room(user, kind);
+  if (add <= left) return null;
+  const mine = (await usage(user))[kind];
   const what = kind === "analyses" ? "analisa (1 sel backtest = 1 analisa)" : "pesan chat agent";
-  const left = Math.max(0, limit - used);
-  return `Batas harian ${limit} ${what} tercapai: ${used} terpakai hari ini${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.`;
+  const ownFull = mine.limit && mine.used + add > mine.limit;
+  const head = ownFull
+    ? `Batas harian ${mine.limit} ${what} untuk akunmu tercapai: ${mine.used} terpakai hari ini`
+    : `Batas harian total server untuk ${what} tercapai`;
+  return `${head}${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.`;
 }

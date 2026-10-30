@@ -80,6 +80,21 @@ export type AnalysisSummary = {
   progress: BacktestProgress | null;
   createdAt: string;
   finishedAt: string | null;
+  /** Who started it; filled in when an admin lists everyone's. */
+  owner?: string | null;
+};
+
+/** An account as the page sees it (no password hash). */
+export type Account = {
+  id: string;
+  username: string;
+  role: 'admin' | 'member';
+  disabled: boolean;
+  /** null = the server default. */
+  dailyAnalysisLimit: number | null;
+  dailyChatLimit: number | null;
+  telegramChatId: string | null;
+  createdAt: string;
 };
 
 export type BacktestSummary = Omit<AnalysisSummary, 'request'> & { request: BacktestRequest };
@@ -192,14 +207,16 @@ export type Watchlist = {
   }[];
   max: number;
   schedule: { time: string; days: number[]; next: string; analysts: string[]; depth: number };
-  telegram: { configured: boolean; links: boolean };
+  /** bot: the server has a bot token; chat: this user set their chat id. */
+  telegram: { bot: boolean; chat: boolean; configured: boolean; links: boolean };
   lastRun: { day: string; analysisIds: string[]; skipped: string[]; notifiedAt: string | null } | null;
 };
 
 /** Today's use against the server's daily caps; a limit of 0 means no cap. */
 export type Usage = {
-  analyses: { used: number; limit: number };
-  chat: { used: number; limit: number };
+  /** `left` also counts the server's total across users; null = no cap. */
+  analyses: { used: number; limit: number; left: number | null };
+  chat: { used: number; limit: number; left: number | null };
   resetsAt: string;
 };
 
@@ -232,7 +249,19 @@ export const api = {
   watchRemove: (symbol: string) => request<{ ok: true }>(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
   watchRun: () => request<{ ids: string[]; skipped: string[] }>('/watchlist/run', { method: 'POST' }),
   watchTest: () => request<{ ok: true }>('/watchlist/test', { method: 'POST' }),
-  list: () => request<AnalysisSummary[]>('/analyses'),
+  /** `everyone`: an admin's view of every user's history. */
+  list: (everyone = false) => request<AnalysisSummary[]>(`/analyses${everyone ? '?scope=all' : ''}`),
+  me: () => request<Account>('/me'),
+  updateMe: (patch: { telegramChatId: string | null }) => request<Account>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
+  changePassword: (current: string, next: string) =>
+    request<{ ok: true }>('/me/password', { method: 'POST', body: JSON.stringify({ current, next }) }),
+  users: () => request<Account[]>('/users'),
+  createUser: (body: { username: string; password: string; role: Account['role'] }) =>
+    request<Account>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (
+    id: string,
+    patch: Partial<Pick<Account, 'role' | 'disabled' | 'dailyAnalysisLimit' | 'dailyChatLimit'>> & { password?: string },
+  ) => request<Account>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   get: (id: string) => request<Analysis>(`/analyses/${id}`),
   create: (body: AnalysisRequest) =>
     request<{ id: string }>('/analyses', { method: 'POST', body: JSON.stringify(body) }),
@@ -240,7 +269,7 @@ export const api = {
   remove: (id: string) => request<{ ok: true }>(`/analyses/${id}`, { method: 'DELETE' }),
   eventsUrl: (id: string) => `/api/analyses/${id}/events`,
   reportUrl: (id: string) => `/api/analyses/${id}/report`,
-  listBacktests: () => request<BacktestSummary[]>('/analyses?kind=backtest'),
+  listBacktests: (everyone = false) => request<BacktestSummary[]>(`/analyses?kind=backtest${everyone ? '&scope=all' : ''}`),
   getBacktest: (id: string) => request<Backtest>(`/analyses/${id}`),
   createBacktest: (body: BacktestRequest) =>
     request<{ id: string; cells: number }>('/backtests', { method: 'POST', body: JSON.stringify(body) }),

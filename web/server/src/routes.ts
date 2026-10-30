@@ -1,13 +1,15 @@
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from "drizzle-orm";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { isAdmin, type AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
 import { db } from "./db";
-import { analyses, analysisEvents, type JobKind } from "./db/schema";
+import { analyses, analysisEvents, users, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
 import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
-import { overLimit, usage } from "./usage";
+import { overLimit, room, usage } from "./usage";
 import { getCatalog, type Catalog } from "./worker";
 
 // Every backtest cell is one full analysis (many LLM calls), so a sweep is capped.
@@ -67,15 +69,39 @@ function checkProvider(catalog: Catalog, request: { provider: string; backendUrl
 
 const issues = (error: z.ZodError) => error.issues.map((i) => i.message).join("; ");
 
-export const api = new Hono();
+export const api = new Hono<AppEnv>();
+
+/**
+ * The analysis if the signed-in user may see it: their own, or anyone's for an
+ * admin. Anything else answers as if it did not exist.
+ */
+async function visible(c: Context<AppEnv>, id: string) {
+  if (!idSchema.safeParse(id).success) return null;
+  const [row] = await db.select({ userId: analyses.userId }).from(analyses).where(eq(analyses.id, id));
+  const user = c.get("user");
+  return row && (row.userId === user.id || isAdmin(user)) ? row : null;
+}
+
+const finite = (n: number) => (Number.isFinite(n) ? n : null);
 
 api.get("/options", async (c) => c.json(await getCatalog()));
 
-/** Today's use against the daily caps (see usage.ts). */
-api.get("/usage", async (c) => c.json(await usage()));
+/** Today's use against the daily caps (see usage.ts); `left` also respects the server's total, null = no cap. */
+api.get("/usage", async (c) => {
+  const user = c.get("user");
+  const u = await usage(user);
+  return c.json({
+    ...u,
+    analyses: { ...u.analyses, left: finite(await room(user, "analyses")) },
+    chat: { ...u.chat, left: finite(await room(user, "chat")) },
+  });
+});
 
+/** The user's analyses or backtests; an admin may ask for everyone's with ?scope=all. */
 api.get("/analyses", async (c) => {
   const kind: JobKind = c.req.query("kind") === "backtest" ? "backtest" : "analysis";
+  const user = c.get("user");
+  const all = c.req.query("scope") === "all" && isAdmin(user);
   const rows = await db
     .select({
       id: analyses.id,
@@ -88,9 +114,11 @@ api.get("/analyses", async (c) => {
       progress: analyses.progress,
       createdAt: analyses.createdAt,
       finishedAt: analyses.finishedAt,
+      owner: users.username,
     })
     .from(analyses)
-    .where(eq(analyses.kind, kind))
+    .leftJoin(users, eq(analyses.userId, users.id))
+    .where(and(eq(analyses.kind, kind), all ? undefined : eq(analyses.userId, user.id)))
     .orderBy(desc(analyses.createdAt))
     .limit(100);
   return c.json(rows);
@@ -108,12 +136,13 @@ api.post("/backtests", async (c) => {
   }
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
-  const quota = await overLimit("analyses", cells);
+  const quota = await overLimit(c.get("user"), "analyses", cells);
   if (quota) return c.json({ error: quota }, 429);
 
   const [row] = await db
     .insert(analyses)
     .values({
+      userId: c.get("user").id,
       kind: "backtest",
       ticker: request.tickers.map((t) => t.toUpperCase()).join(","),
       tradeDate: request.start,
@@ -139,7 +168,7 @@ api.get("/candles", async (c) => {
   }
 });
 
-/** Every AI decision on one ticker: finished analyses, and the cells of finished backtests. */
+/** Every AI decision of this user on one ticker: finished analyses, and the cells of finished backtests. */
 api.get("/decisions", async (c) => {
   const ticker = (c.req.query("ticker") ?? "").toUpperCase();
   if (!SYMBOL_PATTERN.test(ticker)) return c.json({ error: "Simbol tidak valid" }, 400);
@@ -147,11 +176,21 @@ api.get("/decisions", async (c) => {
   const single = await db
     .select({ id: analyses.id, date: analyses.tradeDate, rating: analyses.rating })
     .from(analyses)
-    .where(and(eq(analyses.kind, "analysis"), eq(analyses.status, "completed"), eq(analyses.ticker, ticker), isNotNull(analyses.rating)));
+    .where(
+      and(
+        eq(analyses.userId, c.get("user").id),
+        eq(analyses.kind, "analysis"),
+        eq(analyses.status, "completed"),
+        eq(analyses.ticker, ticker),
+        isNotNull(analyses.rating),
+      ),
+    );
   const sweeps = await db
     .select({ id: analyses.id, result: analyses.result })
     .from(analyses)
-    .where(and(eq(analyses.kind, "backtest"), eq(analyses.status, "completed"), ilike(analyses.ticker, `%${ticker}%`)));
+    .where(
+      and(eq(analyses.userId, c.get("user").id), eq(analyses.kind, "backtest"), eq(analyses.status, "completed"), ilike(analyses.ticker, `%${ticker}%`)),
+    );
 
   const decisions = [
     ...single.map((d) => ({ source: "analysis" as const, id: d.id, date: d.date, rating: d.rating!, alpha: null, return: null, pending: null })),
@@ -170,12 +209,12 @@ api.post("/analyses", async (c) => {
   const request = parsed.data;
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
-  const quota = await overLimit("analyses");
+  const quota = await overLimit(c.get("user"), "analyses");
   if (quota) return c.json({ error: quota }, 429);
 
   const [row] = await db
     .insert(analyses)
-    .values({ ticker: request.ticker.toUpperCase(), tradeDate: request.date, request })
+    .values({ userId: c.get("user").id, ticker: request.ticker.toUpperCase(), tradeDate: request.date, request })
     .returning({ id: analyses.id });
   enqueue(row!.id);
   return c.json({ id: row!.id }, 201);
@@ -183,7 +222,7 @@ api.post("/analyses", async (c) => {
 
 api.get("/analyses/:id", async (c) => {
   const id = c.req.param("id");
-  if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
+  if (!(await visible(c, id))) return c.json({ error: "Not found" }, 404);
   const [row] = await db.select().from(analyses).where(eq(analyses.id, id));
   if (!row) return c.json({ error: "Not found" }, 404);
   const { reportHtml, ...rest } = row;
@@ -192,7 +231,7 @@ api.get("/analyses/:id", async (c) => {
 
 api.get("/analyses/:id/report", async (c) => {
   const id = c.req.param("id");
-  if (!idSchema.safeParse(id).success) return c.text("Not found", 404);
+  if (!(await visible(c, id))) return c.text("Not found", 404);
   const [row] = await db.select({ html: analyses.reportHtml }).from(analyses).where(eq(analyses.id, id));
   if (!row?.html) return c.text("Laporan belum tersedia", 404);
   // Model-written content: no scripts, no network, its own origin.
@@ -205,14 +244,14 @@ api.get("/analyses/:id/report", async (c) => {
 
 api.post("/analyses/:id/cancel", async (c) => {
   const id = c.req.param("id");
-  if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
+  if (!(await visible(c, id))) return c.json({ error: "Not found" }, 404);
   const ok = await cancel(id);
   return ok ? c.json({ ok: true }) : c.json({ error: "Analisa tidak sedang berjalan" }, 409);
 });
 
 api.delete("/analyses/:id", async (c) => {
   const id = c.req.param("id");
-  if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
+  if (!(await visible(c, id))) return c.json({ error: "Not found" }, 404);
   const deleted = await db
     .delete(analyses)
     .where(and(eq(analyses.id, id), inArray(analyses.status, TERMINAL)))
@@ -226,7 +265,7 @@ api.delete("/analyses/:id", async (c) => {
  */
 api.get("/analyses/:id/events", async (c) => {
   const id = c.req.param("id");
-  if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
+  if (!(await visible(c, id))) return c.json({ error: "Not found" }, 404);
   const after = Number(c.req.header("Last-Event-ID") ?? c.req.query("after") ?? 0) || 0;
 
   return streamSSE(c, async (stream) => {

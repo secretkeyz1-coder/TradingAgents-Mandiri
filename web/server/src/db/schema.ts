@@ -1,4 +1,4 @@
-import { bigint, bigserial, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export type AnalysisStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -52,10 +52,38 @@ export type BacktestResult = {
 
 export type RunStats = { llmCalls: number; toolCalls: number; tokensIn: number; tokensOut: number };
 
+export type Role = "admin" | "member";
+
+/**
+ * Accounts. The admin creates them (there is no sign-up); the first admin comes
+ * from APP_USER / APP_PASSWORD at boot. Everything a user makes carries their
+ * user_id; admins can also read everyone's analyses.
+ */
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  username: text("username").notNull().unique(),
+  /** argon2id, from Bun.password. */
+  passwordHash: text("password_hash").notNull(),
+  role: text("role").$type<Role>().notNull().default("member"),
+  disabled: boolean("disabled").notNull().default(false),
+  /** Per-user daily caps; null means the server default (DAILY_*_LIMIT). */
+  dailyAnalysisLimit: integer("daily_analysis_limit"),
+  dailyChatLimit: integer("daily_chat_limit"),
+  /** Where this user's watchlist summary goes, through the server's one bot. */
+  telegramChatId: text("telegram_chat_id"),
+  /** In every session cookie; bumping it signs the user out everywhere. */
+  sessionVersion: integer("session_version").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The owner column every user's data carries. Nullable only so old rows can be given to the first admin at boot. */
+const owner = () => uuid("user_id").references(() => users.id, { onDelete: "cascade" });
+
 export const analyses = pgTable(
   "analyses",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
     kind: text("kind").$type<JobKind>().notNull().default("analysis"),
     /** For a backtest: its tickers joined with commas. */
     ticker: text("ticker").notNull(),
@@ -79,7 +107,11 @@ export const analyses = pgTable(
     /** Refreshed by the server instance running the job; a running row whose heartbeat is stale has lost its server. */
     heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
   },
-  (t) => [index("analyses_created_at_idx").on(t.createdAt), index("analyses_kind_ticker_idx").on(t.kind, t.ticker)],
+  (t) => [
+    index("analyses_created_at_idx").on(t.createdAt),
+    index("analyses_kind_ticker_idx").on(t.kind, t.ticker),
+    index("analyses_user_idx").on(t.userId, t.createdAt),
+  ],
 );
 
 /** A chat with the chart agent about one symbol (Yahoo spelling, e.g. BBCA.JK). */
@@ -87,6 +119,7 @@ export const agentSessions = pgTable(
   "agent_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
     symbol: text("symbol").notNull(),
     title: text("title"),
     /** Running summary of the turns folded out of the prompt. */
@@ -119,6 +152,7 @@ export const agentMessages = pgTable(
 /** What the agent remembers: about the user (symbol null) or about one symbol. */
 export const agentMemories = pgTable("agent_memories", {
   id: uuid("id").primaryKey(),
+  userId: owner(),
   scope: text("scope").$type<"user" | "symbol">().notNull(),
   symbol: text("symbol"),
   content: text("content").notNull(),
@@ -132,6 +166,7 @@ export const chartDrawings = pgTable(
   "chart_drawings",
   {
     id: uuid("id").primaryKey(),
+    userId: owner(),
     symbol: text("symbol").notNull(),
     sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     kind: text("kind").$type<DrawingKind>().notNull(),
@@ -163,6 +198,7 @@ export const agentSkills = pgTable(
   "agent_skills",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
     name: text("name").notNull(),
     version: integer("version").notNull(),
     status: text("status").$type<SkillStatus>().notNull().default("draft"),
@@ -175,24 +211,36 @@ export const agentSkills = pgTable(
   (t) => [index("agent_skills_name_idx").on(t.name, t.version)],
 );
 
-/** Symbols analysed automatically on each trading day (see watch.ts). */
-export const watchlist = pgTable("watchlist", {
-  /** Yahoo spelling (BBCA.JK), as the engine reads it. */
-  symbol: text("symbol").primaryKey(),
-  /** TradingView spelling (IDX:BBCA), for links back to the chart. */
-  tvSymbol: text("tv_symbol").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/** Symbols a user has analysed automatically on each trading day (see watch.ts). */
+export const watchlist = pgTable(
+  "watchlist",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
+    /** Yahoo spelling (BBCA.JK), as the engine reads it. */
+    symbol: text("symbol").notNull(),
+    /** TradingView spelling (IDX:BBCA), for links back to the chart. */
+    tvSymbol: text("tv_symbol").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("watchlist_user_symbol_idx").on(t.userId, t.symbol)],
+);
 
-/** One scheduled watchlist run per day (YYYY-MM-DD in WIB); the key lets only one server instance start it. */
-export const watchRuns = pgTable("watch_runs", {
-  day: text("day").primaryKey(),
-  analysisIds: jsonb("analysis_ids").$type<string[]>().notNull().default([]),
-  /** Symbols left out because the daily analysis cap had no room. */
-  skipped: jsonb("skipped").$type<string[]>().notNull().default([]),
-  notifiedAt: timestamp("notified_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+/** One scheduled watchlist run per user and day (YYYY-MM-DD in WIB); the unique key lets only one server instance start it. */
+export const watchRuns = pgTable(
+  "watch_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
+    day: text("day").notNull(),
+    analysisIds: jsonb("analysis_ids").$type<string[]>().notNull().default([]),
+    /** Symbols left out because the daily analysis cap had no room. */
+    skipped: jsonb("skipped").$type<string[]>().notNull().default([]),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("watch_runs_user_day_idx").on(t.userId, t.day)],
+);
 
 export const analysisEvents = pgTable(
   "analysis_events",

@@ -8,7 +8,14 @@ class JobsStore {
   backtests = $state<BacktestSummary[]>([]);
   loaded = $state(false);
   error = $state('');
+  /** An admin looking at every user's history instead of their own. */
+  everyone = $state(false);
   #timer: ReturnType<typeof setInterval> | undefined;
+
+  setEveryone(on: boolean) {
+    this.everyone = on;
+    this.refresh();
+  }
 
   live = $derived(
     [...this.analyses, ...this.backtests].some((j) => j.status === 'queued' || j.status === 'running'),
@@ -16,7 +23,7 @@ class JobsStore {
 
   async refresh() {
     try {
-      const [analyses, backtests] = await Promise.all([api.list(), api.listBacktests()]);
+      const [analyses, backtests] = await Promise.all([api.list(this.everyone), api.listBacktests(this.everyone)]);
       this.analyses = analyses;
       this.backtests = backtests;
       this.error = '';

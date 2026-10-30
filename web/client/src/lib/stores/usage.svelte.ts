@@ -10,11 +10,9 @@ class UsageStore {
     this.value = await api.usage().catch(() => this.value);
   }
 
-  /** How many more of `kind` fit today; Infinity when that cap is off. */
+  /** How many more of `kind` fit today, within the user's cap and the server's total; Infinity when uncapped. */
   left(kind: 'analyses' | 'chat'): number {
-    const u = this.value?.[kind];
-    if (!u || !u.limit) return Infinity;
-    return Math.max(0, u.limit - u.used);
+    return this.value?.[kind].left ?? Infinity;
   }
 }
 

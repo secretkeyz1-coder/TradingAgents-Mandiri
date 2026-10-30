@@ -37,11 +37,12 @@
         </p>
         {#if w.telegram.configured}
           <p class="text-xs"><span class="status status-success status-xs" aria-hidden="true"></span> Ringkasan dikirim ke Telegram saat semua analisa selesai.</p>
-        {:else}
+        {:else if !w.telegram.bot}
           <p class="text-xs text-warning">
-            Telegram belum diatur: isi <code>TELEGRAM_BOT_TOKEN</code> dan <code>TELEGRAM_CHAT_ID</code> di <code>.env</code> server. Analisa tetap
-            berjalan dan hasilnya ada di Riwayat.
+            Bot Telegram belum diatur di server (<code>TELEGRAM_BOT_TOKEN</code>). Analisa tetap berjalan dan hasilnya ada di Riwayat.
           </p>
+        {:else}
+          <p class="text-xs text-warning">Isi chat ID Telegram-mu di menu akun → Profil untuk menerima ringkasan. Analisa tetap berjalan tanpa itu.</p>
         {/if}
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">

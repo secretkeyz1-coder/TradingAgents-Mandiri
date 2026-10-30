@@ -7,18 +7,20 @@ import { config } from "./config";
 import { runMigrations } from "./db";
 import { recover } from "./jobs";
 import { agentApi } from "./agent";
-import { authApi, requireAuth } from "./auth";
+import { authApi, ensureAccounts, meApi, requireAuth, usersApi, type AppEnv } from "./auth";
 import { api } from "./routes";
 import { startWatchScheduler, watchApi } from "./watch";
 import { getCatalog } from "./worker";
 
 await runMigrations();
+// The first admin, and the owner of everything stored before accounts existed.
+await ensureAccounts();
 await recover();
 startWatchScheduler();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 // Unauthenticated, for the container's health check and a reverse proxy.
 app.get("/healthz", (c) => c.text("ok"));
 app.use("/api/*", logger());
@@ -28,6 +30,8 @@ app.use("/api/*", logger());
 // fetch and EventSource, so the SSE streams need nothing extra.
 app.route("/api", authApi);
 app.use("/api/*", requireAuth);
+app.route("/api", meApi);
+app.route("/api", usersApi);
 app.route("/api", api);
 app.route("/api", agentApi);
 app.route("/api", watchApi);

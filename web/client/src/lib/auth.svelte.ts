@@ -2,13 +2,16 @@
 // without APP_PASSWORD, as in local development) and keeps the session in an
 // HttpOnly cookie, so this side only asks and reacts.
 
-type Session = { auth: boolean; user: string | null };
+import type { Account } from './api';
+
+type Session = { auth: boolean; user: Account | null };
 
 class Auth {
   /** 'checking' until the first answer; 'out' shows the login page. */
   state = $state<'checking' | 'in' | 'out'>('checking');
   enabled = $state(false);
-  user = $state<string | null>(null);
+  user = $state<Account | null>(null);
+  isAdmin = $derived(this.user?.role === 'admin');
   /** Set when the session check itself failed (server down), not when signed out. */
   error = $state('');
 

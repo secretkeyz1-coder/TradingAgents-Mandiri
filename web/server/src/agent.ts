@@ -1,11 +1,13 @@
 // The chart agent's API: chat sessions per symbol, their messages (each turn
 // streamed as server-sent events from the Python worker), what the agent
 // remembers, and the drawings it puts on charts. The worker validates every
-// drawing against real prices; this side only stores and forwards.
+// drawing against real prices; this side only stores and forwards. All of it is
+// private to the user who made it, admins included: chats are personal.
 import { and, asc, desc, eq, gt, isNull, max, ne, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
 import { db } from "./db";
 import {
@@ -43,14 +45,14 @@ const turnSchema = z.object({
 /** One turn per session at a time: a second send while the agent works is refused. */
 const busy = new Set<string>();
 
-export const agentApi = new Hono();
+export const agentApi = new Hono<AppEnv>();
 
 agentApi.get("/agent/sessions", async (c) => {
   const symbol = symbolSchema.safeParse(c.req.query("symbol") ?? "");
   const rows = await db
     .select()
     .from(agentSessions)
-    .where(symbol.success ? eq(agentSessions.symbol, symbol.data) : undefined)
+    .where(and(eq(agentSessions.userId, c.get("user").id), symbol.success ? eq(agentSessions.symbol, symbol.data) : undefined))
     .orderBy(desc(agentSessions.updatedAt))
     .limit(50);
   return c.json(rows);
@@ -59,14 +61,17 @@ agentApi.get("/agent/sessions", async (c) => {
 agentApi.post("/agent/sessions", async (c) => {
   const body = z.object({ symbol: symbolSchema }).safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "Simbol tidak valid" }, 400);
-  const [row] = await db.insert(agentSessions).values({ symbol: body.data.symbol }).returning();
+  const [row] = await db.insert(agentSessions).values({ userId: c.get("user").id, symbol: body.data.symbol }).returning();
   return c.json(row, 201);
 });
 
 agentApi.get("/agent/sessions/:id", async (c) => {
   const id = c.req.param("id");
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
-  const [session] = await db.select().from(agentSessions).where(eq(agentSessions.id, id));
+  const [session] = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, id), eq(agentSessions.userId, c.get("user").id)));
   if (!session) return c.json({ error: "Not found" }, 404);
   const messages = await db.select().from(agentMessages).where(eq(agentMessages.sessionId, id)).orderBy(asc(agentMessages.id));
   return c.json({ ...session, messages, busy: busy.has(id) });
@@ -76,7 +81,7 @@ agentApi.delete("/agent/sessions/:id", async (c) => {
   const id = c.req.param("id");
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
   if (busy.has(id)) return c.json({ error: "Agent sedang menjawab di sesi ini" }, 409);
-  await db.delete(agentSessions).where(eq(agentSessions.id, id));
+  await db.delete(agentSessions).where(and(eq(agentSessions.id, id), eq(agentSessions.userId, c.get("user").id)));
   return c.json({ ok: true });
 });
 
@@ -85,7 +90,12 @@ agentApi.get("/agent/memories", async (c) => {
   const rows = await db
     .select()
     .from(agentMemories)
-    .where(symbol.success ? or(eq(agentMemories.scope, "user"), eq(agentMemories.symbol, symbol.data)) : undefined)
+    .where(
+      and(
+        eq(agentMemories.userId, c.get("user").id),
+        symbol.success ? or(eq(agentMemories.scope, "user"), eq(agentMemories.symbol, symbol.data)) : undefined,
+      ),
+    )
     .orderBy(desc(agentMemories.createdAt));
   return c.json(rows);
 });
@@ -93,33 +103,41 @@ agentApi.get("/agent/memories", async (c) => {
 agentApi.delete("/agent/memories/:id", async (c) => {
   const id = c.req.param("id");
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
-  await db.delete(agentMemories).where(eq(agentMemories.id, id));
+  await db.delete(agentMemories).where(and(eq(agentMemories.id, id), eq(agentMemories.userId, c.get("user").id)));
   return c.json({ ok: true });
 });
 
 agentApi.get("/drawings", async (c) => {
   const symbol = symbolSchema.safeParse(c.req.query("symbol") ?? "");
   if (!symbol.success) return c.json({ error: "Simbol tidak valid" }, 400);
-  const rows = await db.select().from(chartDrawings).where(eq(chartDrawings.symbol, symbol.data)).orderBy(asc(chartDrawings.createdAt));
+  const rows = await db
+    .select()
+    .from(chartDrawings)
+    .where(and(eq(chartDrawings.userId, c.get("user").id), eq(chartDrawings.symbol, symbol.data)))
+    .orderBy(asc(chartDrawings.createdAt));
   return c.json(rows);
 });
 
 agentApi.delete("/drawings/:id", async (c) => {
   const id = c.req.param("id");
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
-  await db.delete(chartDrawings).where(eq(chartDrawings.id, id));
+  await db.delete(chartDrawings).where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, c.get("user").id)));
   return c.json({ ok: true });
 });
 
 agentApi.delete("/drawings", async (c) => {
   const symbol = symbolSchema.safeParse(c.req.query("symbol") ?? "");
   if (!symbol.success) return c.json({ error: "Simbol tidak valid" }, 400);
-  await db.delete(chartDrawings).where(eq(chartDrawings.symbol, symbol.data));
+  await db.delete(chartDrawings).where(and(eq(chartDrawings.userId, c.get("user").id), eq(chartDrawings.symbol, symbol.data)));
   return c.json({ ok: true });
 });
 
 agentApi.get("/agent/skills", async (c) => {
-  const rows = await db.select().from(agentSkills).orderBy(asc(agentSkills.name), desc(agentSkills.version));
+  const rows = await db
+    .select()
+    .from(agentSkills)
+    .where(eq(agentSkills.userId, c.get("user").id))
+    .orderBy(asc(agentSkills.name), desc(agentSkills.version));
   return c.json(rows);
 });
 
@@ -139,15 +157,16 @@ agentApi.post("/agent/skills/:id/:action", async (c) => {
   const id = c.req.param("id");
   const rule = TRANSITIONS[c.req.param("action")];
   if (!idSchema.safeParse(id).success || !rule) return c.json({ error: "Not found" }, 404);
+  const userId = c.get("user").id;
   const result = await db.transaction(async (tx) => {
-    const [row] = await tx.select().from(agentSkills).where(eq(agentSkills.id, id));
+    const [row] = await tx.select().from(agentSkills).where(and(eq(agentSkills.id, id), eq(agentSkills.userId, userId)));
     if (!row) return { status: 404, error: "Not found" };
     if (!rule.from.includes(row.status)) return { status: 409, error: `Skill berstatus ${row.status}` };
     if (rule.to === "active") {
       await tx
         .update(agentSkills)
         .set({ status: "archived" })
-        .where(and(eq(agentSkills.name, row.name), eq(agentSkills.status, "active"), ne(agentSkills.id, id)));
+        .where(and(eq(agentSkills.userId, userId), eq(agentSkills.name, row.name), eq(agentSkills.status, "active"), ne(agentSkills.id, id)));
     }
     await tx.update(agentSkills).set({ status: rule.to }).where(eq(agentSkills.id, id));
     return { status: 200 };
@@ -156,7 +175,7 @@ agentApi.post("/agent/skills/:id/:action", async (c) => {
 });
 
 agentApi.delete("/agent/skills/by-name/:name", async (c) => {
-  await db.delete(agentSkills).where(eq(agentSkills.name, c.req.param("name")));
+  await db.delete(agentSkills).where(and(eq(agentSkills.userId, c.get("user").id), eq(agentSkills.name, c.req.param("name"))));
   return c.json({ ok: true });
 });
 
@@ -173,10 +192,14 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
   const refused = backendUrlRefused(turn.backendUrl);
   if (refused) return c.json({ error: refused }, 400);
 
-  const [session] = await db.select().from(agentSessions).where(eq(agentSessions.id, id));
+  const user = c.get("user");
+  const [session] = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, id), eq(agentSessions.userId, user.id)));
   if (!session) return c.json({ error: "Not found" }, 404);
   if (busy.has(id)) return c.json({ error: "Agent masih menjawab pesan sebelumnya" }, 409);
-  const quota = await overLimit("chat");
+  const quota = await overLimit(user, "chat");
   if (quota) return c.json({ error: quota }, 429);
   busy.add(id);
 
@@ -192,15 +215,20 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
     const memories = await db
       .select({ id: agentMemories.id, scope: agentMemories.scope, content: agentMemories.content })
       .from(agentMemories)
-      .where(or(and(eq(agentMemories.scope, "user"), isNull(agentMemories.symbol)), eq(agentMemories.symbol, session.symbol)));
+      .where(
+        and(
+          eq(agentMemories.userId, user.id),
+          or(and(eq(agentMemories.scope, "user"), isNull(agentMemories.symbol)), eq(agentMemories.symbol, session.symbol)),
+        ),
+      );
     const drawings = await db
       .select({ kind: chartDrawings.kind, label: chartDrawings.label })
       .from(chartDrawings)
-      .where(eq(chartDrawings.symbol, session.symbol));
+      .where(and(eq(chartDrawings.userId, user.id), eq(chartDrawings.symbol, session.symbol)));
     const skills = await db
       .select({ version: agentSkills.version, definition: agentSkills.definition })
       .from(agentSkills)
-      .where(eq(agentSkills.status, "active"));
+      .where(and(eq(agentSkills.userId, user.id), eq(agentSkills.status, "active")));
 
     await db.insert(agentMessages).values({ sessionId: id, role: "user", content: turn.message });
     await db
@@ -240,14 +268,16 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
           }
           case "drawing": {
             const d = payload.drawing as { id: string; kind: DrawingKind; label: string; data: Record<string, unknown> };
-            await db.insert(chartDrawings).values({ id: d.id, symbol: session.symbol, sessionId: id, kind: d.kind, label: d.label, data: d.data });
+            await db
+              .insert(chartDrawings)
+              .values({ id: d.id, userId: user.id, symbol: session.symbol, sessionId: id, kind: d.kind, label: d.label, data: d.data });
             break;
           }
           case "memory": {
             const m = payload.memory as { id: string; scope: "user" | "symbol"; content: string };
             await db
               .insert(agentMemories)
-              .values({ id: m.id, scope: m.scope, symbol: m.scope === "symbol" ? session.symbol : null, content: m.content });
+              .values({ id: m.id, userId: user.id, scope: m.scope, symbol: m.scope === "symbol" ? session.symbol : null, content: m.content });
             break;
           }
           case "skill_proposed": {
@@ -256,16 +286,17 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
             const [{ latest }] = await db
               .select({ latest: max(agentSkills.version) })
               .from(agentSkills)
-              .where(eq(agentSkills.name, definition.name));
+              .where(and(eq(agentSkills.userId, user.id), eq(agentSkills.name, definition.name)));
             const [row] = await db
               .insert(agentSkills)
-              .values({ name: definition.name, version: (latest ?? 0) + 1, definition, test: payload.test as never, sessionId: id })
+              .values({ userId: user.id, name: definition.name, version: (latest ?? 0) + 1, definition, test: payload.test as never, sessionId: id })
               .returning({ id: agentSkills.id, version: agentSkills.version });
             Object.assign(payload, { id: row.id, version: row.version });
             break;
           }
           case "forget":
-            await db.delete(agentMemories).where(eq(agentMemories.id, String(payload.id)));
+            // Only this user's memory, whatever id the model names.
+            await db.delete(agentMemories).where(and(eq(agentMemories.id, String(payload.id)), eq(agentMemories.userId, user.id)));
             break;
           case "summary":
             await db

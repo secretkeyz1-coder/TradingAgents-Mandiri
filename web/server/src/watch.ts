@@ -1,18 +1,21 @@
-// The watchlist: symbols analysed automatically once a trading day, with the
-// results sent to Telegram. Each run is ordinary analyses (same queue, same
-// daily cap); this module only decides when, and reports when they are done.
+// The watchlist: symbols each user has analysed automatically once a trading
+// day, with the results sent to that user's Telegram chat. Each run is
+// ordinary analyses (same queue, same daily caps); this module only decides
+// when, and reports when they are done.
 //
 // Settings (env): WATCH_TIME (HH:MM WIB, default 16:30), WATCH_DAYS (ISO
 // weekdays, default 1-5), WATCH_ANALYSTS, WATCH_DEPTH, WATCH_LANGUAGE,
-// TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, PUBLIC_URL (for links in the message).
-import { asc, desc, eq, inArray } from "drizzle-orm";
+// TELEGRAM_BOT_TOKEN (one bot for everyone), PUBLIC_URL (links in the message).
+// Each user sets their own Telegram chat id in their profile.
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { AppEnv, User } from "./auth";
 import { db } from "./db";
-import { analyses, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
+import { analyses, users, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
 import { enqueue, subscribe } from "./jobs";
 import { SYMBOL_PATTERN } from "./market";
-import { overLimit, usage } from "./usage";
+import { overLimit, room } from "./usage";
 import { getCatalog } from "./worker";
 
 const WIB_MS = 7 * 3_600_000;
@@ -28,7 +31,6 @@ const settings = {
   depth: Number(process.env.WATCH_DEPTH ?? 1),
   language: process.env.WATCH_LANGUAGE ?? "Indonesian",
   telegramToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
-  telegramChat: process.env.TELEGRAM_CHAT_ID ?? "",
   // Only for tests: point at a local stand-in instead of Telegram.
   telegramApi: (process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org").replace(/\/+$/, ""),
   publicUrl: (process.env.PUBLIC_URL ?? "").replace(/\/+$/, ""),
@@ -66,15 +68,14 @@ function nextRun(after = Date.now()): string {
   return new Date(after).toISOString();
 }
 
-const telegramReady = () => Boolean(settings.telegramToken && settings.telegramChat);
-
-async function sendTelegram(html: string): Promise<{ ok: boolean; error?: string }> {
-  if (!telegramReady()) return { ok: false, error: "TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID belum diisi di .env server" };
+async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: boolean; error?: string }> {
+  if (!settings.telegramToken) return { ok: false, error: "TELEGRAM_BOT_TOKEN belum diisi di .env server" };
+  if (!chatId) return { ok: false, error: "Chat ID Telegram belum diisi di Profil" };
   try {
     const res = await fetch(`${settings.telegramApi}/bot${settings.telegramToken}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: settings.telegramChat, text: html, parse_mode: "HTML", disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true }),
       signal: AbortSignal.timeout(15_000),
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
@@ -100,9 +101,11 @@ function gist(decision: string | undefined): string {
   return end > 80 ? cut.slice(0, end + 1) : `${cut.trimEnd()}…`;
 }
 
-async function report(ids: string[], skipped: string[], title: string): Promise<string> {
+async function report(userId: string, ids: string[], skipped: string[], title: string): Promise<string> {
   const rows = ids.length ? await db.select().from(analyses).where(inArray(analyses.id, ids)) : [];
-  const tv = Object.fromEntries((await db.select().from(watchlist)).map((w) => [w.symbol, w.tvSymbol]));
+  const tv = Object.fromEntries(
+    (await db.select().from(watchlist).where(eq(watchlist.userId, userId))).map((w) => [w.symbol, w.tvSymbol]),
+  );
   const lines = [`<b>📊 ${escape(title)}</b>`, ""];
   for (const r of rows.sort((a, b) => a.ticker.localeCompare(b.ticker))) {
     const link = settings.publicUrl
@@ -122,12 +125,14 @@ async function report(ids: string[], skipped: string[], title: string): Promise<
   return lines.join("\n");
 }
 
-/** When every analysis of a run has ended, send one message for the whole run. */
-function notifyWhenDone(ids: string[], skipped: string[], title: string, day?: string) {
+/** When every analysis of a run has ended, send one message for the whole run to the user's chat. */
+function notifyWhenDone(userId: string, ids: string[], skipped: string[], title: string, runId?: string) {
   const finish = async () => {
-    const sent = await sendTelegram(await report(ids, skipped, title));
-    if (!sent.ok) console.error(`watchlist ${title}: ${sent.error}`);
-    if (day && sent.ok) await db.update(watchRuns).set({ notifiedAt: new Date() }).where(eq(watchRuns.day, day));
+    // Read the chat id now, not when the run started: the user may have just set it.
+    const [user] = await db.select({ chat: users.telegramChatId }).from(users).where(eq(users.id, userId));
+    const sent = await sendTelegram(user?.chat ?? null, await report(userId, ids, skipped, title));
+    if (!sent.ok) console.error(`watchlist ${title} (${userId}): ${sent.error}`);
+    if (runId && sent.ok) await db.update(watchRuns).set({ notifiedAt: new Date() }).where(eq(watchRuns.id, runId));
   };
   if (!ids.length) return void finish().catch((err) => console.error("watchlist notify failed", err));
   const pending = new Set(ids);
@@ -141,18 +146,17 @@ function notifyWhenDone(ids: string[], skipped: string[], title: string, day?: s
   }
 }
 
-/** Queue one analysis per watched symbol, as many as today's cap allows. */
-async function startRun(day?: string): Promise<{ ids: string[]; skipped: string[] } | { error: string }> {
-  const items = await db.select().from(watchlist).orderBy(asc(watchlist.createdAt));
+/** Queue one analysis per symbol on this user's watchlist, as many as today's caps allow. */
+async function startRun(user: User, runId?: string): Promise<{ ids: string[]; skipped: string[] } | { error: string }> {
+  const items = await db.select().from(watchlist).where(eq(watchlist.userId, user.id)).orderBy(asc(watchlist.createdAt));
   if (!items.length) return { error: "Watchlist kosong" };
   const catalog = await getCatalog();
   const { provider, quickModel, deepModel } = catalog.defaults;
   const known = new Set(catalog.analysts.map((a) => a.value));
   const analysts = settings.analysts.filter((a) => known.has(a));
-  const cap = (await usage()).analyses;
-  const room = cap.limit ? Math.max(0, cap.limit - cap.used) : items.length;
-  const take = items.slice(0, room);
-  const skipped = items.slice(room).map((w) => w.symbol);
+  const fits = Math.min(items.length, await room(user, "analyses"));
+  const take = items.slice(0, fits);
+  const skipped = items.slice(fits).map((w) => w.symbol);
 
   const date = wibDay();
   const ids: string[] = [];
@@ -167,13 +171,16 @@ async function startRun(day?: string): Promise<{ ids: string[]; skipped: string[
       deepModel,
       language: settings.language,
     };
-    const [row] = await db.insert(analyses).values({ ticker: w.symbol, tradeDate: date, request }).returning({ id: analyses.id });
+    const [row] = await db
+      .insert(analyses)
+      .values({ userId: user.id, ticker: w.symbol, tradeDate: date, request })
+      .returning({ id: analyses.id });
     ids.push(row!.id);
   }
-  if (day) await db.update(watchRuns).set({ analysisIds: ids, skipped }).where(eq(watchRuns.day, day));
+  if (runId) await db.update(watchRuns).set({ analysisIds: ids, skipped }).where(eq(watchRuns.id, runId));
   const title = `Watchlist ${new Date().toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric" })}`;
   // Subscribe before the queue can start them, so no ending is missed.
-  notifyWhenDone(ids, skipped, title, day);
+  notifyWhenDone(user.id, ids, skipped, title, runId);
   for (const id of ids) enqueue(id);
   return { ids, skipped };
 }
@@ -183,14 +190,21 @@ async function tick() {
   if (!settings.days.has(isoWeekday(wib(now)))) return;
   const due = dueOn(now);
   if (now < due || now > due + CATCH_UP_MS) return;
-  if (!(await db.$count(watchlist))) return;
-  // Claim the day: on a second server instance this insert finds the row and does nothing.
   const day = wibDay(now);
-  const [claimed] = await db.insert(watchRuns).values({ day }).onConflictDoNothing().returning({ day: watchRuns.day });
-  if (!claimed) return;
-  const result = await startRun(day);
-  if ("error" in result) console.error(`watchlist ${day}: ${result.error}`);
-  else console.log(`watchlist ${day}: ${result.ids.length} analisa, ${result.skipped.length} dilewati`);
+  // Everyone with something on their watchlist and an active account.
+  const owners = await db
+    .selectDistinct({ user: users })
+    .from(watchlist)
+    .innerJoin(users, eq(watchlist.userId, users.id))
+    .where(eq(users.disabled, false));
+  for (const { user } of owners) {
+    // Claim the day for this user: on a second server instance this insert finds the row and does nothing.
+    const [claimed] = await db.insert(watchRuns).values({ userId: user.id, day }).onConflictDoNothing().returning({ id: watchRuns.id });
+    if (!claimed) continue;
+    const result = await startRun(user, claimed.id);
+    if ("error" in result) console.error(`watchlist ${day} ${user.username}: ${result.error}`);
+    else console.log(`watchlist ${day} ${user.username}: ${result.ids.length} analisa, ${result.skipped.length} dilewati`);
+  }
 }
 
 export function startWatchScheduler() {
@@ -199,23 +213,29 @@ export function startWatchScheduler() {
   setInterval(run, 60_000);
 }
 
-export const watchApi = new Hono();
+export const watchApi = new Hono<AppEnv>();
 
 watchApi.get("/watchlist", async (c) => {
-  const items = await db.select().from(watchlist).orderBy(asc(watchlist.createdAt));
+  const user = c.get("user");
+  const items = await db.select().from(watchlist).where(eq(watchlist.userId, user.id)).orderBy(asc(watchlist.createdAt));
   const recent = items.length
     ? await db
         .select({ id: analyses.id, ticker: analyses.ticker, rating: analyses.rating, status: analyses.status, tradeDate: analyses.tradeDate, createdAt: analyses.createdAt })
         .from(analyses)
-        .where(inArray(analyses.ticker, items.map((w) => w.symbol)))
+        .where(and(eq(analyses.userId, user.id), inArray(analyses.ticker, items.map((w) => w.symbol))))
         .orderBy(desc(analyses.createdAt))
     : [];
-  const [lastRun] = await db.select().from(watchRuns).orderBy(desc(watchRuns.day)).limit(1);
+  const [lastRun] = await db.select().from(watchRuns).where(eq(watchRuns.userId, user.id)).orderBy(desc(watchRuns.day)).limit(1);
   return c.json({
     items: items.map((w) => ({ symbol: w.symbol, tvSymbol: w.tvSymbol, last: recent.find((a) => a.ticker === w.symbol) ?? null })),
     max: MAX_ITEMS,
     schedule: { time: settings.time, days: [...settings.days], next: nextRun(), analysts: settings.analysts, depth: settings.depth },
-    telegram: { configured: telegramReady(), links: Boolean(settings.publicUrl) },
+    telegram: {
+      bot: Boolean(settings.telegramToken),
+      chat: Boolean(user.telegramChatId),
+      configured: Boolean(settings.telegramToken && user.telegramChatId),
+      links: Boolean(settings.publicUrl),
+    },
     lastRun: lastRun ?? null,
   });
 });
@@ -225,30 +245,35 @@ const addSchema = z.object({ symbol: z.string().regex(SYMBOL_PATTERN), tvSymbol:
 watchApi.post("/watchlist", async (c) => {
   const body = addSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "Simbol tidak valid" }, 400);
-  if ((await db.$count(watchlist)) >= MAX_ITEMS) return c.json({ error: `Watchlist maksimal ${MAX_ITEMS} simbol` }, 400);
+  const user = c.get("user");
+  if ((await db.$count(watchlist, eq(watchlist.userId, user.id))) >= MAX_ITEMS) {
+    return c.json({ error: `Watchlist maksimal ${MAX_ITEMS} simbol` }, 400);
+  }
   await db
     .insert(watchlist)
-    .values({ symbol: body.data.symbol.toUpperCase(), tvSymbol: body.data.tvSymbol.toUpperCase() })
+    .values({ userId: user.id, symbol: body.data.symbol.toUpperCase(), tvSymbol: body.data.tvSymbol.toUpperCase() })
     .onConflictDoNothing();
   return c.json({ ok: true }, 201);
 });
 
 watchApi.delete("/watchlist/:symbol", async (c) => {
-  await db.delete(watchlist).where(eq(watchlist.symbol, c.req.param("symbol").toUpperCase()));
+  await db.delete(watchlist).where(and(eq(watchlist.userId, c.get("user").id), eq(watchlist.symbol, c.req.param("symbol").toUpperCase())));
   return c.json({ ok: true });
 });
 
-/** Run the whole watchlist now, outside the schedule; it counts against the daily cap like any analysis. */
+/** Run the user's whole watchlist now, outside the schedule; it counts against the daily caps like any analysis. */
 watchApi.post("/watchlist/run", async (c) => {
-  if (await db.$count(watchlist)) {
-    const quota = await overLimit("analyses", 1);
+  const user = c.get("user");
+  if (await db.$count(watchlist, eq(watchlist.userId, user.id))) {
+    const quota = await overLimit(user, "analyses", 1);
     if (quota) return c.json({ error: quota }, 429);
   }
-  const result = await startRun();
+  const result = await startRun(user);
   return "error" in result ? c.json(result, 400) : c.json(result, 201);
 });
 
 watchApi.post("/watchlist/test", async (c) => {
-  const sent = await sendTelegram("<b>✅ TradingAgents</b>\nNotifikasi watchlist tersambung ke chat ini.");
+  const user = c.get("user");
+  const sent = await sendTelegram(user.telegramChatId, `<b>✅ TradingAgents</b>\nNotifikasi watchlist untuk ${escape(user.username)} tersambung ke chat ini.`);
   return sent.ok ? c.json({ ok: true }) : c.json({ error: sent.error }, 400);
 });

@@ -95,7 +95,7 @@ Klik **☆ Pantau** di atas chart untuk memasukkan simbol ke watchlist (maksimal
 
 - Setiap hari `WATCH_DAYS` (default Sen–Jum) pukul `WATCH_TIME` WIB (default 16.30), server menjalankan satu analisa per simbol dengan model default server (`TRADINGAGENTS_*`), analis `WATCH_ANALYSTS`, dan kedalaman `WATCH_DEPTH`. Kalau server baru menyala lebih dari 3 jam setelah jadwal, putaran hari itu tidak dikejar.
 - Analisanya analisa biasa: masuk antrean, tampil di Riwayat, dan memakai kuota harian. Simbol yang tidak muat di sisa kuota dilewati dan disebut di pesan.
-- Setelah semua selesai, satu pesan dikirim ke Telegram: rating tiap simbol, cuplikan Executive Summary, dan tautan ke laporannya (`PUBLIC_URL`). Isi `TELEGRAM_BOT_TOKEN` (dari @BotFather) dan `TELEGRAM_CHAT_ID`; tanpa keduanya analisa tetap jalan, hanya tanpa pesan.
+- Setelah semua selesai, satu pesan dikirim ke Telegram: rating tiap simbol, cuplikan Executive Summary, dan tautan ke laporannya (`PUBLIC_URL`). Server butuh `TELEGRAM_BOT_TOKEN` (dari @BotFather), dan tiap akun mengisi chat ID-nya di Profil; tanpa itu analisa tetap jalan, hanya tanpa pesan. Watchlist, jadwal, dan pesannya per akun.
 - Satu putaran per hari dicatat di tabel `watch_runs`, jadi dua instance server tidak menjalankannya dua kali.
 
 API: `GET /api/watchlist`, `POST /api/watchlist {symbol, tvSymbol}`, `DELETE /api/watchlist/:symbol`, `POST /api/watchlist/run`, `POST /api/watchlist/test`.
@@ -164,7 +164,20 @@ cp .env.example .env      # isi POSTGRES_PASSWORD, APP_PASSWORD, key LLM, ALLOWE
 docker compose up -d --build
 ```
 
-- **Login**: halaman login sendiri (`APP_USER` / `APP_PASSWORD`), sesi berupa cookie HttpOnly bertanda tangan HMAC selama 30 hari, tombol Keluar di header. Maksimal 10 percobaan gagal per IP per 15 menit. Semua `/api/*` butuh sesi; skrip boleh mengirim header HTTP Basic sebagai gantinya. Server menolak start di alamat non-loopback tanpa password. Mengganti password (atau `SESSION_SECRET`) mengakhiri semua sesi. `/healthz` terbuka untuk health check.
+- **Login**: halaman login sendiri per akun (lihat "Akun" di bawah), sesi berupa cookie HttpOnly bertanda tangan HMAC selama 30 hari. Maksimal 10 percobaan gagal per IP per 15 menit. Semua `/api/*` butuh sesi; skrip boleh mengirim header HTTP Basic (nama pengguna + kata sandi akun) sebagai gantinya. Server menolak start di alamat non-loopback tanpa `APP_PASSWORD`. `/healthz` terbuka untuk health check.
+
+### Akun
+
+- **Admin pertama** dibuat otomatis saat boot dari `APP_USER` / `APP_PASSWORD` kalau belum ada akun sama sekali, dan semua data yang tersimpan sebelum fitur akun ada diberikan ke admin itu. Setelahnya kata sandi diganti di app (menu akun → Profil); mengubah `.env` tidak mengubah akun yang sudah ada.
+- **Tanpa pendaftaran publik.** Admin membuat akun di menu akun → **Pengguna**: nama pengguna, kata sandi awal, peran (anggota/admin). Di sana juga: nonaktifkan/aktifkan, reset kata sandi, ubah peran, dan kuota harian per orang (kosong = default `DAILY_*`). Admin tidak bisa menonaktifkan atau menurunkan dirinya sendiri, dan selalu harus ada satu admin aktif.
+- **Data pribadi per akun:** riwayat analisa dan backtest, marker keputusan, sesi chat agent, memori, gambar di chart, skill, watchlist. Admin bisa melihat riwayat semua akun (tombol **Semua pengguna** di Riwayat, dengan kolom pemilik) dan membuka laporannya; chat, memori, dan skill tetap pribadi, termasuk dari admin.
+- **Tetap bersama:** memori keputusan engine TradingAgents (satu file log di engine yang dipakai agent untuk belajar dari keputusan lama).
+- **Kuota:** tiap akun punya batas harian sendiri, dan `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` membatasi semua akun bersama.
+- **Sesi:** kata sandi diganti atau akun dinonaktifkan → semua sesi akun itu langsung berakhir (browser yang mengganti kata sandinya tetap masuk).
+- **Telegram:** satu bot untuk server (`TELEGRAM_BOT_TOKEN`); tiap akun mengisi chat ID-nya sendiri di Profil dan menerima ringkasan watchlist-nya sendiri.
+- **Tanpa `APP_PASSWORD`** (pengembangan lokal) tidak ada login: semua permintaan dianggap admin pertama.
+
+API: `GET /api/session`, `POST /api/login`, `POST /api/logout`, `GET`/`PATCH /api/me`, `POST /api/me/password`; admin: `GET`/`POST /api/users`, `PATCH /api/users/:id`; `GET /api/analyses?scope=all` (admin).
 - **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim.
 - **Data**: volume `tradingagents_db` (Postgres) dan `tradingagents_data` (laporan, cache, dan memori keputusan engine).
 - **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.
@@ -212,6 +225,8 @@ Semua opsional, lewat environment variable:
 | `JOB_IDLE_MINUTES` | `15` | Analisa/backtest tanpa event selama ini dianggap macet: worker dihentikan, status gagal |
 | `DAILY_ANALYSIS_LIMIT` | `60` | Analisa per hari (WIB); tiap sel backtest dihitung satu analisa. `0` = tanpa batas. Pemakaian tampil di bawah tombol Analisa/Backtest (`GET /api/usage`) |
 | `DAILY_CHAT_LIMIT` | `300` | Pesan ke chat agent per hari (WIB). `0` = tanpa batas. Pemakaian tampil di footer chat |
+| `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` | `200` / `1000` | Batas harian semua akun bersama (`DAILY_*` di atas adalah default per akun) |
+| `SESSION_SECRET` | dari `APP_PASSWORD` | Kunci tanda tangan cookie sesi; menggantinya mengeluarkan semua orang |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |
 
