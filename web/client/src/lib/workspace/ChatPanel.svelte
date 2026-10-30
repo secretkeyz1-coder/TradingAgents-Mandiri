@@ -3,8 +3,11 @@
   // chart, and remembers what you tell it; all of that is listed here.
   import { renderMarkdown } from '../format';
   import { agent } from '../stores/agent.svelte';
+  import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
   import SkillsPanel from './SkillsPanel.svelte';
+
+  usage.refresh();
 
   let draft = $state('');
   let showMemory = $state(false);
@@ -108,10 +111,15 @@
         {#if agent.drafts.length}<span class="badge badge-xs badge-warning">{agent.drafts.length} baru</span>{/if}
       </button>
       <span class="text-xs tabular-nums text-base-content/70">{agent.drawings.length} gambar</span>
+      {#if usage.value?.chat.limit}
+        <span class="text-xs tabular-nums" class:text-warning={!usage.left('chat')} class:text-base-content={usage.left('chat') > 0} title="Pesan chat hari ini; reset pukul 00.00 WIB">
+          {usage.value.chat.used}/{usage.value.chat.limit} pesan
+        </span>
+      {/if}
       {#if agent.sending}
         <button class="btn btn-sm ml-auto" type="button" onclick={() => agent.stop()}>Hentikan</button>
       {:else}
-        <button class="btn btn-primary btn-sm ml-auto" type="submit" disabled={!draft.trim() || !ws.yahoo}>Kirim</button>
+        <button class="btn btn-primary btn-sm ml-auto" type="submit" disabled={!draft.trim() || !ws.yahoo || usage.left('chat') === 0}>Kirim</button>
       {/if}
     </div>
   </form>

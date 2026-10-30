@@ -10,6 +10,7 @@ import {
   type DrawingKind,
 } from '../api';
 import { catalog } from './catalog.svelte';
+import { usage } from './usage.svelte';
 import { ws } from './workspace.svelte';
 
 const FORM_KEY = 'tradingagents.form';
@@ -147,6 +148,7 @@ class AgentStore {
       this.sending = false;
       this.liveText = '';
       this.#abort = null;
+      usage.refresh();
       this.sessions = await api.agentSessions(session.symbol).catch(() => this.sessions);
     }
   }

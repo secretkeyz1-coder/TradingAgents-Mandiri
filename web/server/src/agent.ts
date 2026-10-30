@@ -20,6 +20,7 @@ import {
   type SkillStatus,
 } from "./db/schema";
 import { SYMBOL_PATTERN } from "./market";
+import { overLimit } from "./usage";
 import { getCatalog, runCommand } from "./worker";
 
 /** Turns sent to the model verbatim; older ones are folded into the session summary. */
@@ -175,6 +176,8 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
   const [session] = await db.select().from(agentSessions).where(eq(agentSessions.id, id));
   if (!session) return c.json({ error: "Not found" }, 404);
   if (busy.has(id)) return c.json({ error: "Agent masih menjawab pesan sebelumnya" }, 409);
+  const quota = await overLimit("chat");
+  if (quota) return c.json({ error: quota }, 429);
   busy.add(id);
 
   try {

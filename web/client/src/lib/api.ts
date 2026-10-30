@@ -183,6 +183,13 @@ export type AgentSkill = {
   createdAt: string;
 };
 
+/** Today's use against the server's daily caps; a limit of 0 means no cap. */
+export type Usage = {
+  analyses: { used: number; limit: number };
+  chat: { used: number; limit: number };
+  resetsAt: string;
+};
+
 export type AgentTurn = {
   message: string;
   provider: string;
@@ -205,6 +212,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   options: () => request<Catalog>('/options'),
+  usage: () => request<Usage>('/usage'),
   list: () => request<AnalysisSummary[]>('/analyses'),
   get: (id: string) => request<Analysis>(`/analyses/${id}`),
   create: (body: AnalysisRequest) =>

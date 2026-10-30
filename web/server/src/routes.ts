@@ -7,6 +7,7 @@ import { db } from "./db";
 import { analyses, analysisEvents, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
 import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
+import { overLimit, usage } from "./usage";
 import { getCatalog, type Catalog } from "./worker";
 
 // Every backtest cell is one full analysis (many LLM calls), so a sweep is capped.
@@ -70,6 +71,9 @@ export const api = new Hono();
 
 api.get("/options", async (c) => c.json(await getCatalog()));
 
+/** Today's use against the daily caps (see usage.ts). */
+api.get("/usage", async (c) => c.json(await usage()));
+
 api.get("/analyses", async (c) => {
   const kind: JobKind = c.req.query("kind") === "backtest" ? "backtest" : "analysis";
   const rows = await db
@@ -104,6 +108,8 @@ api.post("/backtests", async (c) => {
   }
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
+  const quota = await overLimit("analyses", cells);
+  if (quota) return c.json({ error: quota }, 429);
 
   const [row] = await db
     .insert(analyses)
@@ -164,6 +170,8 @@ api.post("/analyses", async (c) => {
   const request = parsed.data;
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
+  const quota = await overLimit("analyses");
+  if (quota) return c.json({ error: quota }, 429);
 
   const [row] = await db
     .insert(analyses)

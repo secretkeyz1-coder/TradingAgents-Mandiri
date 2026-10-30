@@ -375,12 +375,17 @@ def validate_skill(raw: dict) -> dict:
     if not SKILL_NAME.match(name):
         raise SkillError("name: 3–40 huruf kecil, angka, atau tanda hubung")
     text = {k: str(raw.get(k) or "").strip() for k in ("title", "description", "when_to_use", "instruction")}
+    # Models often leave the title out; the name says the same thing.
+    text["title"] = text["title"] or name.replace("-", " ").capitalize()
     for key, limit in (("title", 60), ("description", 200), ("when_to_use", 200), ("instruction", 1500)):
         if not text[key]:
             raise SkillError(f"{key} wajib diisi")
         if len(text[key]) > limit:
             raise SkillError(f"{key} maksimal {limit} karakter")
     params = raw.get("params") or {}
+    # The chat tools take a free-text `reason` for the reader; a model copies it into skills. It is not a parameter.
+    if isinstance(params, dict):
+        params = {k: v for k, v in params.items() if k != "reason"}
     if not isinstance(params, dict) or len(params) > 6:
         raise SkillError("params: objek dengan maksimal 6 parameter")
     for key, value in params.items():
@@ -394,7 +399,7 @@ def validate_skill(raw: dict) -> dict:
         tool = (step or {}).get("tool")
         if tool not in SKILL_STEPS:
             raise SkillError(f"langkah {i}: alat {tool!r} tidak boleh; pilih dari {', '.join(SKILL_STEPS)}")
-        args = step.get("args") or {}
+        args = {k: v for k, v in (step.get("args") or {}).items() if k != "reason"}
         accepted = set(inspect.signature(SKILL_STEPS[tool]).parameters) - {"m"}
         unknown = set(args) - accepted
         if unknown:
@@ -538,7 +543,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     @tool
     def propose_skill(
-        name: str, title: str, description: str, when_to_use: str, instruction: str, steps: list[dict], params: dict | None = None
+        name: str, description: str, when_to_use: str, instruction: str, steps: list[dict], params: dict | None = None, title: str = ""
     ) -> str:
         """Save a reusable way of working as a draft skill (only when the user asks or agrees).
         name: lowercase-with-dashes. steps: 1-6 of {"tool": one of get_market_summary, find_pivots, support_resistance,

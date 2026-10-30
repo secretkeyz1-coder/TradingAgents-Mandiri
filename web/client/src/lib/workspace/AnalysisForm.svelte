@@ -5,6 +5,7 @@
   import { gridDates, today } from '../format';
   import { catalog } from '../stores/catalog.svelte';
   import { jobs } from '../stores/jobs.svelte';
+  import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { hasNoFundamentals } from '../tv';
 
@@ -47,6 +48,12 @@
   );
   const depthLabel = $derived(options?.depths.find((d) => d.value === depth)?.label ?? '');
   const modelLabel = $derived(deepChoice === CUSTOM ? deepCustom || 'model kustom' : deepChoice);
+
+  // Every backtest cell is a full analysis, so it counts against the daily cap one by one.
+  usage.refresh();
+  const quota = $derived(usage.value?.analyses);
+  const need = $derived(mode === 'analysis' ? 1 : cellCount);
+  const overQuota = $derived(need > usage.left('analyses'));
 
   // The backtest list follows the symbol in focus; more tickers can be added by hand.
   $effect(() => {
@@ -147,6 +154,7 @@
         ws.openBacktest(id);
       }
       jobs.refresh();
+      usage.refresh();
       persist();
     } catch (e) {
       submitError = (e as Error).message;
@@ -278,9 +286,15 @@
       submitting ||
       analysts.length === 0 ||
       (mode === 'analysis' && !ticker) ||
-      (mode === 'backtest' && (cellCount === 0 || cellCount > MAX_CELLS || tickers.length > 5))}
+      (mode === 'backtest' && (cellCount === 0 || cellCount > MAX_CELLS || tickers.length > 5)) ||
+      overQuota}
   >
     {#if submitting}<span class="loading loading-spinner loading-xs"></span>{/if}
     {#if mode === 'analysis'}Analisa {ticker || 'simbol ini'}{:else}Mulai backtest · {cellCount} sel{/if}
   </button>
+  {#if quota?.limit}
+    <p class="text-xs tabular-nums" class:text-warning={overQuota} class:text-base-content={!overQuota}>
+      Kuota hari ini: {quota.used} / {quota.limit} analisa{#if overQuota}. Tidak cukup untuk {need}; reset pukul 00.00 WIB.{/if}
+    </p>
+  {/if}
 </form>
