@@ -307,36 +307,66 @@
   const pobTf = $derived(timeframe === '15m' || timeframe === '1h' ? timeframe : null);
   const pobRes = $derived(tools && indicators.pobOn && pobTf && candles.length ? pob(candles, pobTf) : null);
   const pobLast = $derived(pobRes?.signals.at(-1) ?? null);
+  const pobActive = $derived(pobLast?.outcome === 'open' ? pobLast : null);
   const pobBand = new BandPrimitive();
   let pobLines: IPriceLine[] = [];
+  let pobSegments: ISeriesApi<'Line'>[] = [];
+  // How many finished signals keep their Entry/SL/TP drawn, as short segments over their life.
+  const POB_HISTORY = 5;
   let pobTally = $state(false);
   let pobSkillNote = $state('');
   $effect(() => {
     if (!mounted) return;
     const p = palette;
-    const last = pobLast;
+    const res = pobRes;
+    const active = pobActive;
     for (const x of pobLines) candleSeries!.removePriceLine(x);
+    for (const x of pobSegments) chart!.removeSeries(x);
     pobLines = [];
+    pobSegments = [];
     pobBand.set(null);
-    if (!last) return;
-    const level = (price: number, color: string, title: string, style: LineStyle) =>
-      pobLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
-    level(last.entry, p.accent, `PoB ${last.side}`, LineStyle.Solid);
-    level(last.stopLoss, p.down, 'PoB SL', LineStyle.Dashed);
-    level(last.takeProfit, p.up, 'PoB TP', LineStyle.Dashed);
-    if (last.zoneTop != null && last.zoneBottom != null) {
-      const end = Math.min(last.exitIndex ?? last.index + 20, candles.length - 1);
-      pobBand.set({
-        from: toTime(candles[last.index].time),
-        to: toTime(candles[end].time),
-        top: last.zoneTop,
-        bottom: last.zoneBottom,
-        fill: tokenColor('--color-accent', 0.12),
-        stroke: p.accent,
-      });
+    if (!res) return;
+    // A finished signal is history: its levels run only from the signal bar to
+    // where it ended, so they never pass for live levels at today's price.
+    const segment = (from: number, to: number, price: number, color: string, style: LineStyle) => {
+      const s = chart!.addSeries(LineSeries, { color, lineWidth: 1, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      s.setData([
+        { time: toTime(candles[from].time), value: price },
+        { time: toTime(candles[to].time), value: price },
+      ]);
+      pobSegments.push(s);
+    };
+    for (const sig of res.signals.filter((x) => x.outcome !== 'open').slice(-POB_HISTORY)) {
+      const end = Math.max(sig.index + 1, Math.min(sig.exitIndex ?? sig.index + 1, candles.length - 1));
+      segment(sig.index, end, sig.entry, p.accent, LineStyle.Solid);
+      segment(sig.index, end, sig.stopLoss, p.down, LineStyle.Dashed);
+      segment(sig.index, end, sig.takeProfit, p.up, LineStyle.Dashed);
+    }
+    // Only a signal still running gets full-width levels with axis labels.
+    if (active) {
+      const level = (price: number, color: string, title: string, style: LineStyle) =>
+        pobLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+      level(active.entry, p.accent, `PoB ${active.side}`, LineStyle.Solid);
+      level(active.stopLoss, p.down, 'PoB SL', LineStyle.Dashed);
+      level(active.takeProfit, p.up, 'PoB TP', LineStyle.Dashed);
+      if (active.zoneTop != null && active.zoneBottom != null) {
+        pobBand.set({
+          from: toTime(candles[active.index].time),
+          to: toTime(candles[candles.length - 1].time),
+          top: active.zoneTop,
+          bottom: active.zoneBottom,
+          fill: tokenColor('--color-accent', 0.12),
+          stroke: p.accent,
+        });
+      }
     }
   });
   const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', expired: 'kedaluwarsa', open: 'masih berjalan' };
+  /** "28 Okt 21:45" for intraday bars, the date for daily ones. */
+  const stamp = (t: string) => {
+    const d = new Date(`${day(t)}T00:00:00Z`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    return t.length > 10 ? `${d} ${t.slice(11, 16)}` : d;
+  };
   async function pobSkill() {
     try {
       const { version } = await api.installSkill('pob-bystra');
@@ -601,14 +631,21 @@
           <span class="font-semibold">PoB BYSTRA · HTF {pobRes.htf}</span>
           <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={pobTally} onclick={() => (pobTally = !pobTally)}>{pobTally ? 'Tutup' : 'Tally'}</button>
         </div>
-        {#if pobLast}
-          <p class="font-medium" class:text-success={pobLast.side === 'BUY'} class:text-error={pobLast.side === 'SELL'}>{pobLast.label}</p>
+        {#if pobActive}
+          <p class="font-medium" class:text-success={pobActive.side === 'BUY'} class:text-error={pobActive.side === 'SELL'}>Aktif: {pobActive.label}</p>
           <p class="font-mono tabular-nums text-base-content/80">
-            {day(candles[pobLast.index].time)} · E {priceText(pobLast.entry)} · SL {priceText(pobLast.stopLoss)} · TP {priceText(pobLast.takeProfit)}
+            {stamp(candles[pobActive.index].time)} · E {priceText(pobActive.entry)} · SL {priceText(pobActive.stopLoss)} · TP {priceText(pobActive.takeProfit)}
           </p>
-          <p class="text-base-content/70">Status: {OUTCOME[pobLast.outcome]}</p>
         {:else}
-          <p class="text-base-content/70">Belum ada sinyal di candle yang dimuat.</p>
+          <p class="font-medium">Tidak ada sinyal aktif</p>
+          <p class="text-base-content/70">
+            {#if pobLast}
+              Terakhir: {pobLast.label}, {stamp(candles[pobLast.index].time)}, {OUTCOME[pobLast.outcome]}{pobLast.exitIndex != null ? ` ${stamp(candles[pobLast.exitIndex].time)}` : ''}.
+            {:else}
+              Belum ada sinyal di candle yang dimuat.
+            {/if}
+            Setup baru muncul saat harga kembali menguji zona; di gerak lurus tanpa retest, PoB memang menunggu.
+          </p>
         {/if}
         {#if pobTally}
           <table class="table-xs table">
