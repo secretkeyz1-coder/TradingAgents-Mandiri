@@ -244,7 +244,7 @@ export const watchRuns = pgTable(
   (t) => [uniqueIndex("watch_runs_user_day_idx").on(t.userId, t.day)],
 );
 
-export type SignalIndicator = "pob" | "scalper";
+export type SignalIndicator = "pob" | "scalper" | "fib";
 export type SignalStatus = "open" | "win" | "loss" | "expired" | "replaced";
 
 /** A user's request to hear about new signals of one indicator on one symbol and timeframe. */

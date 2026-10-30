@@ -28,6 +28,7 @@
   import Navigator from './chart/Navigator.svelte';
   import { BandPrimitive } from './chart/rectangle';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
+  import { fib, fibLevel } from './indicators/fib';
   import { pob, SETUPS } from './indicators/pob';
   import { scalper } from './indicators/scalper';
   import { indicators } from './stores/indicators.svelte';
@@ -224,6 +225,7 @@
     markers = createSeriesMarkers(candleSeries, []);
     candleSeries.attachPrimitive(band);
     candleSeries.attachPrimitive(pobBand);
+    candleSeries.attachPrimitive(fibBand);
     chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
       if (r) visible = { from: r.from, to: r.to };
     });
@@ -362,6 +364,65 @@
       }
     }
   });
+  // --- Fib golden zone (indicators/fib.ts): the leg waiting for its pullback, the running signal, recent ones as segments.
+  const fibOk = $derived(timeframe === '15m' || timeframe === '1h' || timeframe === '1d');
+  const fibRes = $derived(tools && indicators.fibOn && fibOk && candles.length ? fib(candles) : null);
+  const fibLast = $derived(fibRes?.signals.at(-1) ?? null);
+  const fibOpen = $derived(fibLast?.outcome === 'open' ? fibLast : null);
+  const fibBand = new BandPrimitive();
+  let fibLines: IPriceLine[] = [];
+  let fibSegments: ISeriesApi<'Line'>[] = [];
+  let fibTally = $state(false);
+  $effect(() => {
+    if (!mounted) return;
+    const p = palette;
+    const res = fibRes;
+    const open = fibOpen;
+    for (const x of fibLines) candleSeries!.removePriceLine(x);
+    for (const x of fibSegments) chart!.removeSeries(x);
+    fibLines = [];
+    fibSegments = [];
+    fibBand.set(null);
+    if (!res) return;
+    const level = (price: number, color: string, title: string, style: LineStyle) =>
+      fibLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+    const leg = res.active;
+    if (leg) {
+      const gold = tokenColor('--color-warning');
+      level(fibLevel(leg, 0.5), gold, 'Fib 0,5', LineStyle.Dotted);
+      level(fibLevel(leg, 0.618), gold, 'Fib 0,618', LineStyle.Dotted);
+      level(fibLevel(leg, 0.786), p.neutral, 'Fib 0,786 batal', LineStyle.SparseDotted);
+      fibBand.set({
+        from: toTime(candles[leg.to].time),
+        to: toTime(candles[candles.length - 1].time),
+        top: Math.max(fibLevel(leg, 0.5), fibLevel(leg, 0.618)),
+        bottom: Math.min(fibLevel(leg, 0.5), fibLevel(leg, 0.618)),
+        fill: tokenColor('--color-warning', 0.12),
+        stroke: gold,
+      });
+    }
+    if (open) {
+      level(open.entry, p.accent, `Fib ${open.side}`, LineStyle.Solid);
+      level(open.stopLoss, p.down, 'Fib SL', LineStyle.Dashed);
+      level(open.takeProfit, p.up, 'Fib TP', LineStyle.Dashed);
+    }
+    for (const sig of res.signals.filter((x) => x.outcome !== 'open').slice(-POB_HISTORY)) {
+      const end = Math.max(sig.index + 1, Math.min(sig.exitIndex ?? sig.index + 1, candles.length - 1));
+      for (const [price, color, style] of [
+        [sig.entry, p.accent, LineStyle.Solid],
+        [sig.stopLoss, p.down, LineStyle.Dashed],
+        [sig.takeProfit, p.up, LineStyle.Dashed],
+      ] as const) {
+        const s = chart!.addSeries(LineSeries, { color, lineWidth: 1, lineStyle: style, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        s.setData([
+          { time: toTime(candles[sig.index].time), value: price },
+          { time: toTime(candles[end].time), value: price },
+        ]);
+        fibSegments.push(s);
+      }
+    }
+  });
+
   const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', expired: 'kedaluwarsa', open: 'masih berjalan' };
   /** "28 Okt 21:45" for intraday bars, the date for daily ones. */
   const stamp = (t: string) => {
@@ -527,6 +588,11 @@
       const text = `${sig.setup}${sig.plus ? '+' : ''}${sig.ck3 ? ' CK3' : sig.ck2 ? ' CK2' : ''}`;
       list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text });
     }
+    for (const sig of fibRes?.signals ?? []) {
+      const at = candles[sig.index].time;
+      const buy = sig.side === 'BUY';
+      list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: 'FIB' });
+    }
     if (jumpMark && candles.some((c) => c.time === jumpMark)) {
       list.push({ at: jumpMark, time: toTime(jumpMark), position: 'aboveBar', shape: 'arrowDown', color: palette.accent, text: 'Tanggal' });
     }
@@ -605,6 +671,14 @@
           title={pobTf ? 'Setup PoB BYSTRA (SNR, QM, Manipulation, CK2/CK3)' : 'PoB BYSTRA hanya untuk timeframe 15m dan 1j'}
           onclick={() => indicators.togglePob()}>PoB BYSTRA</button
         >
+        <button
+          class="btn btn-xs"
+          class:btn-active={indicators.fibOn}
+          aria-pressed={indicators.fibOn}
+          disabled={!fibOk}
+          title={fibOk ? 'Fibonacci golden zone pullback (0,5–0,618)' : 'Fib Golden Zone untuk timeframe 15m, 1j dan 1H'}
+          onclick={() => indicators.toggleFib()}>Fib GZ</button
+        >
         <AlertsMenu {symbol} />
       {/if}
     </div>
@@ -627,8 +701,10 @@
         </tbody>
       </table>
     {/if}
-    {#if tools && pobRes}
-      <section class="absolute bottom-8 left-2 z-10 flex w-72 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="PoB BYSTRA">
+    {#if tools && (pobRes || fibRes)}
+      <div class="absolute bottom-8 left-2 z-10 flex w-72 flex-col gap-2">
+      {#if pobRes}
+      <section class="flex w-72 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="PoB BYSTRA">
         <div class="flex items-center gap-2">
           <span class="font-semibold">PoB BYSTRA · HTF {pobRes.htf}</span>
           <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={pobTally} onclick={() => (pobTally = !pobTally)}>{pobTally ? 'Tutup' : 'Tally'}</button>
@@ -669,6 +745,43 @@
           {#if pobSkillNote}<p class="text-base-content/80" role="status">{pobSkillNote}</p>{/if}
         {/if}
       </section>
+      {/if}
+      {#if fibRes}
+        <section class="flex w-72 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Fib Golden Zone">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold">Fib Golden Zone · {timeframe}</span>
+            <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={fibTally} onclick={() => (fibTally = !fibTally)}>{fibTally ? 'Tutup' : 'Tally'}</button>
+          </div>
+          {#if fibOpen}
+            <p class="font-medium" class:text-success={fibOpen.side === 'BUY'} class:text-error={fibOpen.side === 'SELL'}>Aktif: {fibOpen.label}</p>
+            <p class="font-mono tabular-nums text-base-content/80">
+              {stamp(candles[fibOpen.index].time)} · E {priceText(fibOpen.entry)} · SL {priceText(fibOpen.stopLoss)} · TP {priceText(fibOpen.takeProfit)}
+            </p>
+          {:else if fibRes.active}
+            {@const leg = fibRes.active}
+            <p class="font-medium">Menunggu pullback {leg.dir === 1 ? 'BUY' : 'SELL'}</p>
+            <p class="text-base-content/80">
+              Kaki {priceText(leg.fromPrice)} → {priceText(leg.toPrice)}. Zona
+              <span class="font-mono">{priceText(fibLevel(leg, 0.5))}–{priceText(fibLevel(leg, 0.618))}</span>, batal bila tutup melewati
+              <span class="font-mono">{priceText(fibLevel(leg, 0.786))}</span>.
+            </p>
+          {:else}
+            <p class="font-medium">Tidak ada sinyal aktif</p>
+            <p class="text-base-content/70">
+              {#if fibLast}Terakhir: {fibLast.label}, {stamp(candles[fibLast.index].time)}, {OUTCOME[fibLast.outcome]}.{:else}Belum ada sinyal di candle yang dimuat.{/if}
+              Menunggu kaki impuls baru (≥ 3 ATR, searah trend).
+            </p>
+          {/if}
+          {#if fibTally}
+            <p class="font-mono tabular-nums">
+              {fibRes.stats.count} sinyal · {fibRes.stats.wins} TP · {fibRes.stats.losses} SL · rata-rata
+              {fibRes.stats.avgR == null ? '—' : `${fibRes.stats.avgR.toFixed(2).replace('.', ',')}R`}
+            </p>
+            <p class="text-base-content/70">Uji asap pada {candles.length} candle yang dimuat, tanpa biaya. Bukan backtest.</p>
+          {/if}
+        </section>
+      {/if}
+      </div>
     {/if}
     {#if tools && indicators.scalperOn && indicators.settingsOpen}
       <div class="absolute top-2 left-2 z-20"><IndicatorPanel onclose={() => (indicators.settingsOpen = false)} /></div>

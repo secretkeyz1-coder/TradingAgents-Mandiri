@@ -443,6 +443,38 @@ def pob_signal(m: Market, timeframe: str = "15m", recent: int = 5) -> dict:
     }
 
 
+def fib_golden_zone(m: Market, timeframe: str = "1d", recent: int = 5) -> dict:
+    """Fibonacci golden zone pullbacks (fib.py): the leg still waiting for its
+    pullback, recent signals with frozen levels and outcomes, and a tally."""
+    from fib import fib, fib_level
+
+    df = _scalper_bars(m, timeframe)
+    bars = [{"time": r.Date, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)} for r in df.itertuples()]
+    result = fib(bars)
+    if result is None:
+        return {"timeframe": timeframe, "error": f"baru {len(bars)} candle {timeframe}, kurang untuk menghitung"}
+    leg = result["active"]
+    return {
+        "timeframe": timeframe,
+        "bars": len(bars),
+        "last_bar": bars[-1]["time"],
+        "waiting_leg": None if not leg else {
+            "direction": "naik (tunggu BUY)" if leg["dir"] == 1 else "turun (tunggu SELL)",
+            "from": {"time": bars[leg["from"]]["time"], "price": _r(leg["from_price"])},
+            "to": {"time": bars[leg["to"]]["time"], "price": _r(leg["to_price"])},
+            "golden_zone": {"0.5": _r(fib_level(leg, 0.5)), "0.618": _r(fib_level(leg, 0.618))},
+            "invalid_0.786": _r(fib_level(leg, 0.786)),
+        },
+        "recent_signals": [
+            {"time": x["time"], "label": x["label"], "entry": _r(x["entry"]), "stop_loss": _r(x["stop_loss"]),
+             "take_profit": _r(x["take_profit"]), "outcome": x["outcome"], "r": None if x["r"] is None else round(x["r"], 2)}
+            for x in result["signals"][-max(1, min(int(recent), 20)):]
+        ],
+        "tally_on_loaded_bars": result["stats"],
+        "note": "Tally = uji asap pada candle yang dimuat, tanpa biaya; bukan backtest. Sinyal hanya dari candle tutup.",
+    }
+
+
 def snapshot(m: Market) -> dict:
     """What the agent knows at the start of every turn: the same figures the tools
     return, computed up front, so a plain question ("RSI?", "draw S/R") costs no
@@ -593,6 +625,7 @@ SKILL_STEPS: dict[str, Callable] = {
     "latest_decisions": lambda m: latest_decisions(m.symbol),
     "scalper_signal": scalper_signal,
     "pob_signal": pob_signal,
+    "fib_golden_zone": fib_golden_zone,
 }
 SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
 
@@ -721,6 +754,13 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
         take profit and outcome, plus a per-setup tally over the loaded bars (a quick check, not a backtest)."""
         return json.dumps(pob_signal(m, timeframe, recent))
 
+    @tool("fib_golden_zone")
+    def fib_golden_zone_tool(timeframe: str = "1d", recent: int = 5) -> str:
+        """Fibonacci golden zone pullback signals on 15m, 1h or 1d bars: the impulse leg waiting for a pullback into
+        0.5-0.618 (with its levels), recent BUY/SELL signals with entry, stop (beyond 0.786), target and outcome,
+        and a tally over the loaded bars (a quick check, not a backtest)."""
+        return json.dumps(fib_golden_zone(m, timeframe, recent))
+
     @tool
     def draw_level(price: float, label: str, role: str = "neutral") -> str:
         """Draw a horizontal level. role: support, resistance or neutral."""
@@ -796,7 +836,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
     ) -> str:
         """Save a reusable way of working as a draft skill (only when the user asks or agrees).
         name: lowercase-with-dashes. steps: 1-6 of {"tool": one of get_market_summary, find_pivots, support_resistance,
-        fit_trendline, fibonacci, indicators, latest_decisions, scalper_signal, pob_signal, "args": {...}}; an arg may be "$param".
+        fit_trendline, fibonacci, indicators, latest_decisions, scalper_signal, pob_signal, fib_golden_zone, "args": {...}}; an arg may be "$param".
         instruction: what to conclude and draw from the step results; may use $param. params: defaults, e.g. {"lookback": 120}.
         It is tested on this symbol now; the user approves it before it can be used."""
         try:
@@ -816,7 +856,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     return [
         get_market_summary, find_pivots_tool, support_resistance_tool, fit_trendline_tool, fibonacci_tool,
-        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, draw_level, draw_trendline, draw_zone, draw_fib,
+        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, fib_golden_zone_tool, draw_level, draw_trendline, draw_zone, draw_fib,
         draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
     ]
 

@@ -114,8 +114,8 @@ export type SignalAlert = {
   id: string;
   symbol: string;
   tvSymbol: string;
-  indicator: 'pob' | 'scalper';
-  timeframe: '15m' | '1h';
+  indicator: 'pob' | 'scalper' | 'fib';
+  timeframe: '15m' | '1h' | '1d';
   primed: boolean;
   last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'expired' | 'replaced' } | null;
 };

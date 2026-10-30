@@ -26,13 +26,16 @@ const SLOT_MINUTES = 5;
 const SCAN_DELAY_MS = 60_000;
 const SCAN_TIMEOUT_MS = 4 * 60_000;
 
-export const COMBOS: { indicator: SignalIndicator; timeframe: "15m" | "1h"; label: string }[] = [
+export const COMBOS: { indicator: SignalIndicator; timeframe: "15m" | "1h" | "1d"; label: string }[] = [
   { indicator: "pob", timeframe: "15m", label: "PoB BYSTRA 15m" },
   { indicator: "pob", timeframe: "1h", label: "PoB BYSTRA 1j" },
   { indicator: "scalper", timeframe: "15m", label: "Scalper Pro+ 15m" },
+  { indicator: "fib", timeframe: "15m", label: "Fib Golden Zone 15m" },
+  { indicator: "fib", timeframe: "1h", label: "Fib Golden Zone 1j" },
+  { indicator: "fib", timeframe: "1d", label: "Fib Golden Zone harian" },
 ];
-const NAMES: Record<SignalIndicator, string> = { pob: "PoB BYSTRA", scalper: "Scalper Pro+" };
-const TF_LABEL: Record<string, string> = { "15m": "15m", "1h": "1j" };
+const NAMES: Record<SignalIndicator, string> = { pob: "PoB BYSTRA", scalper: "Scalper Pro+", fib: "Fib Golden Zone" };
+const TF_LABEL: Record<string, string> = { "15m": "15m", "1h": "1j", "1d": "harian" };
 
 type ScanSignal = {
   time: string;
@@ -48,8 +51,8 @@ type ScanSignal = {
 type Alert = typeof signalAlerts.$inferSelect;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-/** "2026-10-30 11:30" → "30 Okt 11:30". */
-const when = (t: string) => `${Number(t.slice(8, 10))} ${MONTHS[Number(t.slice(5, 7)) - 1]} ${t.slice(11, 16)}`;
+/** "2026-10-30 11:30" → "30 Okt 11:30"; a daily bar "2026-10-30" → "30 Okt 2026". */
+const when = (t: string) => `${Number(t.slice(8, 10))} ${MONTHS[Number(t.slice(5, 7)) - 1]} ${t.length > 10 ? t.slice(11, 16) : t.slice(0, 4)}`;
 const price = (v: number) => v.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
 
 function head(a: Alert) {
@@ -68,7 +71,7 @@ function openMessage(a: Alert, s: ScanSignal) {
   return [
     `<b>🔔 ${escape(s.label)}</b>`,
     escape(head(a)),
-    `Candle ${when(s.time)} (jam bursa), sudah tutup`,
+    s.time.length > 10 ? `Candle ${when(s.time)} (jam bursa), sudah tutup` : `Candle harian ${when(s.time)}, sudah tutup`,
     `Entry <b>${price(s.entry)}</b> · SL ${price(s.stop_loss)} · TP ${price(s.take_profit)}`,
     link(a),
     `<i>Data Yahoo${futures}. Riset, bukan saran investasi.</i>`,
@@ -107,7 +110,8 @@ async function scan(only?: string[], withHourly = true) {
       .from(signalAlerts)
       .innerJoin(users, eq(signalAlerts.userId, users.id))
       .where(and(eq(users.disabled, false), only?.length ? inArray(signalAlerts.id, only) : undefined));
-    const wanted = rows.filter((r) => withHourly || r.alert.timeframe !== "1h");
+    // Hourly and daily pairs ride every third slot (15 minutes); their bars close rarely.
+    const wanted = rows.filter((r) => withHourly || r.alert.timeframe === "15m");
     if (!wanted.length) return;
 
     const pairs = new Map<string, { symbol: string; timeframe: string; indicators: Set<string> }>();
@@ -221,8 +225,8 @@ alertsApi.get("/alerts", async (c) => {
 const alertSchema = z.object({
   symbol: z.string().regex(SYMBOL_PATTERN),
   tvSymbol: z.string().min(1).max(40),
-  indicator: z.enum(["pob", "scalper"]),
-  timeframe: z.enum(["15m", "1h"]),
+  indicator: z.enum(["pob", "scalper", "fib"]),
+  timeframe: z.enum(["15m", "1h", "1d"]),
 });
 
 alertsApi.post("/alerts", async (c) => {

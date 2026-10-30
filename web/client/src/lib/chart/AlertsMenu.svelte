@@ -76,7 +76,8 @@
   }
 
   const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP kena', loss: 'SL kena', expired: 'kedaluwarsa', replaced: 'diganti' };
-  const NAME: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+' };
+  const NAME: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone' };
+  const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '1d': 'harian' };
 </script>
 
 <div class="relative" bind:this={root}>
@@ -121,7 +122,7 @@
             {#each data.items as a (a.id)}
               <div class="flex items-center gap-2 text-xs">
                 <span class="min-w-0 flex-1 truncate">
-                  <span class="font-mono">{a.tvSymbol}</span> · {NAME[a.indicator]} {a.timeframe === '1h' ? '1j' : a.timeframe}
+                  <span class="font-mono">{a.tvSymbol}</span> · {NAME[a.indicator]} {TF[a.timeframe] ?? a.timeframe}
                   {#if a.last}<span class="block truncate text-base-content/70">{a.last.label} · {STATUS[a.last.status]}</span>{:else if !a.primed}<span class="block text-base-content/70">menyiapkan…</span>{/if}
                 </span>
                 <button class="btn btn-ghost btn-xs" aria-label="Hapus notifikasi {a.tvSymbol} {NAME[a.indicator]}" onclick={() => remove(a.id)}>Hapus</button>
