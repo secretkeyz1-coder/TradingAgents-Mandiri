@@ -7,8 +7,13 @@
   import UsersDialog from './account/UsersDialog.svelte';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
+  import { layout } from './stores/layout.svelte';
+  import { layoutOf, viewport } from './stores/viewport.svelte';
   import SymbolSearch from './SymbolSearch.svelte';
   import WorkspaceShell from './workspace/WorkspaceShell.svelte';
+
+  // Focus mode gives the chart the whole window; phones have no focus mode.
+  const framed = $derived(!layout.focus || layoutOf(viewport) === 'narrow');
 
   let menu: HTMLDetailsElement | undefined = $state();
   let dialog = $state<'profile' | 'users' | null>(null);
@@ -20,7 +25,7 @@
 </script>
 
 <div class="flex h-dvh flex-col bg-base-100">
-  <header class="flex shrink-0 items-center gap-3 border-b border-base-300 px-3 py-2 sm:px-4">
+  <header class="flex shrink-0 items-center gap-3 border-b border-base-300 px-3 py-2 sm:px-4" class:hidden={!framed}>
     <a href="#/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight" aria-label="TradingAgents">
       <Logo />
       <span class="hidden sm:inline">TradingAgents</span>

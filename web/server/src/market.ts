@@ -19,9 +19,11 @@ const cache = new Map<string, { at: number; value: CandleSeries }>();
 
 export const SYMBOL_PATTERN = /^[A-Za-z0-9.\-=^]{1,20}$/;
 export const RANGES = ["6mo", "1y", "2y", "5y"] as const;
-export const INTERVALS = ["1h", "4h", "1d", "1wk", "1mo"] as const;
+export const INTERVALS = ["15m", "1h", "4h", "1d", "1wk", "1mo"] as const;
 export type Interval = (typeof INTERVALS)[number];
-export const INTRADAY: readonly Interval[] = ["1h", "4h"];
+export const INTRADAY: readonly Interval[] = ["15m", "1h", "4h"];
+// Yahoo keeps 15-minute bars for 60 days; any range asks for the last month of them.
+const MINUTE_RANGE = "1mo";
 // Yahoo serves hourly bars for 730 days at most; 1y keeps clear of that edge.
 const INTRADAY_MAX_RANGE = "1y";
 
@@ -42,13 +44,14 @@ type YahooChart = {
 export async function getCandles(symbol: string, range: (typeof RANGES)[number], interval: Interval = "1d"): Promise<CandleSeries> {
   const intraday = INTRADAY.includes(interval);
   if (intraday && (range === "2y" || range === "5y")) range = INTRADAY_MAX_RANGE;
-  const key = `${symbol}|${range}|${interval}`;
+  const yahooRange = interval === "15m" ? MINUTE_RANGE : range;
+  const key = `${symbol}|${yahooRange}|${interval}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
   // 4h is not a Yahoo interval; it is built from hourly bars below.
   const yahooInterval = interval === "4h" ? "1h" : interval;
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${yahooInterval}`;
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${yahooRange}&interval=${yahooInterval}`;
   const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(15_000) });
   const body = (await res.json().catch(() => null)) as YahooChart | null;
   const result = body?.chart?.result?.[0];

@@ -143,6 +143,7 @@ export const publicUser = (u: User) => ({
   dailyAnalysisLimit: u.dailyAnalysisLimit,
   dailyChatLimit: u.dailyChatLimit,
   telegramChatId: u.telegramChatId,
+  preferences: u.preferences ?? {},
   createdAt: u.createdAt,
 });
 
@@ -212,6 +213,29 @@ meApi.patch("/me", async (c) => {
     .set({ telegramChatId: body.data.telegramChatId || null })
     .where(eq(users.id, c.get("user").id))
     .returning();
+  return c.json(publicUser(updated));
+});
+
+// The page's own settings (panel layout, indicator inputs). Opaque to the server:
+// each top-level key is replaced whole, null removes it, and the total is capped.
+const PREFERENCE_KEYS = ["layout", "indicators"] as const;
+const MAX_PREFERENCES_BYTES = 16_000;
+
+meApi.patch("/me/preferences", async (c) => {
+  const body = z
+    .object(Object.fromEntries(PREFERENCE_KEYS.map((k) => [k, z.record(z.string(), z.unknown()).nullable().optional()])))
+    .strict()
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "Preferensi tidak valid" }, 400);
+  // Read fresh: without sign-in the request user is a cached object.
+  const [me] = await db.select().from(users).where(eq(users.id, c.get("user").id));
+  const next: Record<string, unknown> = { ...(me.preferences ?? {}) };
+  for (const [key, value] of Object.entries(body.data)) {
+    if (value === null) delete next[key];
+    else if (value !== undefined) next[key] = value;
+  }
+  if (JSON.stringify(next).length > MAX_PREFERENCES_BYTES) return c.json({ error: "Preferensi terlalu besar" }, 413);
+  const [updated] = await db.update(users).set({ preferences: next }).where(eq(users.id, me.id)).returning();
   return c.json(publicUser(updated));
 });
 

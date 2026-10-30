@@ -142,6 +142,48 @@ agentApi.get("/agent/skills", async (c) => {
 });
 
 /**
+ * Skills the app ships, added as a draft on request (the indicator settings
+ * offer it). Same shape the worker's validate_skill accepts, and like any draft
+ * the user approves it before the agent can use it.
+ */
+const BUILTIN_SKILLS: Record<string, SkillDefinition> = {
+  "scalper-pro-plus": {
+    name: "scalper-pro-plus",
+    title: "Scalper Pro+",
+    description: "Sinyal UT Bot dengan filter EMA, RSI dan liquidity sweep, plus entry, stop loss dan take profit berbasis ATR.",
+    when_to_use: "Saat pengguna menanyakan setup scalping, sinyal Scalper Pro+, atau entry/SL/TP jangka pendek.",
+    instruction:
+      "Baca hasil scalper_signal. Jika last_signal ada: sebut sisinya (BUY/SELL), waktu candle sinyal, entry, stop loss, take profit, " +
+      "trend, RSI dan sweep, lalu gambar dengan draw_trade_plan (side long untuk BUY, short untuk SELL; entry=entry, stop=stop_loss, " +
+      "target=take_profit) dan draw_zone untuk entry_zone (role demand untuk BUY, supply untuk SELL). Jika tidak ada sinyal, katakan WAIT " +
+      "dan sebut trend serta UT trail terakhir. Sebut timeframe $timeframe, dan bahwa sinyal hanya dari candle yang sudah tutup. " +
+      "Ini riset, bukan saran investasi.",
+    params: { timeframe: "15m", sensitivity: 1, atr_period: 10, sl_atr: 1.5, risk_reward: 2 },
+    steps: [
+      {
+        tool: "scalper_signal",
+        args: { timeframe: "$timeframe", sensitivity: "$sensitivity", atr_period: "$atr_period", sl_atr: "$sl_atr", risk_reward: "$risk_reward" },
+      },
+    ],
+  },
+};
+
+agentApi.post("/agent/skills/builtin/:name", async (c) => {
+  const definition = BUILTIN_SKILLS[c.req.param("name")];
+  if (!definition) return c.json({ error: "Not found" }, 404);
+  const userId = c.get("user").id;
+  const [{ latest }] = await db
+    .select({ latest: max(agentSkills.version) })
+    .from(agentSkills)
+    .where(and(eq(agentSkills.userId, userId), eq(agentSkills.name, definition.name)));
+  const [row] = await db
+    .insert(agentSkills)
+    .values({ userId, name: definition.name, version: (latest ?? 0) + 1, definition })
+    .returning({ id: agentSkills.id, version: agentSkills.version });
+  return c.json(row, 201);
+});
+
+/**
  * Skill lifecycle. Only the user moves a skill between states; the agent can
  * only propose drafts. Activating a version archives the name's other active one.
  */

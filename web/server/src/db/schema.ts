@@ -71,6 +71,8 @@ export const users = pgTable("users", {
   dailyChatLimit: integer("daily_chat_limit"),
   /** Where this user's watchlist summary goes, through the server's one bot. */
   telegramChatId: text("telegram_chat_id"),
+  /** What the page remembers for this account across browsers: saved panel layout, indicator settings. */
+  preferences: jsonb("preferences").$type<Record<string, unknown>>().notNull().default({}),
   /** In every session cookie; bumping it signs the user out everywhere. */
   sessionVersion: integer("session_version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

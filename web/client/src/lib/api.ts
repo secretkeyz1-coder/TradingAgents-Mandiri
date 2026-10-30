@@ -94,6 +94,8 @@ export type Account = {
   dailyAnalysisLimit: number | null;
   dailyChatLimit: number | null;
   telegramChatId: string | null;
+  /** The page's own per-account settings: saved layout, indicator inputs. */
+  preferences: { layout?: Record<string, unknown>; indicators?: Record<string, unknown> };
   createdAt: string;
 };
 
@@ -107,7 +109,7 @@ export type Backtest = BacktestSummary & {
 
 import { auth } from './auth.svelte';
 
-export const INTERVALS = ['1h', '4h', '1d', '1wk', '1mo'] as const;
+export const INTERVALS = ['15m', '1h', '4h', '1d', '1wk', '1mo'] as const;
 export type Interval = (typeof INTERVALS)[number];
 
 /** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's time zone for intraday. */
@@ -253,6 +255,9 @@ export const api = {
   list: (everyone = false) => request<AnalysisSummary[]>(`/analyses${everyone ? '?scope=all' : ''}`),
   me: () => request<Account>('/me'),
   updateMe: (patch: { telegramChatId: string | null }) => request<Account>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
+  /** Each key replaces that preference whole; null removes it. */
+  updatePreferences: (patch: Partial<Record<keyof Account['preferences'], Record<string, unknown> | null>>) =>
+    request<Account>('/me/preferences', { method: 'PATCH', body: JSON.stringify(patch) }),
   changePassword: (current: string, next: string) =>
     request<{ ok: true }>('/me/password', { method: 'POST', body: JSON.stringify({ current, next }) }),
   users: () => request<Account[]>('/users'),
@@ -286,6 +291,8 @@ export const api = {
   skills: () => request<AgentSkill[]>('/agent/skills'),
   skillAction: (id: string, action: 'approve' | 'reject' | 'disable' | 'enable' | 'restore') =>
     request<{ ok: true }>(`/agent/skills/${id}/${action}`, { method: 'POST' }),
+  /** Add one of the app's own skills as a draft for this user to approve. */
+  installSkill: (name: string) => request<{ id: string; version: number }>(`/agent/skills/builtin/${encodeURIComponent(name)}`, { method: 'POST' }),
   deleteSkill: (name: string) => request<{ ok: true }>(`/agent/skills/by-name/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   drawings: (symbol: string) => request<Drawing[]>(`/drawings?symbol=${encodeURIComponent(symbol)}`),
   deleteDrawing: (id: string) => request<{ ok: true }>(`/drawings/${id}`, { method: 'DELETE' }),

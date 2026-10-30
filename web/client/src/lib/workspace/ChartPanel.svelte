@@ -1,14 +1,17 @@
 <script lang="ts">
   // The symbol in focus: TradingView's full chart, or the engine's daily
-  // candles with every AI decision marked.
+  // candles with every AI decision marked, plus the chart's own tools (zoom,
+  // jump to a date, navigator, Scalper Pro+). On a desktop screen the header
+  // also holds focus mode and the layout menu.
   import DecisionChart from '../DecisionChart.svelte';
-  import TradingViewWidget from '../TradingViewWidget.svelte';
   import { agent, LAYERS } from '../stores/agent.svelte';
+  import { layout } from '../stores/layout.svelte';
+  import { layoutOf, viewport } from '../stores/viewport.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { theme, tokenColor } from '../theme.svelte';
-
-  let { onmarket }: { onmarket?: () => void } = $props();
+  import TradingViewWidget from '../TradingViewWidget.svelte';
+  import LayoutMenu from './LayoutMenu.svelte';
 
   // The chart canvas takes the panel's own surface and hairline colours.
   const surface = $derived.by(() => {
@@ -33,31 +36,38 @@
   );
   const view = $derived(ws.chartView === 'ai' && ws.yahoo ? 'ai' : 'tv');
   const watched = $derived(watch.has(ws.yahoo));
+  const desktop = $derived(layoutOf(viewport) !== 'narrow');
   watch.load();
-  let bodyHeight = $state(0);
+
+  // TradingView's embed cannot be told to go to a date, so the button opens the
+  // AI chart (our own canvas) and its date box.
+  let jumpRequest = $state(0);
+  function jumpToDate() {
+    if (view === 'tv') ws.setChartView('ai');
+    jumpRequest++;
+  }
 </script>
 
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Chart">
-  <header class="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-3">
-    {#if onmarket}
-      <button class="btn btn-ghost btn-xs" onclick={onmarket}>Pasar</button>
-    {/if}
+  <header class="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-base-300 px-3 py-1">
     <h2 class="truncate font-mono text-sm font-semibold">{ws.symbol}</h2>
     <span class="badge badge-xs badge-ghost hidden gap-1 whitespace-nowrap sm:inline-flex" title={freshness.title}>
       <span class="status status-xs {freshness.status}" aria-hidden="true"></span>
       {freshness.label}
     </span>
+    <span class="flex-1"></span>
     {#if ws.yahoo}
       <button
-        class="btn btn-ghost btn-xs ml-auto shrink-0 gap-1"
+        class="btn btn-ghost btn-xs shrink-0 gap-1"
         aria-pressed={watched}
         title={watched ? 'Hapus dari watchlist' : 'Analisa otomatis tiap hari bursa, hasilnya ke Telegram'}
         onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
       >
         <span class:text-accent={watched} aria-hidden="true">{watched ? '★' : '☆'}</span>{watched ? 'Dipantau' : 'Pantau'}
       </button>
+      <button class="btn btn-ghost btn-xs shrink-0" title="Buka chart Keputusan AI di tanggal tertentu" onclick={jumpToDate}>Lompat ke tanggal</button>
     {/if}
-    <div class="join shrink-0" class:ml-auto={!ws.yahoo}>
+    <div class="join shrink-0">
       <button class="btn btn-xs join-item" class:btn-active={view === 'tv'} onclick={() => ws.setChartView('tv')}>TradingView</button>
       <button
         class="btn btn-xs join-item"
@@ -67,23 +77,32 @@
         onclick={() => ws.setChartView('ai')}>Keputusan AI</button
       >
     </div>
+    {#if desktop}
+      <button class="btn btn-xs shrink-0" class:btn-active={layout.focus} aria-pressed={layout.focus} title="Tombol F" onclick={() => layout.toggleFocus()}>
+        {layout.focus ? 'Keluar fokus' : 'Fokus'}
+      </button>
+      <LayoutMenu />
+    {/if}
   </header>
-  <div class="min-h-0 flex-1 overflow-hidden" bind:clientHeight={bodyHeight}>
+  <div class="min-h-0 flex-1 overflow-hidden">
     {#if view === 'ai' && ws.yahoo}
-      <div class="p-3">
-        {#key ws.yahoo}
-          <DecisionChart
-            symbol={ws.yahoo}
-            height={Math.max(200, bodyHeight - (agent.drawings.length ? 96 : 64))}
-            showTable={false}
-            refresh={ws.decisionsVersion}
-            drawings={agent.visibleDrawings}
-            timeframe={ws.timeframe}
-            onTimeframe={(tf) => ws.setTimeframe(tf)}
-          />
-        {/key}
+      <div class="flex h-full min-h-0 flex-col gap-2 p-3">
+        <div class="min-h-0 flex-1">
+          {#key ws.yahoo}
+            <DecisionChart
+              symbol={ws.yahoo}
+              showTable={false}
+              refresh={ws.decisionsVersion}
+              drawings={agent.visibleDrawings}
+              timeframe={ws.timeframe}
+              onTimeframe={(tf) => ws.setTimeframe(tf)}
+              {jumpRequest}
+              tools
+            />
+          {/key}
+        </div>
         {#if agent.drawings.length}
-          <div class="mt-2 flex flex-wrap items-center gap-1" aria-label="Layer gambar agent">
+          <div class="flex shrink-0 flex-wrap items-center gap-1" aria-label="Layer gambar agent">
             {#each LAYERS.filter((l) => agent.drawings.some((d) => d.kind === l.key)) as layer (layer.key)}
               <button class="btn btn-xs" class:btn-active={!agent.hidden[layer.key]} aria-pressed={!agent.hidden[layer.key]} onclick={() => agent.toggleLayer(layer.key)}>
                 {layer.label}

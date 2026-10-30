@@ -23,7 +23,12 @@
   } from 'lightweight-charts';
   import { onMount } from 'svelte';
   import { api, type Candle, type Decision, type Drawing, type Interval } from './api';
+  import IndicatorPanel from './chart/IndicatorPanel.svelte';
+  import Navigator from './chart/Navigator.svelte';
+  import { BandPrimitive } from './chart/rectangle';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
+  import { scalper } from './indicators/scalper';
+  import { indicators } from './stores/indicators.svelte';
   import { theme, tokenColor } from './theme.svelte';
 
   let {
@@ -36,6 +41,8 @@
     drawings = [],
     timeframe: givenTimeframe = undefined,
     onTimeframe = undefined,
+    jumpRequest = 0,
+    tools = false,
   }: {
     /** Yahoo symbol, as the engine and the analyses store it (BBCA.JK). */
     symbol: string;
@@ -51,6 +58,10 @@
     /** Candle timeframe, when the caller owns it (the workspace keeps it in the URL); else chosen here. */
     timeframe?: Interval;
     onTimeframe?: (tf: Interval) => void;
+    /** Bump it to open the jump-to-date box (the chart header's button). */
+    jumpRequest?: number;
+    /** The workspace chart: zoom, jump to date, navigator and indicators. */
+    tools?: boolean;
   } = $props();
 
   // The engine scores a decision over this many trading days from the first close after its date.
@@ -63,6 +74,7 @@
   ] as const;
   type Range = (typeof RANGES)[number]['value'];
   const TIMEFRAMES: { value: Interval; label: string; title: string }[] = [
+    { value: '15m', label: '15m', title: '15 menit (1 bulan terakhir)' },
     { value: '1h', label: '1j', title: '1 jam' },
     { value: '4h', label: '4j', title: '4 jam' },
     { value: '1d', label: '1H', title: '1 hari' },
@@ -75,7 +87,7 @@
   let range = $state<Range>('1y');
   let ownTimeframe = $state<Interval>('1d');
   const timeframe = $derived(givenTimeframe ?? ownTimeframe);
-  const intraday = $derived(timeframe === '1h' || timeframe === '4h');
+  const intraday = $derived(timeframe === '15m' || timeframe === '1h' || timeframe === '4h');
   let candles = $state<Candle[]>([]);
   let currency = $state<string | null>(null);
   let loadError = $state('');
@@ -86,7 +98,7 @@
   function pickTimeframe(tf: Interval) {
     if (onTimeframe) onTimeframe(tf);
     else ownTimeframe = tf;
-    if ((tf === '1h' || tf === '4h') && !INTRADAY_RANGES.includes(range)) range = '1y';
+    if ((tf === '15m' || tf === '1h' || tf === '4h') && !INTRADAY_RANGES.includes(range)) range = '1y';
   }
 
   // Candle times: a date for daily and up, the exchange's wall-clock time for
@@ -208,6 +220,10 @@
     volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     markers = createSeriesMarkers(candleSeries, []);
+    candleSeries.attachPrimitive(band);
+    chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+      if (r) visible = { from: r.from, to: r.to };
+    });
     mounted = true;
     return () => {
       chart?.remove();
@@ -225,6 +241,111 @@
     });
     candleSeries!.applyOptions({ upColor: p.up, downColor: p.down, wickUpColor: p.up, wickDownColor: p.down });
   });
+
+  // --- Scalper Pro+ (indicators/scalper.ts), drawn from the same candles.
+  const band = new BandPrimitive();
+  const ind = $derived(tools && indicators.scalperOn && candles.length ? scalper(candles, indicators.scalper) : null);
+  let indSeries: ISeriesApi<'Line'>[] = [];
+  let indLines: IPriceLine[] = [];
+  $effect(() => {
+    if (!mounted) return;
+    const p = palette;
+    const r = ind;
+    const s = indicators.scalper;
+    for (const x of indSeries) chart!.removeSeries(x);
+    for (const x of indLines) candleSeries!.removePriceLine(x);
+    indSeries = [];
+    indLines = [];
+    band.set(null);
+    if (!r) return;
+    const gold = tokenColor('--color-warning');
+    const blue = tokenColor('--color-info');
+    const line = (values: number[], color: string, width: 1 | 2 | 3, from = 0) => {
+      const series = chart!.addSeries(LineSeries, { color, lineWidth: width, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      series.setData(values.slice(from).map((v, i) => ({ time: toTime(candles[i + from].time), value: v })));
+      indSeries.push(series);
+    };
+    if (s.showEmas) {
+      line(r.emaSlow, blue, 2, Math.min(s.emaSlow, candles.length - 1));
+      line(r.emaFast, tokenColor('--color-warning', 0.55), 1, Math.min(s.emaFast, candles.length - 1));
+    }
+    if (s.showTrail) line(r.trail, gold, 2, 1);
+    if (s.showTrendlines) {
+      const last = candles.length - 1;
+      for (const [t, color] of [[r.resistance, p.down], [r.support, p.up]] as const) {
+        if (!t) continue;
+        const series = chart!.addSeries(LineSeries, { color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        series.setData([
+          { time: toTime(candles[t.from].time), value: t.fromPrice },
+          { time: toTime(candles[last].time), value: t.fromPrice + t.slope * (last - t.from) },
+        ]);
+        indSeries.push(series);
+      }
+    }
+    const setup = r.setup;
+    if (setup && s.showZone) {
+      const color = setup.side === 'BUY' ? p.up : p.down;
+      const level = (price: number, c: string, title: string, style: LineStyle) =>
+        indLines.push(candleSeries!.createPriceLine({ price, color: c, lineWidth: 2, lineStyle: style, axisLabelVisible: true, title }));
+      level(setup.entry, gold, setup.side, LineStyle.Solid);
+      level(setup.stopLoss, p.down, 'SL', LineStyle.Dashed);
+      level(setup.takeProfit, p.up, 'TP', LineStyle.Dashed);
+      const end = Math.min(setup.index + Math.round(s.extendBars), candles.length - 1);
+      band.set({
+        from: toTime(candles[setup.index].time),
+        to: toTime(candles[end].time),
+        top: setup.zoneTop,
+        bottom: setup.zoneBottom,
+        fill: setup.side === 'BUY' ? tokenColor('--color-success', 0.14) : tokenColor('--color-error', 0.14),
+        stroke: color,
+      });
+    }
+  });
+  const priceText = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
+
+  // --- Navigation: zoom, jump to a date, the navigator strip.
+  let visible = $state({ from: 0, to: 0 });
+  function zoom(factor: number) {
+    const ts = chart?.timeScale();
+    const r = ts?.getVisibleLogicalRange();
+    if (!ts || !r) return;
+    const mid = (r.from + r.to) / 2;
+    const half = Math.max(5, ((r.to - r.from) / 2) * factor);
+    ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
+  }
+  const reset = () => chart?.timeScale().fitContent();
+  const showRange = (from: number, to: number) => chart?.timeScale().setVisibleLogicalRange({ from, to });
+
+  const WINDOWS = [
+    { days: 7, label: '±1 mg' },
+    { days: 30, label: '±1 bln' },
+    { days: 91, label: '±3 bln' },
+  ];
+  let jumpOpen = $state(false);
+  let jumpDate = $state('');
+  let jumpDays = $state(30);
+  let jumpMark = $state<string | null>(null);
+  let jumpError = $state('');
+  $effect(() => {
+    if (jumpRequest) jumpOpen = true;
+  });
+  const shift = (d: string, days: number) => new Date(Date.parse(d) + days * 86_400_000).toISOString().slice(0, 10);
+  function jumpTo(date: string) {
+    jumpError = '';
+    if (!date || !candles.length) return;
+    const at = candles.findIndex((c) => day(c.time) >= date);
+    if (at < 0 || day(candles[0].time) > date) {
+      jumpError = `Data yang dimuat mulai ${day(candles[0].time)} sampai ${day(candles.at(-1)!.time)}. Pilih rentang yang lebih panjang (5T) atau tanggal lain.`;
+      return;
+    }
+    const lo = candles.findIndex((c) => day(c.time) >= shift(date, -jumpDays));
+    const hiFound = candles.findIndex((c) => day(c.time) > shift(date, jumpDays));
+    const hi = hiFound < 0 ? candles.length - 1 : hiFound;
+    showRange(Math.max(0, lo) - 0.5, hi + 0.5);
+    jumpMark = candles[at].time;
+    jumpOpen = false;
+  }
+  const lastDecision = $derived(decisions.reduce<string | null>((max, d) => (!max || d.date > max ? d.date : max), null));
 
   // A cached range switch answers in milliseconds; only a slow one earns a spinner.
   let showSpinner = $state(false);
@@ -317,12 +438,22 @@
       const at = atDay(d.data.time);
       if (at) list.push({ at, time: toTime(at), position: 'aboveBar', shape: 'square', color: palette.accent, text: d.label });
     }
+    // Scalper Pro+ marks only its newest signal, as the script does.
+    const setup = ind?.setup;
+    if (setup && indicators.scalper.showZone) {
+      const at = candles[setup.index].time;
+      const buy = setup.side === 'BUY';
+      list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: setup.side });
+    }
+    if (jumpMark && candles.some((c) => c.time === jumpMark)) {
+      list.push({ at: jumpMark, time: toTime(jumpMark), position: 'aboveBar', shape: 'arrowDown', color: palette.accent, text: 'Tanggal' });
+    }
     list.sort((a, b) => a.at.localeCompare(b.at));
     markers!.setMarkers(list.map(({ at: _, ...m }) => m));
   });
 </script>
 
-<div class="flex flex-col gap-3">
+<div class="flex flex-col gap-3" class:h-full={tools}>
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
       <span class="font-mono font-semibold text-base-content">{symbol}</span>
@@ -346,10 +477,14 @@
         {#each RANGES as r (r.value)}
           <button
             class="btn btn-xs join-item"
-            class:btn-active={range === r.value}
+            class:btn-active={range === r.value && timeframe !== '15m'}
             aria-pressed={range === r.value}
-            disabled={intraday && !INTRADAY_RANGES.includes(r.value)}
-            title={intraday && !INTRADAY_RANGES.includes(r.value) ? 'Candle per jam tersedia maksimal 1 tahun' : undefined}
+            disabled={timeframe === '15m' || (intraday && !INTRADAY_RANGES.includes(r.value))}
+            title={timeframe === '15m'
+              ? 'Candle 15 menit: 1 bulan terakhir'
+              : intraday && !INTRADAY_RANGES.includes(r.value)
+                ? 'Candle per jam tersedia maksimal 1 tahun'
+                : undefined}
             onclick={() => {
               range = r.value;
               rangeChosen = true;
@@ -357,11 +492,86 @@
           >
         {/each}
       </div>
+      {#if tools}
+        <div class="join" role="group" aria-label="Zoom">
+          <button class="btn btn-xs join-item" aria-label="Perkecil" onclick={() => zoom(1.5)}>−</button>
+          <button class="btn btn-xs join-item" aria-label="Perbesar" onclick={() => zoom(0.66)}>+</button>
+          <button class="btn btn-xs join-item" onclick={reset}>Reset</button>
+        </div>
+        <button class="btn btn-xs" class:btn-active={jumpOpen} aria-expanded={jumpOpen} onclick={() => (jumpOpen = !jumpOpen)}>Tanggal</button>
+        <div class="join">
+          <button class="btn btn-xs join-item" class:btn-active={indicators.scalperOn} aria-pressed={indicators.scalperOn} onclick={() => indicators.toggle()}>
+            Scalper Pro+
+          </button>
+          {#if indicators.scalperOn}
+            <button
+              class="btn btn-xs join-item"
+              class:btn-active={indicators.settingsOpen}
+              aria-label="Pengaturan Scalper Pro+"
+              aria-expanded={indicators.settingsOpen}
+              onclick={() => (indicators.settingsOpen = !indicators.settingsOpen)}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
+            </button>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 
-  <div class="relative w-full" style="height: {height}px">
+  <!-- The workspace chart fills its panel; elsewhere it has a fixed height. -->
+  <div class="relative w-full" class:min-h-48={tools} class:flex-1={tools} style={tools ? '' : `height: ${height}px`}>
     <div bind:this={container} class="h-full w-full"></div>
+    {#if tools && ind && indicators.scalper.showDashboard}
+      <table class="pointer-events-none absolute top-2 right-16 z-10 w-52 rounded-box border border-warning/50 bg-base-100/90 text-xs shadow-sm">
+        <caption class="rounded-t-box bg-base-200 px-2 py-1 text-left font-semibold text-warning">Scalper Pro+ · {timeframe}</caption>
+        <tbody class="font-mono tabular-nums">
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Trend</td><td class="px-2 text-right" class:text-success={ind.trend === 'BULLISH'} class:text-error={ind.trend === 'BEARISH'}>{ind.trend}</td></tr>
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Sinyal terakhir</td><td class="px-2 text-right" class:text-success={ind.setup?.side === 'BUY'} class:text-error={ind.setup?.side === 'SELL'}>{ind.setup?.side ?? 'WAIT'}</td></tr>
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">RSI</td><td class="px-2 text-right">{ind.rsi.toFixed(1).replace('.', ',')}</td></tr>
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Sweep</td><td class="px-2 text-right">{ind.sweep}</td></tr>
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Entry</td><td class="px-2 text-right">{ind.setup ? priceText(ind.setup.entry) : '—'}</td></tr>
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Stop loss</td><td class="px-2 text-right text-error">{ind.setup ? priceText(ind.setup.stopLoss) : '—'}</td></tr>
+          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Take profit</td><td class="px-2 pb-1 text-right text-success">{ind.setup ? priceText(ind.setup.takeProfit) : '—'}</td></tr>
+        </tbody>
+      </table>
+    {/if}
+    {#if tools && indicators.scalperOn && indicators.settingsOpen}
+      <div class="absolute top-2 left-2 z-20"><IndicatorPanel onclose={() => (indicators.settingsOpen = false)} /></div>
+    {/if}
+    {#if tools && jumpOpen}
+      <form
+        class="ta-pop absolute top-2 right-16 z-30 flex w-72 flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3 shadow-xl"
+        aria-label="Lompat ke tanggal"
+        onsubmit={(e) => {
+          e.preventDefault();
+          jumpTo(jumpDate);
+        }}
+      >
+        <label class="flex flex-col gap-1 text-xs text-base-content/80">Tanggal
+          <input class="input input-sm font-mono" type="date" bind:value={jumpDate} required />
+        </label>
+        <div class="join w-full" role="group" aria-label="Lebar jendela">
+          {#each WINDOWS as w (w.days)}
+            <button type="button" class="btn btn-xs join-item flex-1" class:btn-active={jumpDays === w.days} aria-pressed={jumpDays === w.days} onclick={() => (jumpDays = w.days)}>{w.label}</button>
+          {/each}
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          {#if lastDecision}
+            <button type="button" class="btn btn-xs" onclick={() => ((jumpDate = lastDecision!), jumpTo(lastDecision!))}>Keputusan AI terakhir</button>
+          {/if}
+          {#if ind?.setup}
+            <button type="button" class="btn btn-xs" onclick={() => ((jumpDate = day(candles[ind!.setup!.index].time)), jumpTo(jumpDate))}>Sinyal Scalper</button>
+          {/if}
+          <button type="button" class="btn btn-xs" onclick={() => ((jumpDate = new Date().toLocaleDateString('en-CA')), jumpTo(jumpDate))}>Hari ini</button>
+        </div>
+        {#if jumpError}<p class="text-xs text-error" role="alert">{jumpError}</p>{/if}
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => (jumpOpen = false)}>Batal</button>
+          <button class="btn btn-primary btn-sm flex-1">Lompat</button>
+        </div>
+      </form>
+    {/if}
     {#if loading}
       {#if showSpinner}
         <div class="absolute inset-0 grid place-items-center"><span class="loading loading-spinner"></span></div>
@@ -371,7 +581,11 @@
     {/if}
   </div>
 
-  {#if timeframe !== '1d'}
+  {#if tools && candles.length > 1}
+    <Navigator closes={candles.map((c) => c.close)} from={visible.from} to={visible.to} onchange={showRange} />
+  {/if}
+
+  {#if timeframe !== '1d' && !tools}
     <p class="text-xs text-base-content/70">
       Engine, marker keputusan, dan gambar agent dihitung dari candle harian; di timeframe ini sebuah tanggal ditaruh di candle pertama hari itu.
     </p>

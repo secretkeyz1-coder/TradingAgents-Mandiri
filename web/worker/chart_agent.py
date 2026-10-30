@@ -20,6 +20,8 @@ from datetime import date, timedelta
 import pandas as pd
 
 MAX_STEPS = 8
+# Scalper Pro+ reads recent intraday bars; same window the page's chart loads, so both find the same signal.
+SCALPER_BARS = {"15m": ("15m", "1mo"), "1h": ("60m", "1y")}
 MAX_TOOL_CALLS = 24
 FIB_RATIOS = (0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
 
@@ -211,6 +213,158 @@ def indicators(m: Market) -> dict:
     }
 
 
+def _scalper_bars(m: Market, timeframe: str) -> pd.DataFrame:
+    """Daily bars from the turn's market, or recent intraday bars from Yahoo."""
+    if timeframe == "1d":
+        return m.df[["Date", "Open", "High", "Low", "Close"]].copy()
+    if timeframe not in SCALPER_BARS:
+        raise ValueError("timeframe harus 15m, 1h atau 1d")
+    import yfinance as yf
+
+    interval, period = SCALPER_BARS[timeframe]
+    df = yf.Ticker(m.symbol).history(period=period, interval=interval, auto_adjust=False)
+    if df.empty:
+        raise ValueError(f"Yahoo tidak punya candle {timeframe} untuk {m.symbol}")
+    df = df.reset_index()
+    # Exchange-local wall-clock time, as the page's chart shows it.
+    df["Date"] = pd.to_datetime(df[df.columns[0]]).dt.strftime("%Y-%m-%d %H:%M")
+    return df[["Date", "Open", "High", "Low", "Close"]].dropna().reset_index(drop=True)
+
+
+def scalper_signal(
+    m: Market,
+    timeframe: str = "15m",
+    sensitivity: float = 1.0,
+    atr_period: int = 10,
+    use_heikin_ashi: int = 0,
+    ema_fast: int = 20,
+    ema_slow: int = 50,
+    rsi_period: int = 14,
+    rsi_buy_min: float = 50,
+    rsi_sell_max: float = 50,
+    use_trend_filter: int = 1,
+    use_rsi_filter: int = 1,
+    use_sweep: int = 0,
+    pivot_len: int = 5,
+    atr_risk: int = 14,
+    sl_atr: float = 1.5,
+    risk_reward: float = 2.0,
+    entry_zone_atr: float = 0.25,
+) -> dict:
+    """Scalper Pro+ (the user's Pine script): UT Bot trail crossings, filtered by
+    the EMA trend, RSI and optionally a liquidity sweep, with ATR stop/target.
+    Mirrors web/client/src/lib/indicators/scalper.ts; change both together.
+    Signals come only from closed bars: the newest bar may still be forming."""
+    df = _scalper_bars(m, timeframe)
+    n = len(df)
+    if n < max(int(ema_slow), int(atr_risk)) + 5:
+        return {"timeframe": timeframe, "error": f"baru {n} candle {timeframe}, kurang untuk menghitung"}
+    o, h, lo, c = (df[k].astype(float).tolist() for k in ("Open", "High", "Low", "Close"))
+    src = [(o[i] + h[i] + lo[i] + c[i]) / 4 for i in range(n)] if use_heikin_ashi else c
+
+    def rma(values: list[float], length: int) -> list[float]:
+        out = [values[0]]
+        for v in values[1:]:
+            out.append((out[-1] * (length - 1) + v) / length)
+        return out
+
+    def ema(values: list[float], length: int) -> list[float]:
+        k = 2 / (length + 1)
+        out = [values[0]]
+        for v in values[1:]:
+            out.append(v * k + out[-1] * (1 - k))
+        return out
+
+    tr = [h[0] - lo[0]] + [max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])) for i in range(1, n)]
+    atr_ut, atr_rk = rma(tr, int(atr_period)), rma(tr, int(atr_risk))
+    trail = [src[0] - float(sensitivity) * atr_ut[0]]
+    for i in range(1, n):
+        prev, s, s1, loss = trail[-1], src[i], src[i - 1], float(sensitivity) * atr_ut[i]
+        if s > prev and s1 > prev:
+            trail.append(max(prev, s - loss))
+        elif s < prev and s1 < prev:
+            trail.append(min(prev, s + loss))
+        else:
+            trail.append(s - loss if s > prev else s + loss)
+    fast, slow = ema(c, int(ema_fast)), ema(c, int(ema_slow))
+    gain = rma([0.0] + [max(c[i] - c[i - 1], 0.0) for i in range(1, n)], int(rsi_period))
+    drop = rma([0.0] + [max(c[i - 1] - c[i], 0.0) for i in range(1, n)], int(rsi_period))
+    rsi = [100.0 if d == 0 else 100 - 100 / (1 + g / d) for g, d in zip(gain, drop)]
+    L = max(2, int(pivot_len))
+
+    def bull(i: int) -> bool:
+        return fast[i] > slow[i] and c[i] > slow[i]
+
+    def bear(i: int) -> bool:
+        return fast[i] < slow[i] and c[i] < slow[i]
+
+    def sweep_low(i: int) -> bool:
+        return i >= L and lo[i] < min(lo[i - L : i]) < c[i]
+
+    def sweep_high(i: int) -> bool:
+        return i >= L and h[i] > max(h[i - L : i]) > c[i]
+
+    signals = []
+    for i in range(1, n - 1):  # the last bar is still forming
+        up = src[i] > trail[i] and src[i - 1] <= trail[i - 1]
+        down = src[i] < trail[i] and src[i - 1] >= trail[i - 1]
+        if up and (not use_trend_filter or bull(i)) and (not use_rsi_filter or rsi[i] >= rsi_buy_min) and (not use_sweep or sweep_low(i)):
+            signals.append((i, "BUY"))
+        elif down and (not use_trend_filter or bear(i)) and (not use_rsi_filter or rsi[i] <= rsi_sell_max) and (not use_sweep or sweep_high(i)):
+            signals.append((i, "SELL"))
+
+    def pivots(values: list[float], high: bool) -> list[int]:
+        out = []
+        for i in range(L, n - L):
+            side = values[i - L : i] + values[i + 1 : i + L + 1]
+            if (high and all(values[i] > v for v in side)) or (not high and all(values[i] < v for v in side)):
+                out.append(i)
+        return out
+
+    def trendline(idx: list[int], values: list[float]) -> dict | None:
+        if len(idx) < 2:
+            return None
+        a, b = idx[-2], idx[-1]
+        slope = (values[b] - values[a]) / (b - a)
+        return {"from": {"time": df["Date"].iloc[a], "price": _r(values[a])}, "to": {"time": df["Date"].iloc[b], "price": _r(values[b])},
+                "projected_last_bar": _r(values[a] + slope * (n - 1 - a))}
+
+    last = n - 1
+    result: dict = {
+        "timeframe": timeframe,
+        "bars": n,
+        "last_bar": df["Date"].iloc[last],
+        "close": _r(c[last]),
+        "trend": "BULLISH" if bull(last) else "BEARISH" if bear(last) else "SIDEWAYS",
+        "rsi": round(rsi[last], 1),
+        "sweep": "LOW SWEPT" if sweep_low(last) else "HIGH SWEPT" if sweep_high(last) else "NONE",
+        "ut_trail": _r(trail[last]),
+        "ema_fast": _r(fast[last]),
+        "ema_slow": _r(slow[last]),
+        "resistance_line": trendline(pivots(h, True), h),
+        "support_line": trendline(pivots(lo, False), lo),
+        "recent_signals": [{"time": df["Date"].iloc[i], "side": s, "price": _r(c[i])} for i, s in signals[-5:]],
+        "last_signal": None,
+    }
+    if signals:
+        i, side = signals[-1]
+        risk = atr_rk[i] * float(sl_atr)
+        half = atr_rk[i] * float(entry_zone_atr)
+        sign = 1 if side == "BUY" else -1
+        entry = c[i]
+        result["last_signal"] = {
+            "side": side,
+            "time": df["Date"].iloc[i],
+            "bars_ago": last - i,
+            "entry": _r(entry),
+            "stop_loss": _r(entry - sign * risk),
+            "take_profit": _r(entry + sign * risk * float(risk_reward)),
+            "entry_zone": {"top": _r(entry + half), "bottom": _r(entry - half)},
+            "risk_reward": float(risk_reward),
+        }
+    return result
+
+
 def snapshot(m: Market) -> dict:
     """What the agent knows at the start of every turn: the same figures the tools
     return, computed up front, so a plain question ("RSI?", "draw S/R") costs no
@@ -359,6 +513,7 @@ SKILL_STEPS: dict[str, Callable] = {
     "fibonacci": fibonacci,
     "indicators": lambda m: indicators(m),
     "latest_decisions": lambda m: latest_decisions(m.symbol),
+    "scalper_signal": scalper_signal,
 }
 SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
 
@@ -472,6 +627,14 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
         """Past TradingAgents team decisions on this symbol (rating, outcome) from the engine's memory log."""
         return json.dumps(latest_decisions(m.symbol))
 
+    @tool("scalper_signal")
+    def scalper_signal_tool(timeframe: str = "15m", sensitivity: float = 1.0, atr_period: int = 10, sl_atr: float = 1.5,
+                            risk_reward: float = 2.0, use_sweep: int = 0) -> str:
+        """Scalper Pro+ indicator on 15m, 1h or 1d bars: UT Bot signal filtered by EMA 20/50 trend and RSI 14 (use_sweep=1
+        also requires a liquidity sweep), the last confirmed BUY/SELL with entry, ATR stop loss, take profit and entry zone,
+        plus trend, RSI, sweep and auto trendlines on the latest bar."""
+        return json.dumps(scalper_signal(m, timeframe, sensitivity, atr_period, sl_atr=sl_atr, risk_reward=risk_reward, use_sweep=use_sweep))
+
     @tool
     def draw_level(price: float, label: str, role: str = "neutral") -> str:
         """Draw a horizontal level. role: support, resistance or neutral."""
@@ -547,7 +710,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
     ) -> str:
         """Save a reusable way of working as a draft skill (only when the user asks or agrees).
         name: lowercase-with-dashes. steps: 1-6 of {"tool": one of get_market_summary, find_pivots, support_resistance,
-        fit_trendline, fibonacci, indicators, latest_decisions, "args": {...}}; an arg may be "$param".
+        fit_trendline, fibonacci, indicators, latest_decisions, scalper_signal, "args": {...}}; an arg may be "$param".
         instruction: what to conclude and draw from the step results; may use $param. params: defaults, e.g. {"lookback": 120}.
         It is tested on this symbol now; the user approves it before it can be used."""
         try:
@@ -567,7 +730,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     return [
         get_market_summary, find_pivots_tool, support_resistance_tool, fit_trendline_tool, fibonacci_tool,
-        indicators_tool, latest_decisions_tool, draw_level, draw_trendline, draw_zone, draw_fib,
+        indicators_tool, latest_decisions_tool, scalper_signal_tool, draw_level, draw_trendline, draw_zone, draw_fib,
         draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
     ]
 
