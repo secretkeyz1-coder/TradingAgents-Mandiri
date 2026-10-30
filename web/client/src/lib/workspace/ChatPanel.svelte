@@ -17,6 +17,7 @@
   $effect(() => {
     void agent.messages.length;
     void agent.liveTools.length;
+    void agent.liveText.length;
     list?.scrollTo({ top: list.scrollHeight });
   });
 
@@ -79,7 +80,11 @@
             {t.summary === undefined ? '…' : t.summary.startsWith('ditolak') ? '✗' : '✓'} {t.name}
           </p>
         {/each}
-        <span class="loading loading-dots loading-sm" aria-label="Agent sedang bekerja"></span>
+        {#if agent.liveText}
+          <div class="md text-sm">{@html renderMarkdown(agent.liveText)}</div>
+        {:else}
+          <span class="loading loading-dots loading-sm" aria-label="Agent sedang bekerja"></span>
+        {/if}
       </div>
     {/if}
     {#if agent.error}<p role="alert" class="whitespace-pre-wrap text-sm text-error">{agent.error}</p>{/if}

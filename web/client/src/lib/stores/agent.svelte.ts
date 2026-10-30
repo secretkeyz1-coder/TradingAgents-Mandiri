@@ -53,6 +53,8 @@ class AgentStore {
   error = $state('');
   /** Tool calls of the turn in progress, shown live. */
   liveTools = $state<AgentToolCall[]>([]);
+  /** The answer as the model writes it (providers that stream); replaced by the final message. */
+  liveText = $state('');
   /** Every version of every skill, newest first per name. */
   skills = $state<AgentSkill[]>([]);
   drafts = $derived(this.skills.filter((s) => s.status === 'draft'));
@@ -135,6 +137,7 @@ class AgentStore {
     this.messages.push({ id: `local-${Date.now()}`, role: 'user', content: message, toolCalls: [] });
     this.sending = true;
     this.liveTools = [];
+    this.liveText = '';
     this.#abort = new AbortController();
     try {
       await api.sendAgentMessage(session.id, { ...base, message }, (type, d) => this.#onEvent(type, d), this.#abort.signal);
@@ -142,6 +145,7 @@ class AgentStore {
       if ((e as Error).name !== 'AbortError') this.error = (e as Error).message;
     } finally {
       this.sending = false;
+      this.liveText = '';
       this.#abort = null;
       this.sessions = await api.agentSessions(session.symbol).catch(() => this.sessions);
     }
@@ -153,7 +157,12 @@ class AgentStore {
 
   #onEvent(type: string, d: any) {
     switch (type) {
+      case 'delta':
+        this.liveText += d.text ?? '';
+        break;
       case 'tool_call':
+        // Text a step wrote before deciding to call tools is not the answer.
+        this.liveText = '';
         this.liveTools.push({ name: d.name, args: d.args ?? {} });
         break;
       case 'tool_result': {
@@ -179,6 +188,7 @@ class AgentStore {
       case 'message':
         this.messages.push({ id: `local-a-${Date.now()}`, role: 'assistant', content: d.content, toolCalls: [...this.liveTools] });
         this.liveTools = [];
+        this.liveText = '';
         break;
       case 'error':
         this.error = d.message;

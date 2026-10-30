@@ -211,6 +211,22 @@ def indicators(m: Market) -> dict:
     }
 
 
+def snapshot(m: Market) -> dict:
+    """What the agent knows at the start of every turn: the same figures the tools
+    return, computed up front, so a plain question ("RSI?", "draw S/R") costs no
+    model round trip just to fetch them."""
+    sr = support_resistance(m, lookback=126)
+
+    def nearest(role: str) -> list[dict]:
+        return sorted((lv for lv in sr["levels"] if lv["role"] == role), key=lambda lv: abs(lv["distance_pct"]))[:2]
+
+    return {
+        "market_summary": market_summary(m),
+        "indicators": indicators(m),
+        "support_resistance_126d": {"nearest_support": nearest("support"), "nearest_resistance": nearest("resistance")},
+    }
+
+
 def latest_decisions(symbol: str, limit: int = 3) -> dict:
     """The engine's own memory log: past TradingAgents decisions on this ticker and how they turned out."""
     from tradingagents.default_config import DEFAULT_CONFIG
@@ -295,8 +311,14 @@ def _system_prompt(job: dict, m: Market) -> str:
 
 Symbol in focus: {m.symbol}. Latest daily close: {m.last_date}. Today: {date.today().isoformat()}.
 
+Computed by the analysis tools at the start of this turn. These are tool results: for the price, recent change,
+indicators, or the nearest support and resistance, answer and draw straight from them without calling a tool.
+Call an analysis tool only for something not here (another lookback, more levels, pivots, trendlines,
+fibonacci, past decisions); every tool call makes the user wait several seconds.
+{json.dumps(snapshot(m), ensure_ascii=False)}
+
 Rules:
-- Every price or date you state or draw must come from a tool result in this conversation. Never estimate numbers yourself.
+- Every price or date you state or draw must come from a tool result or the data above. Never estimate numbers yourself.
 - To show analysis on the chart, call the draw_* tools. Draw only what supports your answer; prefer a few clear drawings.
 - You analyse; you never place, suggest placing, or simulate orders. This is research, not financial advice; say so briefly when you give a trade plan.
 - When the user states a lasting preference or fact about themselves or this symbol, store it with remember. Use forget when asked.
@@ -564,6 +586,21 @@ def summarize(llm, previous: str, messages: list[dict], language: str) -> str:
     return _text(llm.invoke([HumanMessage(content=prompt)])).strip()
 
 
+def _stream(bound, messages: list, emit: Emit):
+    """One model step, streamed: answer text goes out as `delta` events while it is
+    written, so the reader is not left waiting for the last word. A step that turns
+    out to call tools stops sending text (the page drops what it showed)."""
+    from langchain_core.messages.utils import message_chunk_to_message
+
+    reply = None
+    for chunk in bound.stream(messages):
+        reply = chunk if reply is None else reply + chunk
+        piece = _text(chunk)
+        if piece and not getattr(reply, "tool_call_chunks", None):
+            emit("delta", text=piece)
+    return message_chunk_to_message(reply) if reply is not None else bound.invoke(messages)
+
+
 def run_agent(llm, job: dict, emit: Emit, market: Market | None = None) -> str:
     """One user turn: optional summary refresh, then the tool loop. Returns the final answer."""
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -588,7 +625,7 @@ def run_agent(llm, job: dict, emit: Emit, market: Market | None = None) -> str:
 
     calls = 0
     for _ in range(MAX_STEPS):
-        reply = bound.invoke(messages)
+        reply = _stream(bound, messages, emit)
         messages.append(reply)
         tool_calls = getattr(reply, "tool_calls", None) or []
         if not tool_calls:
