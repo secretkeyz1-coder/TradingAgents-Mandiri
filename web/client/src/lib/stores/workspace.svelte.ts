@@ -12,13 +12,13 @@ import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
 import { RunStream } from './run.svelte';
 
-export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'screener';
+export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'watch' | 'screener';
 export type DockSize = 'min' | 'normal' | 'max';
 export type AiMode = 'chat' | 'analysis' | 'backtest';
 export type ChartView = 'tv' | 'ai';
 export type MobileTab = 'market' | 'chart' | 'ai' | 'dock';
 
-const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'screener'];
+const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'watch', 'screener'];
 const DEFAULT_SYMBOL = 'IDX:COMPOSITE';
 const ID = /^[0-9a-f-]{36}$/;
 

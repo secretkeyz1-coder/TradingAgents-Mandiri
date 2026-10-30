@@ -4,6 +4,7 @@
   import DecisionChart from '../DecisionChart.svelte';
   import TradingViewWidget from '../TradingViewWidget.svelte';
   import { agent, LAYERS } from '../stores/agent.svelte';
+  import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { theme, tokenColor } from '../theme.svelte';
 
@@ -19,6 +20,8 @@
   // OANDA/FOREXCOM CFDs (gold, oil, index CFDs) are broker quotes that stream too.
   const realtime = $derived(/^(BINANCE|COINBASE|BYBIT|KRAKEN|BITSTAMP|CRYPTO|FX|FX_IDC|OANDA|FOREXCOM):/.test(ws.symbol));
   const view = $derived(ws.chartView === 'ai' && ws.yahoo ? 'ai' : 'tv');
+  const watched = $derived(watch.has(ws.yahoo));
+  watch.load();
   let bodyHeight = $state(0);
 </script>
 
@@ -32,7 +35,17 @@
       <span class="status status-xs {realtime ? 'status-success' : 'status-neutral'}" aria-hidden="true"></span>
       {realtime ? 'Realtime' : 'Tertunda ~15 mnt'}
     </span>
-    <div class="join ml-auto shrink-0">
+    {#if ws.yahoo}
+      <button
+        class="btn btn-ghost btn-xs ml-auto shrink-0 gap-1"
+        aria-pressed={watched}
+        title={watched ? 'Hapus dari watchlist' : 'Analisa otomatis tiap hari bursa, hasilnya ke Telegram'}
+        onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
+      >
+        <span class:text-accent={watched} aria-hidden="true">{watched ? '★' : '☆'}</span>{watched ? 'Dipantau' : 'Pantau'}
+      </button>
+    {/if}
+    <div class="join shrink-0" class:ml-auto={!ws.yahoo}>
       <button class="btn btn-xs join-item" class:btn-active={view === 'tv'} onclick={() => ws.setChartView('tv')}>TradingView</button>
       <button
         class="btn btn-xs join-item"

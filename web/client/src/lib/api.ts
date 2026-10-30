@@ -183,6 +183,19 @@ export type AgentSkill = {
   createdAt: string;
 };
 
+/** Symbols analysed automatically each trading day, and how that is set up on the server. */
+export type Watchlist = {
+  items: {
+    symbol: string;
+    tvSymbol: string;
+    last: { id: string; rating: string | null; status: AnalysisStatus; tradeDate: string; createdAt: string } | null;
+  }[];
+  max: number;
+  schedule: { time: string; days: number[]; next: string; analysts: string[]; depth: number };
+  telegram: { configured: boolean; links: boolean };
+  lastRun: { day: string; analysisIds: string[]; skipped: string[]; notifiedAt: string | null } | null;
+};
+
 /** Today's use against the server's daily caps; a limit of 0 means no cap. */
 export type Usage = {
   analyses: { used: number; limit: number };
@@ -213,6 +226,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   options: () => request<Catalog>('/options'),
   usage: () => request<Usage>('/usage'),
+  watchlist: () => request<Watchlist>('/watchlist'),
+  watchAdd: (symbol: string, tvSymbol: string) =>
+    request<{ ok: true }>('/watchlist', { method: 'POST', body: JSON.stringify({ symbol, tvSymbol }) }),
+  watchRemove: (symbol: string) => request<{ ok: true }>(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
+  watchRun: () => request<{ ids: string[]; skipped: string[] }>('/watchlist/run', { method: 'POST' }),
+  watchTest: () => request<{ ok: true }>('/watchlist/test', { method: 'POST' }),
   list: () => request<AnalysisSummary[]>('/analyses'),
   get: (id: string) => request<Analysis>(`/analyses/${id}`),
   create: (body: AnalysisRequest) =>

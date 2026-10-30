@@ -89,6 +89,17 @@ Backtest memakai `tradingagents.backtest.run_backtest` milik engine: tim agent d
 - **Timeframe** 1j · 4j · 1H · 1M · 1B (parameter `interval`: `1h`, `4h`, `1d`, `1wk`, `1mo`; di URL `tf=`). 4j digabung server dari candle 1 jam, sejajar tengah malam zona waktu bursa. Candle per jam hanya tersedia sampai 1 tahun ke belakang (batas Yahoo), jadi rentang 2T/5T mati di sana. Engine, marker keputusan, dan gambar agent tetap harian: di timeframe lain sebuah tanggal ditaruh di candle pertama hari itu, dan "harga 5 hari" dihitung dari penutupan harian (kosong di mingguan/bulanan).
 - Chart ini ada di halaman Chart (bagian "Keputusan AI di chart"), tab Chart di detail analisa, dan halaman detail backtest.
 
+### Watchlist, analisa terjadwal, dan Telegram
+
+Klik **☆ Pantau** di atas chart untuk memasukkan simbol ke watchlist (maksimal 10). Tab **Pantau** di dock menampilkan jadwal, keputusan terakhir tiap simbol, status Telegram, tombol **Jalankan sekarang**, dan **Kirim tes**.
+
+- Setiap hari `WATCH_DAYS` (default Sen–Jum) pukul `WATCH_TIME` WIB (default 16.30), server menjalankan satu analisa per simbol dengan model default server (`TRADINGAGENTS_*`), analis `WATCH_ANALYSTS`, dan kedalaman `WATCH_DEPTH`. Kalau server baru menyala lebih dari 3 jam setelah jadwal, putaran hari itu tidak dikejar.
+- Analisanya analisa biasa: masuk antrean, tampil di Riwayat, dan memakai kuota harian. Simbol yang tidak muat di sisa kuota dilewati dan disebut di pesan.
+- Setelah semua selesai, satu pesan dikirim ke Telegram: rating tiap simbol, cuplikan Executive Summary, dan tautan ke laporannya (`PUBLIC_URL`). Isi `TELEGRAM_BOT_TOKEN` (dari @BotFather) dan `TELEGRAM_CHAT_ID`; tanpa keduanya analisa tetap jalan, hanya tanpa pesan.
+- Satu putaran per hari dicatat di tabel `watch_runs`, jadi dua instance server tidak menjalankannya dua kali.
+
+API: `GET /api/watchlist`, `POST /api/watchlist {symbol, tvSymbol}`, `DELETE /api/watchlist/:symbol`, `POST /api/watchlist/run`, `POST /api/watchlist/test`.
+
 ### Chart dan harga dari TradingView
 
 Chart, ticker tape, daftar harga dan screener memakai [widget gratis TradingView](https://www.tradingview.com/widget-docs/). Menurut [FAQ data TradingView](https://www.tradingview.com/widget-docs/faq/data/), crypto dan forex realtime; saham (termasuk IDX) tertunda sekitar 15 menit, dan paket berbayar TradingView tidak mengubah data di widget.

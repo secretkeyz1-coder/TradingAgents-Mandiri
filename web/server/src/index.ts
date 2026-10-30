@@ -9,10 +9,12 @@ import { recover } from "./jobs";
 import { agentApi } from "./agent";
 import { authApi, requireAuth } from "./auth";
 import { api } from "./routes";
+import { startWatchScheduler, watchApi } from "./watch";
 import { getCatalog } from "./worker";
 
 await runMigrations();
 await recover();
+startWatchScheduler();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
@@ -28,6 +30,7 @@ app.route("/api", authApi);
 app.use("/api/*", requireAuth);
 app.route("/api", api);
 app.route("/api", agentApi);
+app.route("/api", watchApi);
 app.onError((err, c) => {
   // Middleware answers (401 with its WWW-Authenticate challenge) go out as they are.
   if (err instanceof HTTPException) return err.getResponse();

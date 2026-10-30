@@ -9,6 +9,7 @@
   import HistoryView from './dock/HistoryView.svelte';
   import LogView from './dock/LogView.svelte';
   import ReportView from './dock/ReportView.svelte';
+  import WatchView from './dock/WatchView.svelte';
 
   /** On a phone the dock is a whole screen and has no size controls. */
   let { collapsible = true }: { collapsible?: boolean } = $props();
@@ -18,6 +19,7 @@
     { key: 'report', label: 'Laporan' },
     { key: 'log', label: 'Log' },
     { key: 'backtest', label: 'Backtest' },
+    { key: 'watch', label: 'Pantau' },
     { key: 'screener', label: 'Screener' },
   ];
   const market = $derived(MARKET_TABS.find((t) => t.key === ws.market) ?? MARKET_TABS[0]);
@@ -66,6 +68,8 @@
         <LogView />
       {:else if ws.dock === 'backtest'}
         <BacktestView />
+      {:else if ws.dock === 'watch'}
+        <WatchView />
       {:else}
         {#key market.key}
           <TradingViewWidget

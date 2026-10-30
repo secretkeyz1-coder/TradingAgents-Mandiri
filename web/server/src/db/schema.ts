@@ -175,6 +175,25 @@ export const agentSkills = pgTable(
   (t) => [index("agent_skills_name_idx").on(t.name, t.version)],
 );
 
+/** Symbols analysed automatically on each trading day (see watch.ts). */
+export const watchlist = pgTable("watchlist", {
+  /** Yahoo spelling (BBCA.JK), as the engine reads it. */
+  symbol: text("symbol").primaryKey(),
+  /** TradingView spelling (IDX:BBCA), for links back to the chart. */
+  tvSymbol: text("tv_symbol").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One scheduled watchlist run per day (YYYY-MM-DD in WIB); the key lets only one server instance start it. */
+export const watchRuns = pgTable("watch_runs", {
+  day: text("day").primaryKey(),
+  analysisIds: jsonb("analysis_ids").$type<string[]>().notNull().default([]),
+  /** Symbols left out because the daily analysis cap had no room. */
+  skipped: jsonb("skipped").$type<string[]>().notNull().default([]),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const analysisEvents = pgTable(
   "analysis_events",
   {
