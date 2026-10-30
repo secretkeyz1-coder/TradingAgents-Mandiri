@@ -23,6 +23,8 @@ function merge(raw: unknown): ScalperSettings {
 class Indicators {
   scalperOn = $state(false);
   scalper = $state<ScalperSettings>({ ...SCALPER_DEFAULTS });
+  /** PoB BYSTRA setups (indicators/pob.ts), with the spec's default parameters. */
+  pobOn = $state(false);
   settingsOpen = $state(false);
   #timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -46,13 +48,18 @@ class Indicators {
     this.save();
   }
 
+  togglePob() {
+    this.pobOn = !this.pobOn;
+    this.save();
+  }
+
   resetScalper() {
     this.scalper = { ...SCALPER_DEFAULTS };
     this.save();
   }
 
   save() {
-    const value = { scalperOn: this.scalperOn, scalper: { ...this.scalper } };
+    const value = { scalperOn: this.scalperOn, scalper: { ...this.scalper }, pobOn: this.pobOn };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
     } catch {
@@ -72,8 +79,9 @@ class Indicators {
 
   #apply(raw: unknown) {
     if (!raw || typeof raw !== 'object') return;
-    const r = raw as { scalperOn?: unknown; scalper?: unknown };
+    const r = raw as { scalperOn?: unknown; scalper?: unknown; pobOn?: unknown };
     this.scalperOn = r.scalperOn === true;
+    this.pobOn = r.pobOn === true;
     this.scalper = merge(r.scalper);
   }
 }

@@ -27,6 +27,7 @@
   import Navigator from './chart/Navigator.svelte';
   import { BandPrimitive } from './chart/rectangle';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
+  import { pob, SETUPS } from './indicators/pob';
   import { scalper } from './indicators/scalper';
   import { indicators } from './stores/indicators.svelte';
   import { theme, tokenColor } from './theme.svelte';
@@ -221,6 +222,7 @@
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     markers = createSeriesMarkers(candleSeries, []);
     candleSeries.attachPrimitive(band);
+    candleSeries.attachPrimitive(pobBand);
     chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
       if (r) visible = { from: r.from, to: r.to };
     });
@@ -301,6 +303,49 @@
       });
     }
   });
+  // --- PoB BYSTRA (indicators/pob.ts): every signal marked, the latest one's levels and zone drawn.
+  const pobTf = $derived(timeframe === '15m' || timeframe === '1h' ? timeframe : null);
+  const pobRes = $derived(tools && indicators.pobOn && pobTf && candles.length ? pob(candles, pobTf) : null);
+  const pobLast = $derived(pobRes?.signals.at(-1) ?? null);
+  const pobBand = new BandPrimitive();
+  let pobLines: IPriceLine[] = [];
+  let pobTally = $state(false);
+  let pobSkillNote = $state('');
+  $effect(() => {
+    if (!mounted) return;
+    const p = palette;
+    const last = pobLast;
+    for (const x of pobLines) candleSeries!.removePriceLine(x);
+    pobLines = [];
+    pobBand.set(null);
+    if (!last) return;
+    const level = (price: number, color: string, title: string, style: LineStyle) =>
+      pobLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+    level(last.entry, p.accent, `PoB ${last.side}`, LineStyle.Solid);
+    level(last.stopLoss, p.down, 'PoB SL', LineStyle.Dashed);
+    level(last.takeProfit, p.up, 'PoB TP', LineStyle.Dashed);
+    if (last.zoneTop != null && last.zoneBottom != null) {
+      const end = Math.min(last.exitIndex ?? last.index + 20, candles.length - 1);
+      pobBand.set({
+        from: toTime(candles[last.index].time),
+        to: toTime(candles[end].time),
+        top: last.zoneTop,
+        bottom: last.zoneBottom,
+        fill: tokenColor('--color-accent', 0.12),
+        stroke: p.accent,
+      });
+    }
+  });
+  const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', expired: 'kedaluwarsa', open: 'masih berjalan' };
+  async function pobSkill() {
+    try {
+      const { version } = await api.installSkill('pob-bystra');
+      pobSkillNote = `Draf skill pob-bystra v${version} dibuat; setujui di panel Skill.`;
+    } catch (e) {
+      pobSkillNote = (e as Error).message;
+    }
+  }
+
   const priceText = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
 
   // --- Navigation: zoom, jump to a date, the navigator strip.
@@ -445,6 +490,12 @@
       const buy = setup.side === 'BUY';
       list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: setup.side });
     }
+    for (const sig of pobRes?.signals ?? []) {
+      const at = candles[sig.index].time;
+      const buy = sig.side === 'BUY';
+      const text = `${sig.setup}${sig.plus ? '+' : ''}${sig.ck3 ? ' CK3' : sig.ck2 ? ' CK2' : ''}`;
+      list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text });
+    }
     if (jumpMark && candles.some((c) => c.time === jumpMark)) {
       list.push({ at: jumpMark, time: toTime(jumpMark), position: 'aboveBar', shape: 'arrowDown', color: palette.accent, text: 'Tanggal' });
     }
@@ -515,6 +566,14 @@
             </button>
           {/if}
         </div>
+        <button
+          class="btn btn-xs"
+          class:btn-active={indicators.pobOn}
+          aria-pressed={indicators.pobOn}
+          disabled={!pobTf}
+          title={pobTf ? 'Setup PoB BYSTRA (SNR, QM, Manipulation, CK2/CK3)' : 'PoB BYSTRA hanya untuk timeframe 15m dan 1j'}
+          onclick={() => indicators.togglePob()}>PoB BYSTRA</button
+        >
       {/if}
     </div>
   </div>
@@ -535,6 +594,42 @@
           <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Take profit</td><td class="px-2 pb-1 text-right text-success">{ind.setup ? priceText(ind.setup.takeProfit) : '—'}</td></tr>
         </tbody>
       </table>
+    {/if}
+    {#if tools && pobRes}
+      <section class="absolute bottom-8 left-2 z-10 flex w-72 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="PoB BYSTRA">
+        <div class="flex items-center gap-2">
+          <span class="font-semibold">PoB BYSTRA · HTF {pobRes.htf}</span>
+          <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={pobTally} onclick={() => (pobTally = !pobTally)}>{pobTally ? 'Tutup' : 'Tally'}</button>
+        </div>
+        {#if pobLast}
+          <p class="font-medium" class:text-success={pobLast.side === 'BUY'} class:text-error={pobLast.side === 'SELL'}>{pobLast.label}</p>
+          <p class="font-mono tabular-nums text-base-content/80">
+            {day(candles[pobLast.index].time)} · E {priceText(pobLast.entry)} · SL {priceText(pobLast.stopLoss)} · TP {priceText(pobLast.takeProfit)}
+          </p>
+          <p class="text-base-content/70">Status: {OUTCOME[pobLast.outcome]}</p>
+        {:else}
+          <p class="text-base-content/70">Belum ada sinyal di candle yang dimuat.</p>
+        {/if}
+        {#if pobTally}
+          <table class="table-xs table">
+            <thead><tr><th>Setup</th><th class="text-right">Sinyal</th><th class="text-right">TP</th><th class="text-right">SL</th><th class="text-right">Rata R</th></tr></thead>
+            <tbody class="font-mono tabular-nums">
+              {#each pobRes.stats as st (st.setup)}
+                <tr title={SETUPS.find((x) => x.id === st.setup)?.name}>
+                  <td class="font-sans">{st.setup}</td>
+                  <td class="text-right">{st.count}</td>
+                  <td class="text-right">{st.wins}</td>
+                  <td class="text-right">{st.losses}</td>
+                  <td class="text-right">{st.avgR == null ? '—' : st.avgR.toFixed(2).replace('.', ',')}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+          <p class="text-base-content/70">Uji asap pada {candles.length} candle yang dimuat, tanpa biaya. Bukan backtest.</p>
+          <button class="btn btn-xs" onclick={pobSkill}>Jadikan skill AI</button>
+          {#if pobSkillNote}<p class="text-base-content/80" role="status">{pobSkillNote}</p>{/if}
+        {/if}
+      </section>
     {/if}
     {#if tools && indicators.scalperOn && indicators.settingsOpen}
       <div class="absolute top-2 left-2 z-20"><IndicatorPanel onclose={() => (indicators.settingsOpen = false)} /></div>

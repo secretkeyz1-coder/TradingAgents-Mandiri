@@ -365,6 +365,43 @@ def scalper_signal(
     return result
 
 
+def pob_signal(m: Market, timeframe: str = "15m", recent: int = 5) -> dict:
+    """PoB BYSTRA setups (pob.py): the latest signals with frozen entry/SL/TP and
+    their outcomes, a per-setup tally over the loaded bars, and the trend."""
+    from pob import pob
+
+    if timeframe not in SCALPER_BARS:
+        raise ValueError("PoB BYSTRA hanya untuk timeframe 15m atau 1h")
+    df = _scalper_bars(m, timeframe)
+    bars = [{"time": r.Date, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)} for r in df.itertuples()]
+    result = pob(bars, timeframe)
+    if result is None:
+        return {"timeframe": timeframe, "error": f"baru {len(bars)} candle {timeframe}, kurang untuk menghitung"}
+
+    def level(x):
+        return None if x is None else _r(x)
+
+    signals = [
+        {"time": x["time"], "label": x["label"], "side": x["side"], "setup": x["setup"], "entry": level(x["entry"]),
+         "stop_loss": level(x["stop_loss"]), "take_profit": level(x["take_profit"]),
+         "zone": None if x["zone_top"] is None else {"top": level(x["zone_top"]), "bottom": level(x["zone_bottom"])},
+         "outcome": x["outcome"], "r": None if x["r"] is None else round(x["r"], 2)}
+        for x in result["signals"]
+    ]
+    return {
+        "timeframe": timeframe,
+        "htf": result["htf"],
+        "bars": len(bars),
+        "from": bars[0]["time"],
+        "last_bar": bars[-1]["time"],
+        "trend": result["trend"],
+        "active_signal": next((x for x in reversed(signals) if x["outcome"] == "open"), None),
+        "recent_signals": signals[-max(1, min(int(recent), 20)):],
+        "tally_on_loaded_bars": result["stats"],
+        "note": "Tally = uji asap pada candle yang dimuat, tanpa biaya; bukan backtest. Sinyal hanya dari candle tutup.",
+    }
+
+
 def snapshot(m: Market) -> dict:
     """What the agent knows at the start of every turn: the same figures the tools
     return, computed up front, so a plain question ("RSI?", "draw S/R") costs no
@@ -514,6 +551,7 @@ SKILL_STEPS: dict[str, Callable] = {
     "indicators": lambda m: indicators(m),
     "latest_decisions": lambda m: latest_decisions(m.symbol),
     "scalper_signal": scalper_signal,
+    "pob_signal": pob_signal,
 }
 SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
 
@@ -635,6 +673,13 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
         plus trend, RSI, sweep and auto trendlines on the latest bar."""
         return json.dumps(scalper_signal(m, timeframe, sensitivity, atr_period, sl_atr=sl_atr, risk_reward=risk_reward, use_sweep=use_sweep))
 
+    @tool("pob_signal")
+    def pob_signal_tool(timeframe: str = "15m", recent: int = 5) -> str:
+        """PoB BYSTRA setups on 15m (HTF H1) or 1h (HTF H4) bars: SNR Continuation V1/V2, QM Continuation, QM Reversal,
+        QM Failed, Manipulation, with CK2/CK3 labels. Returns the active signal and recent ones with frozen entry, stop loss,
+        take profit and outcome, plus a per-setup tally over the loaded bars (a quick check, not a backtest)."""
+        return json.dumps(pob_signal(m, timeframe, recent))
+
     @tool
     def draw_level(price: float, label: str, role: str = "neutral") -> str:
         """Draw a horizontal level. role: support, resistance or neutral."""
@@ -710,7 +755,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
     ) -> str:
         """Save a reusable way of working as a draft skill (only when the user asks or agrees).
         name: lowercase-with-dashes. steps: 1-6 of {"tool": one of get_market_summary, find_pivots, support_resistance,
-        fit_trendline, fibonacci, indicators, latest_decisions, scalper_signal, "args": {...}}; an arg may be "$param".
+        fit_trendline, fibonacci, indicators, latest_decisions, scalper_signal, pob_signal, "args": {...}}; an arg may be "$param".
         instruction: what to conclude and draw from the step results; may use $param. params: defaults, e.g. {"lookback": 120}.
         It is tested on this symbol now; the user approves it before it can be used."""
         try:
@@ -730,7 +775,7 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     return [
         get_market_summary, find_pivots_tool, support_resistance_tool, fit_trendline_tool, fibonacci_tool,
-        indicators_tool, latest_decisions_tool, scalper_signal_tool, draw_level, draw_trendline, draw_zone, draw_fib,
+        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, draw_level, draw_trendline, draw_zone, draw_fib,
         draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
     ]
 

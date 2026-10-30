@@ -166,6 +166,21 @@ const BUILTIN_SKILLS: Record<string, SkillDefinition> = {
       },
     ],
   },
+  "pob-bystra": {
+    name: "pob-bystra",
+    title: "PoB BYSTRA",
+    description: "Setup PoB BYSTRA: SNR Continuation V1/V2, QM Continuation, QM Reversal, QM Failed, Manipulation, dengan label CK2/CK3.",
+    when_to_use: "Saat pengguna menanyakan setup PoB, BYSTRA, SNR, QM, Quasimodo, Manipulation, CK2/CK3 atau perfect entry emas.",
+    instruction:
+      "Baca hasil pob_signal. Jika active_signal ada: sebut label-nya (setup, CK2/CK3, Low/High Risk dari materi), waktu candle sinyal, " +
+      "entry, stop loss dan take profit, lalu gambar dengan draw_trade_plan (side long untuk BUY, short untuk SELL; entry=entry, " +
+      "stop=stop_loss, target=take_profit) dan draw_zone untuk zone bila ada (role demand untuk BUY, supply untuk SELL). Jika tidak ada " +
+      "sinyal aktif, katakan belum ada setup dan sebut sinyal terakhir beserta hasilnya. Boleh sebut tally per setup, tetapi jelaskan itu " +
+      "uji asap pada candle yang dimuat tanpa biaya, bukan backtest, dan label risiko berasal dari materi, bukan bukti. Timeframe $timeframe. " +
+      "Ini riset, bukan saran investasi.",
+    params: { timeframe: "15m", recent: 5 },
+    steps: [{ tool: "pob_signal", args: { timeframe: "$timeframe", recent: "$recent" } }],
+  },
 };
 
 agentApi.post("/agent/skills/builtin/:name", async (c) => {
