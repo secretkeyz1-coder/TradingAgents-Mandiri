@@ -476,7 +476,14 @@ def _provider_error(exc: Exception, model: str, url: str | None, timeout: float)
     return f"{name}: {str(exc)[:500]}"
 
 
-COMMANDS = {"run": run, "backtest": backtest, "agent": agent}
+def signals(job: dict) -> int:
+    """Scan symbols for new indicator signals (notifications); see signals.py."""
+    from signals import scan
+
+    return scan(job, emit)
+
+
+COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals}
 
 
 def main(argv: list[str]) -> int:

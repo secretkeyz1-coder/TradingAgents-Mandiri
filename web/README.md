@@ -100,6 +100,17 @@ Klik **☆ Pantau** di atas chart untuk memasukkan simbol ke watchlist (maksimal
 
 API: `GET /api/watchlist`, `POST /api/watchlist {symbol, tvSymbol}`, `DELETE /api/watchlist/:symbol`, `POST /api/watchlist/run`, `POST /api/watchlist/test`.
 
+### Notifikasi sinyal (Telegram)
+
+Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j) dan Scalper Pro+ (15m), maksimal 15 per akun. Memakai bot dan chat ID yang sama dengan watchlist.
+
+- Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
+- Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
+- Saat notifikasi dinyalakan, sinyal yang sudah ada dicatat tanpa dikirim. Sinyal yang baru terlihat lebih dari `SIGNAL_STALE_BARS` candle (default 4) setelah muncul, misalnya karena server mati, dicatat tanpa dikirim.
+- Data dari Yahoo dan bisa tertunda beberapa menit; emas memakai futures `GC=F`.
+
+API: `GET /api/alerts`, `POST /api/alerts {symbol, tvSymbol, indicator, timeframe}`, `DELETE /api/alerts/:id`, `POST /api/alerts/test`.
+
 ### Chart dan harga dari TradingView
 
 Chart, ticker tape, daftar harga dan screener memakai [widget gratis TradingView](https://www.tradingview.com/widget-docs/). Menurut [FAQ data TradingView](https://www.tradingview.com/widget-docs/faq/data/), crypto dan forex realtime; saham (termasuk IDX) tertunda sekitar 15 menit, dan paket berbayar TradingView tidak mengubah data di widget.

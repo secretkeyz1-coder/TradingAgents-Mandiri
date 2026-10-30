@@ -1,4 +1,4 @@
-import { bigint, bigserial, boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export type AnalysisStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -242,6 +242,51 @@ export const watchRuns = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("watch_runs_user_day_idx").on(t.userId, t.day)],
+);
+
+export type SignalIndicator = "pob" | "scalper";
+export type SignalStatus = "open" | "win" | "loss" | "expired" | "replaced";
+
+/** A user's request to hear about new signals of one indicator on one symbol and timeframe. */
+export const signalAlerts = pgTable(
+  "signal_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
+    /** Yahoo symbol, as the engine reads it (GC=F). */
+    symbol: text("symbol").notNull(),
+    tvSymbol: text("tv_symbol").notNull(),
+    indicator: text("indicator").$type<SignalIndicator>().notNull(),
+    timeframe: text("timeframe").notNull(),
+    /** Set after the first scan, which records the signals that already existed without sending them. */
+    primed: boolean("primed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("signal_alerts_user_pair_idx").on(t.userId, t.symbol, t.indicator, t.timeframe)],
+);
+
+/** Every signal an alert has seen, so each is sent once and its outcome once. */
+export const signalEvents = pgTable(
+  "signal_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    alertId: uuid("alert_id")
+      .notNull()
+      .references(() => signalAlerts.id, { onDelete: "cascade" }),
+    /** The signal bar's time, exchange-local, as the engines print it. */
+    signalTime: text("signal_time").notNull(),
+    side: text("side").notNull(),
+    label: text("label").notNull(),
+    entry: doublePrecision("entry").notNull(),
+    stopLoss: doublePrecision("stop_loss").notNull(),
+    takeProfit: doublePrecision("take_profit").notNull(),
+    status: text("status").$type<SignalStatus>().notNull().default("open"),
+    exitTime: text("exit_time"),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    closeNotifiedAt: timestamp("close_notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("signal_events_alert_time_idx").on(t.alertId, t.signalTime)],
 );
 
 export const analysisEvents = pgTable(

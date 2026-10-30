@@ -23,6 +23,7 @@
   } from 'lightweight-charts';
   import { onMount } from 'svelte';
   import { api, type Candle, type Decision, type Drawing, type Interval } from './api';
+  import AlertsMenu from './chart/AlertsMenu.svelte';
   import IndicatorPanel from './chart/IndicatorPanel.svelte';
   import Navigator from './chart/Navigator.svelte';
   import { BandPrimitive } from './chart/rectangle';
@@ -604,6 +605,7 @@
           title={pobTf ? 'Setup PoB BYSTRA (SNR, QM, Manipulation, CK2/CK3)' : 'PoB BYSTRA hanya untuk timeframe 15m dan 1j'}
           onclick={() => indicators.togglePob()}>PoB BYSTRA</button
         >
+        <AlertsMenu {symbol} />
       {/if}
     </div>
   </div>

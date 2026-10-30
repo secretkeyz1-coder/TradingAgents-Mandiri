@@ -109,6 +109,23 @@ export type Backtest = BacktestSummary & {
 
 import { auth } from './auth.svelte';
 
+/** A Telegram notification for new signals of one indicator on one symbol and timeframe. */
+export type SignalAlert = {
+  id: string;
+  symbol: string;
+  tvSymbol: string;
+  indicator: 'pob' | 'scalper';
+  timeframe: '15m' | '1h';
+  primed: boolean;
+  last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'expired' | 'replaced' } | null;
+};
+export type SignalAlerts = {
+  items: SignalAlert[];
+  max: number;
+  combos: { indicator: SignalAlert['indicator']; timeframe: SignalAlert['timeframe']; label: string }[];
+  telegram: { bot: boolean; chat: boolean; configured: boolean };
+};
+
 export const INTERVALS = ['15m', '1h', '4h', '1d', '1wk', '1mo'] as const;
 export type Interval = (typeof INTERVALS)[number];
 
@@ -291,6 +308,11 @@ export const api = {
   skills: () => request<AgentSkill[]>('/agent/skills'),
   skillAction: (id: string, action: 'approve' | 'reject' | 'disable' | 'enable' | 'restore') =>
     request<{ ok: true }>(`/agent/skills/${id}/${action}`, { method: 'POST' }),
+  alerts: () => request<SignalAlerts>('/alerts'),
+  addAlert: (body: Pick<SignalAlert, 'symbol' | 'tvSymbol' | 'indicator' | 'timeframe'>) =>
+    request<{ ok: true; id: string | null }>('/alerts', { method: 'POST', body: JSON.stringify(body) }),
+  removeAlert: (id: string) => request<{ ok: true }>(`/alerts/${id}`, { method: 'DELETE' }),
+  testAlert: () => request<{ ok: true }>('/alerts/test', { method: 'POST' }),
   /** Add one of the app's own skills as a draft for this user to approve. */
   installSkill: (name: string) => request<{ id: string; version: number }>(`/agent/skills/builtin/${encodeURIComponent(name)}`, { method: 'POST' }),
   deleteSkill: (name: string) => request<{ ok: true }>(`/agent/skills/by-name/${encodeURIComponent(name)}`, { method: 'DELETE' }),

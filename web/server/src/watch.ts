@@ -68,7 +68,11 @@ function nextRun(after = Date.now()): string {
   return new Date(after).toISOString();
 }
 
-async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: boolean; error?: string }> {
+/** Whether the server has a bot, and the app's public address for links (signal alerts use both too). */
+export const telegramBot = () => Boolean(settings.telegramToken);
+export const publicUrl = () => settings.publicUrl;
+
+export async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: boolean; error?: string }> {
   if (!settings.telegramToken) return { ok: false, error: "TELEGRAM_BOT_TOKEN belum diisi di .env server" };
   if (!chatId) return { ok: false, error: "Chat ID Telegram belum diisi di Profil" };
   try {
@@ -85,7 +89,7 @@ async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: 
   }
 }
 
-const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** The executive summary of a final decision, cut at a sentence end, without markdown. */
 function gist(decision: string | undefined): string {

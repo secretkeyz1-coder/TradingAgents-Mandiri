@@ -213,12 +213,20 @@ def indicators(m: Market) -> dict:
     }
 
 
+# One download per symbol and timeframe per worker process: a signal scan reads
+# the same bars for Scalper Pro+ and PoB BYSTRA.
+_BARS_CACHE: dict[tuple[str, str], pd.DataFrame] = {}
+
+
 def _scalper_bars(m: Market, timeframe: str) -> pd.DataFrame:
     """Daily bars from the turn's market, or recent intraday bars from Yahoo."""
     if timeframe == "1d":
         return m.df[["Date", "Open", "High", "Low", "Close"]].copy()
     if timeframe not in SCALPER_BARS:
         raise ValueError("timeframe harus 15m, 1h atau 1d")
+    cached = _BARS_CACHE.get((m.symbol, timeframe))
+    if cached is not None:
+        return cached.copy()
     import yfinance as yf
 
     interval, period = SCALPER_BARS[timeframe]
@@ -228,7 +236,9 @@ def _scalper_bars(m: Market, timeframe: str) -> pd.DataFrame:
     df = df.reset_index()
     # Exchange-local wall-clock time, as the page's chart shows it.
     df["Date"] = pd.to_datetime(df[df.columns[0]]).dt.strftime("%Y-%m-%d %H:%M")
-    return df[["Date", "Open", "High", "Low", "Close"]].dropna().reset_index(drop=True)
+    df = df[["Date", "Open", "High", "Low", "Close"]].dropna().reset_index(drop=True)
+    _BARS_CACHE[(m.symbol, timeframe)] = df
+    return df.copy()
 
 
 def scalper_signal(
@@ -250,11 +260,14 @@ def scalper_signal(
     sl_atr: float = 1.5,
     risk_reward: float = 2.0,
     entry_zone_atr: float = 0.25,
+    history_bars: int = 0,
 ) -> dict:
     """Scalper Pro+ (the user's Pine script): UT Bot trail crossings, filtered by
     the EMA trend, RSI and optionally a liquidity sweep, with ATR stop/target.
     Mirrors web/client/src/lib/indicators/scalper.ts; change both together.
-    Signals come only from closed bars: the newest bar may still be forming."""
+    Signals come only from closed bars: the newest bar may still be forming.
+    history_bars > 0 adds the last ten signals, each followed for at most that
+    many bars to its stop, target or the next signal (for notifications)."""
     df = _scalper_bars(m, timeframe)
     n = len(df)
     if n < max(int(ema_slow), int(atr_risk)) + 5:
@@ -330,6 +343,32 @@ def scalper_signal(
                 "projected_last_bar": _r(values[a] + slope * (n - 1 - a))}
 
     last = n - 1
+    # Each recent signal with the levels it would have had, followed on closed bars
+    # to its stop, target, the next signal (which replaces it, as on the chart) or expiry.
+    history = []
+    first = max(0, len(signals) - 10) if history_bars else len(signals)
+    for pos in range(first, len(signals)):
+        i, side = signals[pos]
+        risk = atr_rk[i] * float(sl_atr)
+        sign = 1 if side == "BUY" else -1
+        entry, stop, target = c[i], c[i] - sign * risk, c[i] + sign * risk * float(risk_reward)
+        nxt = signals[pos + 1][0] if pos + 1 < len(signals) else None
+        outcome, exit_at = "open", None
+        for k in range(i + 1, n - 1):
+            if nxt is not None and k >= nxt:
+                outcome, exit_at = "replaced", k
+                break
+            if (lo[k] <= stop) if sign == 1 else (h[k] >= stop):
+                outcome, exit_at = "loss", k
+                break
+            if (h[k] >= target) if sign == 1 else (lo[k] <= target):
+                outcome, exit_at = "win", k
+                break
+            if k - i >= history_bars:
+                outcome, exit_at = "expired", k
+                break
+        history.append({"time": df["Date"].iloc[i], "side": side, "entry": entry, "stop_loss": stop, "take_profit": target,
+                        "outcome": outcome, "exit_time": None if exit_at is None else df["Date"].iloc[exit_at], "bars_ago": last - i})
     result: dict = {
         "timeframe": timeframe,
         "bars": n,
@@ -346,6 +385,8 @@ def scalper_signal(
         "recent_signals": [{"time": df["Date"].iloc[i], "side": s, "price": _r(c[i])} for i, s in signals[-5:]],
         "last_signal": None,
     }
+    if history_bars:
+        result["history"] = history
     if signals:
         i, side = signals[-1]
         risk = atr_rk[i] * float(sl_atr)
