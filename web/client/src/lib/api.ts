@@ -322,6 +322,10 @@ export type Ledger = {
   bySession: LedgerStats[];
   /** The venues side by side on crypto, with the same filters. */
   byVenue: LedgerStats[];
+  /** The same at each venue's base taker fee, paid in and out (a venue without a known fee is left out). */
+  byVenueReal: LedgerStats[];
+  /** Taker fee per side by venue; null = not known. */
+  venueFees: Record<string, number | null>;
   equity: { time: string; equity: number }[];
   items: LedgerItem[];
 };

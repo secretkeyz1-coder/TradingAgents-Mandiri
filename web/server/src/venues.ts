@@ -19,17 +19,22 @@ export const VENUE_IDS = ["binance", "bybit", "okx", "coinbase", "kraken", "bitg
 export type VenueId = (typeof VENUE_IDS)[number];
 
 type Paging = "auto" | "manual" | "latest";
-/** rateLimit: milliseconds between requests where CCXT's default is faster than the venue allows (Bitget's history). */
-export const VENUES: Record<VenueId, { label: string; tv: string; quote: string; paging: Paging; page: number; rateLimit?: number }> = {
-  binance: { label: "Binance", tv: "BINANCE", quote: "USDT", paging: "auto", page: 1000 },
-  bybit: { label: "Bybit", tv: "BYBIT", quote: "USDT", paging: "auto", page: 1000 },
-  okx: { label: "OKX", tv: "OKX", quote: "USDT", paging: "auto", page: 200 },
+/**
+ * rateLimit: milliseconds between requests where CCXT's default is faster than the venue allows (Bitget's history).
+ * taker: base-tier spot taker fee per side, where checked (October 2026): the published schedules of Binance
+ * (regular user), Bybit (non-VIP) and OKX (Lv1), and Indodax's public pairs API (trade_fee_percent_taker for
+ * BTC and ETH). CCXT's figures are not used: some are years old, and it reads Indodax's percent as a fraction.
+ */
+export const VENUES: Record<VenueId, { label: string; tv: string; quote: string; paging: Paging; page: number; rateLimit?: number; taker?: number }> = {
+  binance: { label: "Binance", tv: "BINANCE", quote: "USDT", paging: "auto", page: 1000, taker: 0.001 },
+  bybit: { label: "Bybit", tv: "BYBIT", quote: "USDT", paging: "auto", page: 1000, taker: 0.001 },
+  okx: { label: "OKX", tv: "OKX", quote: "USDT", paging: "auto", page: 200, taker: 0.001 },
   coinbase: { label: "Coinbase", tv: "COINBASE", quote: "USD", paging: "manual", page: 300 },
   kraken: { label: "Kraken", tv: "KRAKEN", quote: "USD", paging: "latest", page: 720 },
   bitget: { label: "Bitget", tv: "BITGET", quote: "USDT", paging: "auto", page: 200, rateLimit: 300 },
   kucoin: { label: "KuCoin", tv: "KUCOIN", quote: "USDT", paging: "manual", page: 1500 },
   gate: { label: "Gate", tv: "GATEIO", quote: "USDT", paging: "auto", page: 1000 },
-  indodax: { label: "Indodax", tv: "INDODAX", quote: "IDR", paging: "latest", page: 1000 },
+  indodax: { label: "Indodax", tv: "INDODAX", quote: "IDR", paging: "latest", page: 1000, taker: 0.002 },
 };
 export const isVenue = (v: unknown): v is VenueId => typeof v === "string" && (VENUE_IDS as readonly string[]).includes(v);
 

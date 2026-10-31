@@ -17,7 +17,8 @@
 // SIGNAL_LEDGER_VENUES (crypto, default binance,bybit,okx,indodax),
 // SIGNAL_PAPER_BALANCE (10000), SIGNAL_PAPER_RISK_PCT (1), SIGNAL_COSTS (JSON,
 // per symbol {"pct": 0.0012} or {"abs": 0.4}, per venue "BTC-USD@indodax"),
-// SIGNAL_RECAP_TIME (HH:MM WIB, 05:15).
+// SIGNAL_VENUE_FEES (JSON, taker fee per side for the comparison at real fees,
+// {"gate": 0.002}), SIGNAL_RECAP_TIME (HH:MM WIB, 05:15).
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { isAdmin, type AppEnv } from "./auth";
@@ -106,6 +107,23 @@ export function tradeCost(symbol: string, price: number, maker = false, venue = 
   if (maker) return symbol === "GC=F" ? 0.4 : 0.0005 * price;
   const c = COSTS[`${symbol}@${venue}`] ?? COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.0012 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
   return c.abs ?? (c.pct ?? 0) * price;
+}
+
+/** Taker fee per side by venue for the comparison at real fees: SIGNAL_VENUE_FEES, else the checked ones in venues.ts. */
+const VENUE_FEES: Record<string, number> = (() => {
+  try {
+    const given = JSON.parse(process.env.SIGNAL_VENUE_FEES ?? "{}") as Record<string, unknown>;
+    // A fraction per side: 0.002 is 0.2%. Anything from 5% up is a typo for a percent.
+    return Object.fromEntries(Object.entries(given).filter((e): e is [string, number] => typeof e[1] === "number" && e[1] >= 0 && e[1] < 0.05));
+  } catch {
+    console.error("SIGNAL_VENUE_FEES is not JSON; using the defaults");
+    return {};
+  }
+})();
+/** A venue's taker fee per side, "" being the default source (Binance); null when unknown. */
+function takerFee(venue: string): number | null {
+  const id = venue || "binance";
+  return isVenue(id) ? (VENUE_FEES[id] ?? VENUES[id].taker ?? null) : null;
 }
 
 /** UTC milliseconds of an exchange-local wall-clock time ("YYYY-MM-DD HH:MM" or a date) in time zone `tz`. */
@@ -374,6 +392,12 @@ ledgerApi.get("/ledger", async (c) => {
     LEDGER_VENUES.length > 1
       ? (await db.select().from(ledgerSignals).where(and(...filters)).orderBy(desc(ledgerSignals.signalAt)).limit(20_000)).filter((r) => cryptoBase(r.symbol))
       : [];
+  // The same at each venue's own fee: its base taker fee, paid on the way in and out, from the stored levels.
+  const atRealFees = across.flatMap((r) => {
+    const fee = takerFee(r.venue);
+    const risk = Math.abs(r.entry - r.stopLoss);
+    return fee == null || !(risk > 0) ? [] : [{ ...r, costR: (2 * fee * r.entry) / risk }];
+  });
 
   let equity = START_BALANCE;
   const curve = rows
@@ -402,6 +426,8 @@ ledgerApi.get("/ledger", async (c) => {
     byTimeframe: groupStats(rows, (r) => r.timeframe),
     bySession: groupStats(rows, (r) => r.session),
     byVenue: groupStats(across, (r) => r.venue || "binance"),
+    byVenueReal: groupStats(atRealFees, (r) => r.venue || "binance"),
+    venueFees: Object.fromEntries(LEDGER_VENUES.map((v) => [v || "binance", takerFee(v)])),
     equity: curve,
     items: rows.slice(0, 150).map((r) => ({ ...r, netR: netR(r) })),
   });

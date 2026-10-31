@@ -31,6 +31,7 @@
   let source = $state('');
   let symbol = $state('');
   let venue = $state('binance');
+  let realFees = $state(false);
   let group = $state<(typeof GROUPS)[number]['key']>('bySource');
   let data = $state<Ledger | null>(null);
   let error = $state('');
@@ -127,7 +128,13 @@
     chart.timeScale().fitContent();
   });
 
-  const groups = $derived<LedgerStats[]>(data ? data[group] : []);
+  const groups = $derived<LedgerStats[]>(data ? (group === 'byVenue' && realFees ? data.byVenueReal : data[group]) : []);
+  const unknownFees = $derived(
+    Object.entries(data?.venueFees ?? {})
+      .filter(([, fee]) => fee == null)
+      .map(([v]) => venueName(v)),
+  );
+  const feeText = (x: number) => `${(x * 100).toLocaleString('id-ID', { maximumFractionDigits: 3 })}%`;
   const venues = $derived(data?.config.venues ?? []);
   const otherVenues = $derived(venues.filter((v) => v !== 'binance').map(venueName));
   const symbols = $derived((data?.config.symbols ?? []).filter((s) => venue === 'binance' || cryptoBase(s)));
@@ -234,9 +241,20 @@
       {/each}
     </div>
     {#if group === 'byVenue'}
-      <p class="text-xs text-base-content/70">
-        Kripto yang dicatat di semua bursa, dengan filter di atas. Sinyal bisa berbeda antarbursa karena harga dan sumbu candle tiap bursa sedikit berbeda.
-      </p>
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <p class="max-w-[75ch] text-xs text-base-content/70">
+          Kripto yang dicatat di semua bursa, dengan filter di atas. Sinyal bisa berbeda antarbursa karena harga dan sumbu candle tiap bursa sedikit berbeda.
+          {#if realFees}
+            Biaya nyata: fee taker dasar tiap bursa (tanpa diskon VIP, BNB, atau token), dibayar saat masuk dan saat keluar; slippage dan pajak kripto belum
+            termasuk. Akun utama memakai asumsi biaya kripto 0,12% per trade.
+            {#if unknownFees.length}Fee {unknownFees.join(', ')} belum diketahui (atur SIGNAL_VENUE_FEES), jadi tidak ditampilkan.{/if}
+          {/if}
+        </p>
+        <label class="label cursor-pointer gap-2 text-xs">
+          <input type="checkbox" class="toggle toggle-xs" bind:checked={realFees} />
+          Biaya nyata tiap bursa
+        </label>
+      </div>
     {/if}
     <div class="overflow-x-auto">
       <table class="table table-sm">
@@ -256,7 +274,12 @@
         <tbody>
           {#each groups as g (g.key)}
             <tr>
-              <td class="font-medium">{label(group, g.key)}</td>
+              <td class="font-medium">
+                {label(group, g.key)}
+                {#if group === 'byVenue' && realFees && data?.venueFees[g.key] != null}
+                  <span class="block text-xs font-normal text-base-content/60">fee {feeText(data.venueFees[g.key]!)} per sisi</span>
+                {/if}
+              </td>
               <td class="text-right tabular-nums">{g.closed}{g.open ? ` (+${g.open})` : ''}</td>
               <td class="text-right tabular-nums">{pct(g.winRate)}</td>
               <td class="text-right tabular-nums {tone(g.expectancy)}">{r(g.expectancy)}</td>
