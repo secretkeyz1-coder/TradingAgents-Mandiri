@@ -189,6 +189,9 @@
           <option value={0.6}>Uji 40% akhir</option>
         </select>
       </div>
+      {#if costs === 'maker'}
+        <span class="text-xs text-base-content/70">Kripto: maker sama dengan taker, 0,2% per trade (fee dasar Binance 0,1% per sisi).</span>
+      {/if}
     </label>
     <label class="flex flex-col gap-1 text-sm">
       Kedaluwarsa sinyal (candle) dan bursa kripto

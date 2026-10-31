@@ -102,10 +102,11 @@ const COSTS: Record<string, Cost> = (() => {
  * (Binance's base taker fee, 0.1%, on entry and exit; slippage not included; 0.12% until November
  * 2026, see drizzle/0013), gold 0.40 USD, others 0.10%, or SIGNAL_COSTS ("BTC-USD@indodax" for one
  * venue, an abs cost then in its quote currency). Maker (limit orders at the level, for the strategy
- * lab): crypto and others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
+ * lab): crypto 0.2% as well, Binance's base maker fee being 0.1% a side too (0.05% until November
+ * 2026); others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
  */
 export function tradeCost(symbol: string, price: number, maker = false, venue = ""): number {
-  if (maker) return symbol === "GC=F" ? 0.4 : 0.0005 * price;
+  if (maker) return symbol === "GC=F" ? 0.4 : (binancePair(symbol) ? 0.002 : 0.0005) * price;
   const c = COSTS[`${symbol}@${venue}`] ?? COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.002 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
   return c.abs ?? (c.pct ?? 0) * price;
 }
