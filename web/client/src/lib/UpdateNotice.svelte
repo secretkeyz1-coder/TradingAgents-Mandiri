@@ -4,7 +4,7 @@
   // into view, compare the entry script the server now serves with the one this
   // page loaded, and offer a reload when they differ.
   const CHECK_MS = 5 * 60_000;
-  const ENTRY = /assets\/index-[\w-]+\.js/;
+  const ENTRY = /assets\/app-[\w-]+\.js/;
 
   const loaded = [...document.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')].map((s) => s.src.match(ENTRY)?.[0]).find(Boolean);
   let stale = $state(false);
@@ -12,7 +12,7 @@
   async function check() {
     if (!loaded || stale || document.hidden) return;
     try {
-      const html = await fetch('/', { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''));
+      const html = await fetch(location.pathname, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : ''));
       const served = html.match(ENTRY)?.[0];
       if (served && served !== loaded) stale = true;
     } catch {

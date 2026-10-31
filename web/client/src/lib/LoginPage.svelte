@@ -97,7 +97,12 @@
       <div class="divider my-0 text-xs text-base-content/60">atau dengan email</div>
     {/if}
 
-    {#if mode === 'forgot' && sent}
+    {#if mode === 'signup' && !auth.config.signup}
+      <div class="flex flex-col gap-3 text-sm">
+        <p>Pendaftaran belum dibuka untuk umum. Kalau kamu sudah punya akun, silakan masuk.</p>
+        <button class="btn btn-sm self-start" onclick={() => go('login')}>Masuk</button>
+      </div>
+    {:else if mode === 'forgot' && sent}
       <div role="status" class="flex flex-col gap-3 text-sm">
         <p>Kalau <strong>{email.trim()}</strong> terdaftar, tautan untuk membuat kata sandi baru sudah dikirim. Cek juga folder spam; tautannya berlaku 1 jam.</p>
         {#if !auth.config.mail}<p class="text-warning">Pengiriman email belum diatur di server ini. Minta admin mengatur ulang kata sandimu.</p>{/if}

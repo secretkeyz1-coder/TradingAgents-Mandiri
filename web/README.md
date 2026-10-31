@@ -102,7 +102,7 @@ API: `GET /api/watchlist`, `POST /api/watchlist {symbol, tvSymbol}`, `DELETE /ap
 
 ### Notifikasi sinyal (Telegram)
 
-Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), maksimal 15 per akun. Chat ID boleh ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan watchlist.
+Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), sebanyak batas paket (Gratis 3, Pro 15, Creator 50). Chat ID boleh ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan watchlist.
 
 - Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
@@ -120,7 +120,7 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 
 - Uji mesin bawaan (PoB, Scalper, Fib) atau skrip sendiri pada riwayat panjang: kripto dari Binance (15m s.d. 1 tahun, 1j s.d. 3 tahun, 4j/harian s.d. 5 tahun), emas intraday dari XAUUSDT, lainnya dari Yahoo.
 - Setiap trade dipotong biaya taker atau maker (`tradeCost` di `server/src/ledger.ts`). Untuk kripto keduanya 0,2% per trade, karena fee maker dasar Binance juga 0,1% per sisi (sebelum 1 November 2026 maker dihitung 0,05%); emas 0,40 USD; lainnya taker 0,10%, maker 0,05%. Riwayat dibagi: data awal untuk membentuk strategi, data uji (20/30/40% terakhir) untuk memeriksa. Strategi "lolos" hanya bila positif setelah biaya di keduanya dengan minimal 30 trade di data uji.
-- Mesin dijalankan worker (`worker/lab.py`, perintah `lab`), skrip di sandbox yang sama dengan chart dengan batas 30 detik. Satu uji berjalan pada satu waktu, maksimal 60 uji per pengguna per 24 jam, 30 hasil terakhir disimpan (`lab_runs`).
+- Mesin dijalankan worker (`worker/lab.py`, perintah `lab`), skrip di sandbox yang sama dengan chart dengan batas 30 detik. Satu uji berjalan pada satu waktu, sebanyak batas paket per 24 jam (Gratis 5, Pro 60, Creator 120), 30 hasil terakhir disimpan (`lab_runs`).
 - Template skrip "Donchian breakout" dan "Trend EMA 50/200 + pullback" disediakan untuk diuji di 4j dan harian. Strategi yang lolos dicatat live di buku catatan (`LEDGER_SCRIPTS` di `ledger.ts`): saat ini Donchian breakout harian, persis seperti diuji (periode 20, SL 2 ATR, TP 4 ATR, kedaluwarsa 120 candle).
 
 ### Keluar berdasarkan kondisi (skrip)
@@ -213,15 +213,33 @@ docker compose up -d --build
 ### Akun
 
 - **Admin pertama** dibuat otomatis saat boot dari `APP_USER` / `APP_PASSWORD` kalau belum ada akun sama sekali, dan semua data yang tersimpan sebelum fitur akun ada diberikan ke admin itu. Setelahnya kata sandi diganti di app (menu akun → Profil); mengubah `.env` tidak mengubah akun yang sudah ada.
-- **Tanpa pendaftaran publik.** Admin membuat akun di menu akun → **Pengguna**: nama pengguna, kata sandi awal, peran (anggota/admin). Di sana juga: nonaktifkan/aktifkan, reset kata sandi, ubah peran, dan kuota harian per orang (kosong = default `DAILY_*`). Admin tidak bisa menonaktifkan atau menurunkan dirinya sendiri, dan selalu harus ada satu admin aktif.
+- **Pendaftaran:** dengan `SIGNUP=open`, orang mendaftar sendiri di `/app#/signup` (email, kata sandi, nomor WhatsApp opsional, setuju S&K) atau dengan Google (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, redirect `PUBLIC_URL/api/auth/google/callback`). Tanpa `SIGNUP=open` hanya admin yang membuat akun. Masuk bisa dengan email atau nama pengguna.
+- **Verifikasi email:** tautan sekali pakai (24 jam). Sebelum terverifikasi, analisa AI, chat agent, dan watchlist terjadwal belum jalan; setelahnya trial Pro 7 hari aktif, sekali per akun. Masuk dengan Google langsung terverifikasi. Lupa kata sandi: tautan 1 jam, dan mengatur ulang mengeluarkan semua sesi lain.
+- **Email** lewat SMTP penyedia apa pun (`SMTP_URL`, `MAIL_FROM`). Tanpa SMTP tidak ada email yang terkirim (log menyebut penerima dan judulnya; `MAIL_LOG=1` menulis isinya, untuk pengembangan saja), dan admin bisa menandai email terverifikasi di menu Pengguna.
+- **Admin** membuat akun di menu akun → **Pengguna**: nama pengguna, kata sandi awal, peran (anggota/admin). Di sana juga: paket dan masa berlakunya, verifikasi email manual, nonaktifkan/aktifkan, reset kata sandi, ubah peran, dan kuota harian per orang (kosong = kuota paketnya). Admin tidak bisa menonaktifkan atau menurunkan dirinya sendiri, dan selalu harus ada satu admin aktif.
 - **Data pribadi per akun:** riwayat analisa dan backtest, marker keputusan, sesi chat agent, memori, gambar di chart, skill, watchlist. Admin bisa melihat riwayat semua akun (tombol **Semua pengguna** di Riwayat, dengan kolom pemilik) dan membuka laporannya; chat, memori, dan skill tetap pribadi, termasuk dari admin.
 - **Tetap bersama:** memori keputusan engine TradingAgents (satu file log di engine yang dipakai agent untuk belajar dari keputusan lama).
-- **Kuota:** tiap akun punya batas harian sendiri, dan `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` membatasi semua akun bersama.
+- **Kuota:** tiap akun mengikuti paketnya (atau kuota khusus dari admin), dan `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` membatasi semua akun bersama.
 - **Sesi:** kata sandi diganti atau akun dinonaktifkan → semua sesi akun itu langsung berakhir (browser yang mengganti kata sandinya tetap masuk).
 - **Telegram:** satu bot untuk server (`TELEGRAM_BOT_TOKEN`); tiap akun mengisi chat ID-nya sendiri di Profil dan menerima ringkasan watchlist-nya sendiri.
 - **Tanpa `APP_PASSWORD`** (pengembangan lokal) tidak ada login: semua permintaan dianggap admin pertama.
 
-API: `GET /api/session`, `POST /api/login`, `POST /api/logout`, `GET`/`PATCH /api/me`, `POST /api/me/password`; admin: `GET`/`POST /api/users`, `PATCH /api/users/:id`; `GET /api/analyses?scope=all` (admin).
+API: `GET /api/session`, `GET /api/auth/config`, `POST /api/login`, `POST /api/logout`, `POST /api/signup`, `GET /api/verify-email`, `POST /api/password/forgot`, `POST /api/password/reset`, `GET /api/auth/google`, `GET`/`PATCH /api/me`, `POST /api/me/password`, `POST /api/me/email`, `POST /api/me/verify-email`; admin: `GET`/`POST /api/users`, `PATCH /api/users/:id`; `GET /api/analyses?scope=all` (admin).
+
+### Paket dan pembayaran
+
+- Paket ada di `shared/plans.ts` (dipakai server, aplikasi, dan situs): Gratis, Pro (Rp149.000/bulan atau Rp1.490.000/tahun), Creator (Rp399.000/bulan atau Rp3.990.000/tahun), dan harga founding Pro Rp79.000/bulan untuk 100 pelanggan pertama. Paket membedakan kapasitas, bukan fitur: analisa AI dan chat per hari, uji Lab per hari, notifikasi, simbol watchlist, skrip. Admin memakai kapasitas Creator dengan batas analisa dan chat dari `DAILY_*`.
+- Paket berlaku sampai tanggalnya, lalu akun kembali ke Gratis; notifikasi dan simbol watchlist di atas batas Gratis dijeda (yang terlama tetap jalan).
+- Pembayaran manual: anggota memesan di menu akun → **Paket & tagihan**. Jumlahnya harga ditambah kode unik 3 digit supaya mudah dicocokkan dengan mutasi rekening; rekening atau QRIS-nya dari `PAYMENT_INSTRUCTIONS`, dan pesanan kedaluwarsa setelah 3 hari. Setelah anggota menekan "Saya sudah bayar", admin mendapat Telegram dan email, lalu mengonfirmasi atau menolak di menu akun → **Pembayaran** (berisi ringkasan anggota, paket aktif, trial, dan pendapatan). Konfirmasi memperpanjang paket dari tanggal berakhirnya bila paketnya sama, atau mulai hari itu.
+- Paket yang diatur admin di menu Pengguna tercatat sebagai pemberian (Rp0) di riwayat pembayaran.
+
+API: `GET /api/billing`, `POST /api/billing/orders`, `POST /api/billing/orders/:id/claim`, `POST /api/billing/orders/:id/cancel`; admin: `GET /api/admin/payments?status=open|paid|all`, `POST /api/admin/payments/:id/confirm`, `POST /api/admin/payments/:id/reject`, `GET /api/admin/overview`.
+
+### Situs publik
+
+- Landing page (`/`), Harga (`/harga`), Syarat & Ketentuan (`/syarat`), Kebijakan Privasi (`/privasi`), dan Disclaimer risiko (`/disclaimer`) adalah halaman statis dari build klien (`client/index.html`, `client/harga/` dan seterusnya). Harga dan kapasitas diisi saat build dari `shared/plans.ts`; nama merek dan kontak dari `shared/brand.ts`.
+- Aplikasi ada di `/app`. Tanpa `PUBLIC_SITE=on`, alamat root langsung membuka aplikasi; tautan lama `/#/...` tetap diarahkan ke `/app`.
+- Isi Syarat & Ketentuan, Kebijakan Privasi, dan Disclaimer adalah draf awal: tinjau dengan ahli hukum, dan isi nama usaha serta kontak di `shared/brand.ts`, sebelum situs dibuka.
 - **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim.
 - **Data**: volume `tradingagents_db` (Postgres) dan `tradingagents_data` (laporan, cache, dan memori keputusan engine).
 - **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.
@@ -267,9 +285,17 @@ Semua opsional, lewat environment variable:
 | `MAX_BACKTEST_CELLS` | `40` | Batas sel per backtest (samakan dengan `MAX_CELLS` di `client/src/routes/Home.svelte`) |
 | `TA_WORKER_SCRIPT` | `web/worker/ta_worker.py` | Ganti ke `web/worker/demo_worker.py` untuk mode demo |
 | `JOB_IDLE_MINUTES` | `15` | Analisa/backtest tanpa event selama ini dianggap macet: worker dihentikan, status gagal |
-| `DAILY_ANALYSIS_LIMIT` | `60` | Analisa per hari (WIB); tiap sel backtest dihitung satu analisa. `0` = tanpa batas. Pemakaian tampil di bawah tombol Analisa/Backtest (`GET /api/usage`) |
-| `DAILY_CHAT_LIMIT` | `300` | Pesan ke chat agent per hari (WIB). `0` = tanpa batas. Pemakaian tampil di footer chat |
-| `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` | `200` / `1000` | Batas harian semua akun bersama (`DAILY_*` di atas adalah default per akun) |
+| `DAILY_ANALYSIS_LIMIT` | `60` | Analisa per hari (WIB) untuk akun admin; anggota mengikuti paketnya. Tiap sel backtest dihitung satu analisa. `0` = tanpa batas. Pemakaian tampil di bawah tombol Analisa/Backtest (`GET /api/usage`) |
+| `DAILY_CHAT_LIMIT` | `300` | Pesan ke chat agent per hari (WIB) untuk akun admin; anggota mengikuti paketnya. `0` = tanpa batas. Pemakaian tampil di footer chat |
+| `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` | `200` / `1000` | Batas harian semua akun bersama |
+| `SIGNUP` | `closed` | `open` membuka pendaftaran mandiri (email dan Google) |
+| `PUBLIC_SITE` | `off` | `on` menampilkan landing page di root; aplikasi tetap di `/app` |
+| `PUBLIC_URL` | kosong | Alamat publik untuk tautan di email dan Telegram, dan redirect Google |
+| `SMTP_URL` / `MAIL_FROM` | kosong | Pengirim email, misalnya `smtps://user:pass@smtp.resend.com:465` dan `Nama <noreply@domainmu>` |
+| `MAIL_LOG` | kosong | `1` menulis isi email (termasuk tautannya) ke log selama SMTP belum diatur; untuk pengembangan saja |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | kosong | Masuk dan daftar dengan Google (OAuth client tipe Web) |
+| `PAYMENT_INSTRUCTIONS` | kosong | Rekening atau QRIS untuk pembayaran manual (`
+` untuk baris baru); kosong = pemesanan paket belum dibuka |
 | `SESSION_SECRET` | dari `APP_PASSWORD` | Kunci tanda tangan cookie sesi; menggantinya mengeluarkan semua orang |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |
@@ -312,6 +338,6 @@ Migrasi baru di `server/drizzle/` diterapkan otomatis saat server start berikutn
 
 ## Batasan MVP
 
-- Belum ada login. Server hanya listen di `127.0.0.1`; jangan buka ke internet tanpa menambah autentikasi, karena setiap analisa memakai API key dan biaya LLM kamu.
+- Tanpa `APP_PASSWORD` tidak ada login, dan server hanya listen di `127.0.0.1`. Jangan buka server seperti itu ke internet, karena setiap analisa memakai API key dan biaya LLM kamu.
 - Worker berjalan sebagai subprocess server. Kalau server restart, analisa yang sedang berjalan ditandai gagal; yang masih antre dijalankan lagi.
 - Provider ChatGPT (login), Azure, dan Bedrock belum tersedia di form web.

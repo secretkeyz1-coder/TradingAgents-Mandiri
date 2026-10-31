@@ -74,7 +74,7 @@ function link(a: Alert) {
   const base = publicUrl();
   if (!base) return "";
   const q = `s=${encodeURIComponent(a.tvSymbol)}&amp;v=ai&amp;tf=${a.timeframe}`;
-  return `<a href="${base}/#/?${q}">Buka chart</a>`;
+  return `<a href="${base}/app#/?${q}">Buka chart</a>`;
 }
 
 /** Where an alert's bars come from: the venue it watches, else the default source the chart uses. */

@@ -472,7 +472,7 @@ async function recapText(title: string, from: Date, to: Date): Promise<string> {
   }
   lines.push(`Masih berjalan: ${open[0]?.n ?? 0}`);
   const url = publicUrl();
-  if (url) lines.push(`${url}/#/?dock=signals`);
+  if (url) lines.push(`${url}/app#/?dock=signals`);
   lines.push("<i>Hasil riset dan simulasi, bukan nasihat keuangan.</i>");
   return lines.join("\n");
 }

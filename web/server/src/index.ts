@@ -57,10 +57,18 @@ app.onError((err, c) => {
 });
 
 // In production the built client is served from here; in dev Vite serves it
-// and proxies /api to this server.
+// and proxies /api to this server. The app lives at /app; the public pages
+// (pricing, legal) beside it, and the landing page at the root once
+// PUBLIC_SITE=on (until then the root opens the app, as it always did).
 if (existsSync(config.clientDist)) {
-  app.use("/*", serveStatic({ root: config.clientDist }));
-  app.get("*", serveStatic({ path: `${config.clientDist}/index.html` }));
+  const dist = config.clientDist;
+  const page = (name: string) => serveStatic({ path: `${dist}/${name}/index.html` });
+  app.get("/", process.env.PUBLIC_SITE === "on" ? serveStatic({ path: `${dist}/index.html` }) : (c) => c.redirect("/app"));
+  app.get("/app", page("app"));
+  app.get("/app/", page("app"));
+  for (const name of ["harga", "syarat", "privasi", "disclaimer"]) app.get(`/${name}`, page(name));
+  app.use("/*", serveStatic({ root: dist }));
+  app.get("*", (c) => (c.req.path.startsWith("/api/") ? c.json({ error: "Not found" }, 404) : c.redirect("/")));
 }
 
 console.log(`TradingAgents web API on http://${config.host}:${config.port}`);

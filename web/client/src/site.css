@@ -1,0 +1,27 @@
+/* The public site: the app's theme and type, plus long-text rules for the legal pages. */
+@import "./app.css";
+
+.legal h2 {
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.legal p,
+.legal li {
+  line-height: 1.7;
+  color: color-mix(in oklab, var(--color-base-content) 86%, transparent);
+}
+
+.legal p + p {
+  margin-top: 0.75rem;
+}
+
+.legal ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  list-style: disc;
+}

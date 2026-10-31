@@ -113,7 +113,7 @@ async function report(userId: string, ids: string[], skipped: string[], title: s
   const lines = [`<b>📊 ${escape(title)}</b>`, ""];
   for (const r of rows.sort((a, b) => a.ticker.localeCompare(b.ticker))) {
     const link = settings.publicUrl
-      ? ` · <a href="${settings.publicUrl}/#/?s=${encodeURIComponent(tv[r.ticker] ?? r.ticker)}&amp;run=${r.id}">laporan</a>`
+      ? ` · <a href="${settings.publicUrl}/app#/?s=${encodeURIComponent(tv[r.ticker] ?? r.ticker)}&amp;run=${r.id}">laporan</a>`
       : "";
     if (r.status === "completed") {
       lines.push(`<b>${escape(r.ticker)}</b> · ${escape(r.rating ?? "tanpa rating")}${link}`);
