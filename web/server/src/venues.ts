@@ -69,6 +69,19 @@ export async function venuePair(venue: VenueId, base: string): Promise<string | 
   return ex.markets?.[pair] ? pair : null;
 }
 
+/** A venue call, tried again twice (after 2 s, then 4 s) when the venue answers that we ask too often. */
+async function patiently<T>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await call();
+    } catch (e) {
+      const limited = e instanceof ccxt.RateLimitExceeded || e instanceof ccxt.DDoSProtection || /\b429\b|too many requests/i.test((e as Error).message);
+      if (!limited || attempt >= 2) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+}
+
 /** The last `count` bars of an asset on a venue, oldest first, the newest possibly still forming. Times in UTC. */
 export async function venueCandles(venue: VenueId, base: string, interval: Interval, count: number): Promise<Candle[]> {
   const spec = VENUES[venue];
@@ -80,17 +93,19 @@ export async function venueCandles(venue: VenueId, base: string, interval: Inter
   const ms = ex.parseTimeframe(tf) * 1000;
   let rows: number[][];
   if (spec.paging === "latest" || count <= spec.page) {
-    rows = await ex.fetchOHLCV(pair, tf, spec.paging === "latest" ? undefined : Date.now() - count * ms, Math.min(count, spec.page));
+    rows = await patiently(() => ex.fetchOHLCV(pair, tf, spec.paging === "latest" ? undefined : Date.now() - count * ms, Math.min(count, spec.page)));
   } else if (spec.paging === "auto") {
-    rows = await ex.fetchOHLCV(pair, tf, Date.now() - count * ms, undefined, {
-      paginate: true,
-      paginationCalls: Math.min(200, Math.ceil(count / spec.page) + 5),
-    });
+    rows = await patiently(() =>
+      ex.fetchOHLCV(pair, tf, Date.now() - count * ms, undefined, {
+        paginate: true,
+        paginationCalls: Math.min(200, Math.ceil(count / spec.page) + 5),
+      }),
+    );
   } else {
     rows = [];
     let since = Date.now() - count * ms;
     for (let calls = 0; calls < 200 && since < Date.now() - ms; calls++) {
-      const page: number[][] = await ex.fetchOHLCV(pair, tf, since, spec.page);
+      const page: number[][] = await patiently(() => ex.fetchOHLCV(pair, tf, since, spec.page));
       if (!page.length) break;
       rows.push(...page);
       const next = page.at(-1)![0] + ms;
