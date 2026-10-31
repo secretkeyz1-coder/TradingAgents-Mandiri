@@ -10,6 +10,7 @@ import { analyses, analysisEvents, users, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
 import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
 import { overLimit, room, usage } from "./usage";
+import { isVenue } from "./venues";
 import { getCatalog, type Catalog } from "./worker";
 
 // Every backtest cell is one full analysis (many LLM calls), so a sweep is capped.
@@ -161,8 +162,10 @@ api.get("/candles", async (c) => {
   if (!SYMBOL_PATTERN.test(symbol)) return c.json({ error: "Simbol tidak valid" }, 400);
   if (!RANGES.includes(range)) return c.json({ error: "Range tidak valid" }, 400);
   if (!INTERVALS.includes(interval)) return c.json({ error: "Interval tidak valid" }, 400);
+  const venue = c.req.query("venue") || undefined;
+  if (venue !== undefined && !isVenue(venue)) return c.json({ error: "Bursa tidak dikenal" }, 400);
   try {
-    return c.json(await getCandles(symbol.toUpperCase(), range, interval));
+    return c.json(await getCandles(symbol.toUpperCase(), range, interval, venue));
   } catch (e) {
     return c.json({ error: (e as Error).message }, 502);
   }

@@ -108,6 +108,13 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
 - Saat notifikasi dinyalakan, sinyal yang sudah ada dicatat tanpa dikirim. Sinyal yang baru terlihat lebih dari `SIGNAL_STALE_BARS` candle (default 4) setelah muncul, misalnya karena server mati, dicatat tanpa dikirim.
 
+### Kripto multi-bursa (tombol Bursa di chart)
+
+- Harga kripto dari 9 bursa lewat CCXT di server (`server/src/venues.ts`): Binance, Bybit, OKX, Coinbase, Kraken, Bitget, KuCoin, Gate, dan Indodax (rupiah). Server yang mengambil datanya, karena banyak bursa diblokir ISP di Indonesia.
+- Tombol "Bursa" di chart membuka harga semua bursa secara real-time (WebSocket tiap bursa, Indodax lewat REST tiap 3 detik), selisih terhadap median, spread bid-ask, dan umur data. Klik bursa untuk memakai candle-nya di chart, indikator, skrip, dan panel TradingView (simbol berganti, misalnya `BYBIT:BTCUSDT`).
+- Riwayat candle per bursa berbeda: Kraken hanya 720 candle terakhir, Indodax sekitar 9 hari candle 15m. Lab bisa memilih bursa untuk simbol kripto. Notifikasi dan buku catatan masih memakai Binance.
+- Gambar agent (dalam dolar) disembunyikan pada bursa rupiah.
+
 ### Lab strategi (tab Lab)
 
 - Uji mesin bawaan (PoB, Scalper, Fib) atau skrip sendiri pada riwayat panjang: kripto dari Binance (15m s.d. 1 tahun, 1j s.d. 3 tahun, 4j/harian s.d. 5 tahun), emas intraday dari XAUUSDT, lainnya dari Yahoo.

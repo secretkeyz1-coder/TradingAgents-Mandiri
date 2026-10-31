@@ -5,6 +5,7 @@
 // Crypto comes from Binance instead (binance.ts): real time, the bars the BINANCE: chart shows;
 // so do gold's intraday bars (the XAUUSDT perpetual, outside spot gold's closed hours).
 import { barsFor, binanceCandles, binancePair, binancePerpetual } from "./binance";
+import { cryptoBase, VENUES, venueCandles, venueTimeframe, type VenueId } from "./venues";
 
 /** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's own time zone for intraday. */
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
@@ -15,8 +16,8 @@ export type CandleSeries = {
   exchangeTimezone: string | null;
   interval: Interval;
   candles: Candle[];
-  /** binance = real time; yahoo = delayed (about 15 minutes for futures). */
-  source: "binance" | "yahoo";
+  /** A crypto venue (binance, bybit, okx, …) = real time; yahoo = delayed (about 15 minutes for futures). */
+  source: VenueId | "yahoo";
 };
 
 const CACHE_TTL_MS = 15 * 60_000;
@@ -49,15 +50,32 @@ type YahooChart = {
   };
 };
 
-export async function getCandles(symbol: string, range: (typeof RANGES)[number], interval: Interval = "1d"): Promise<CandleSeries> {
+export async function getCandles(symbol: string, range: (typeof RANGES)[number], interval: Interval = "1d", venue?: VenueId): Promise<CandleSeries> {
   const intraday = INTRADAY.includes(interval);
   if (intraday && (range === "2y" || range === "5y")) range = INTRADAY_MAX_RANGE;
   const yahooRange = interval === "15m" ? MINUTE_RANGE : range;
-  const key = `${symbol}|${yahooRange}|${interval}`;
+  const base = cryptoBase(symbol);
+  // A crypto asset from another venue than Binance (venues.ts), on the intervals venues serve.
+  const other = venue && venue !== "binance" && base && venueTimeframe(interval) ? venue : null;
+  const key = `${symbol}|${yahooRange}|${interval}${other ? `|${other}` : ""}`;
   const hit = cache.get(key);
+  if (other && base) {
+    if (hit && Date.now() - hit.at < BINANCE_TTL_MS) return hit.value;
+    const count = barsFor(interval, interval === "15m" ? 30 : RANGE_DAYS[range]);
+    // As for Binance: a refresh fetches only the newest page and stitches it onto the bars already held.
+    const held = hit?.value.candles ?? [];
+    const page = held.length ? await venueCandles(other, base, interval, Math.min(VENUES[other].page, count)) : [];
+    const candles =
+      page.length && held.length && held.at(-1)!.time >= page[0].time
+        ? [...held.filter((c) => c.time < page[0].time), ...page].slice(-count)
+        : await venueCandles(other, base, interval, count);
+    const value: CandleSeries = { symbol, currency: VENUES[other].quote, exchangeTimezone: "UTC", interval, candles, source: other };
+    cache.set(key, { at: Date.now(), value });
+    return value;
+  }
   const futures = !binancePair(symbol) && !!binancePerpetual(symbol, interval);
   const pair = binancePair(symbol) ?? binancePerpetual(symbol, interval);
-  if (hit && Date.now() - hit.at < (hit.value.source === "binance" ? BINANCE_TTL_MS : CACHE_TTL_MS)) return hit.value;
+  if (hit && Date.now() - hit.at < (hit.value.source === "yahoo" ? CACHE_TTL_MS : BINANCE_TTL_MS)) return hit.value;
 
   if (pair) {
     try {
@@ -150,8 +168,13 @@ export const LAB_MAX_DAYS: Record<Interval, number> = { "15m": 365, "1h": 1095, 
  * pair (crypto; gold's intraday XAUUSDT since its listing), else Yahoo's own longest window for the
  * interval (15m a month, intraday a year, daily five years). Fetched fresh, not cached.
  */
-export async function getLabCandles(symbol: string, interval: Interval, days: number): Promise<CandleSeries> {
+export async function getLabCandles(symbol: string, interval: Interval, days: number, venue?: VenueId): Promise<CandleSeries> {
   days = Math.min(Math.max(1, days), LAB_MAX_DAYS[interval]);
+  const base = cryptoBase(symbol);
+  if (venue && venue !== "binance" && base && venueTimeframe(interval)) {
+    const candles = await venueCandles(venue, base, interval, barsFor(interval, days));
+    return { symbol, currency: VENUES[venue].quote, exchangeTimezone: "UTC", interval, candles, source: venue };
+  }
   const crypto = binancePair(symbol);
   const pair = crypto ?? binancePerpetual(symbol, interval);
   if (pair) {

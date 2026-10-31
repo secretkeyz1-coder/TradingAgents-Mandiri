@@ -77,8 +77,14 @@ export function toYahoo(tv: string): string | null {
     case 'BYBIT':
     case 'KRAKEN':
     case 'BITSTAMP':
+    case 'OKX':
+    case 'BITGET':
+    case 'KUCOIN':
+    case 'GATEIO':
+    case 'INDODAX':
     case 'CRYPTO': {
-      const m = symbol.match(/^([A-Z0-9]+?)(USDT|USDC|USD)$/);
+      // The asset, whatever it is quoted in: INDODAX:BTCIDR is still BTC-USD to the engine.
+      const m = symbol.match(/^([A-Z0-9]+?)(USDT|USDC|USD|IDR)$/);
       return m ? `${m[1]}-USD` : null;
     }
     case '':
@@ -91,6 +97,42 @@ export function toYahoo(tv: string): string | null {
     default:
       return null;
   }
+}
+
+/** Crypto venues the server reads prices from (server/src/venues.ts), as TradingView names them. */
+export const CRYPTO_VENUES = [
+  { id: 'binance', label: 'Binance', tv: 'BINANCE', quote: 'USDT' },
+  { id: 'bybit', label: 'Bybit', tv: 'BYBIT', quote: 'USDT' },
+  { id: 'okx', label: 'OKX', tv: 'OKX', quote: 'USDT' },
+  { id: 'coinbase', label: 'Coinbase', tv: 'COINBASE', quote: 'USD' },
+  { id: 'kraken', label: 'Kraken', tv: 'KRAKEN', quote: 'USD' },
+  { id: 'bitget', label: 'Bitget', tv: 'BITGET', quote: 'USDT' },
+  { id: 'kucoin', label: 'KuCoin', tv: 'KUCOIN', quote: 'USDT' },
+  { id: 'gate', label: 'Gate', tv: 'GATEIO', quote: 'USDT' },
+  { id: 'indodax', label: 'Indodax', tv: 'INDODAX', quote: 'IDR' },
+] as const;
+export type VenueId = (typeof CRYPTO_VENUES)[number]['id'];
+
+/** The venue a TradingView crypto symbol is on (BYBIT:BTCUSDT → bybit), or null for anything else. */
+export function venueOf(tv: string): VenueId | null {
+  const [exchange, symbol] = tv.trim().toUpperCase().split(':');
+  const v = CRYPTO_VENUES.find((x) => x.tv === exchange);
+  return v && symbol?.endsWith(v.quote) ? v.id : null;
+}
+
+/** The same asset on another venue: BINANCE:BTCUSDT → COINBASE:BTCUSD, or null when the symbol is not on a venue. */
+export function onVenue(tv: string, venue: VenueId): string | null {
+  const [exchange, symbol] = tv.trim().toUpperCase().split(':');
+  const from = CRYPTO_VENUES.find((x) => x.tv === exchange);
+  const to = CRYPTO_VENUES.find((x) => x.id === venue);
+  if (!from || !to || !symbol?.endsWith(from.quote)) return null;
+  return `${to.tv}:${symbol.slice(0, -from.quote.length)}${to.quote}`;
+}
+
+/** The asset of a Yahoo crypto symbol: BTC-USD → BTC; Yahoo's id-suffixed coins (APT21794-USD) → APT. */
+export function cryptoBase(yahoo: string): string | null {
+  const m = yahoo.trim().toUpperCase().match(/^([A-Z0-9]+)-(USD|USDT|USDC)$/);
+  return m ? m[1].replace(/^([A-Z]+)\d{3,}$/, '$1') : null;
 }
 
 /** Accepts either form from a search box and returns both, or null if it cannot be charted. */

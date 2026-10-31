@@ -15,6 +15,7 @@ import { tradeCost } from "./ledger";
 import { getLabCandles, LAB_MAX_DAYS, SYMBOL_PATTERN, type Interval } from "./market";
 import { quickjs } from "./script-run";
 import { runScript, toScriptBars, type ScriptBar } from "../../shared/script";
+import { VENUE_IDS } from "./venues";
 import { runCommand } from "./worker";
 
 export const LAB_ENGINES: Record<string, { label: string; timeframes: string[] }> = {
@@ -39,6 +40,8 @@ const runSchema = z.object({
   costs: z.enum(["taker", "maker"]).default("taker"),
   split: z.number().min(0.5).max(0.9).default(0.7),
   expiry: z.number().int().min(4).max(500).default(96),
+  /** For crypto symbols: the venue whose bars to test on (default Binance). */
+  venue: z.enum(VENUE_IDS).optional(),
 });
 type RunConfig = z.infer<typeof runSchema>;
 
@@ -105,7 +108,7 @@ async function runLab(config: RunConfig, code: string | null) {
   const symbols = [];
   for (const symbol of [...new Set(config.symbols)]) {
     try {
-      const series = await getLabCandles(symbol, config.timeframe as Interval, config.days);
+      const series = await getLabCandles(symbol, config.timeframe as Interval, config.days, config.venue);
       const bars = toScriptBars(series.candles);
       if (bars.length < 100) throw new Error(`baru ${bars.length} candle, terlalu sedikit`);
       const trades =

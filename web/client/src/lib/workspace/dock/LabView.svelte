@@ -6,6 +6,7 @@
   import { formatDateTime } from '../../format';
   import { scripts } from '../../stores/scripts.svelte';
   import { theme, tokenColor } from '../../theme.svelte';
+  import { CRYPTO_VENUES } from '../../tv';
 
   const TF = [
     { value: '15m', label: '15m' },
@@ -24,6 +25,8 @@
   let costs = $state<'taker' | 'maker'>('taker');
   let split = $state(0.7);
   let expiry = $state(96);
+  /** For crypto symbols: whose bars to test on. */
+  let venue = $state('binance');
   let symbols = $state<string[]>(['BTC-USD', 'ETH-USD', 'GC=F']);
   let symbolInput = $state('');
   let busy = $state(false);
@@ -60,7 +63,7 @@
     try {
       const [kind, id] = strategy.split(':') as ['engine' | 'script', string];
       const strategyConfig: LabConfig['strategy'] = kind === 'engine' ? { kind: 'engine', name: id } : { kind: 'script', id };
-      result = await api.labRun({ strategy: strategyConfig, symbols, timeframe, days, costs, split, expiry });
+      result = await api.labRun({ strategy: strategyConfig, symbols, timeframe, days, costs, split, expiry, venue: venue === 'binance' ? undefined : venue });
       runs = await api.labRuns();
     } catch (e) {
       error = (e as Error).message;
@@ -188,8 +191,13 @@
       </div>
     </label>
     <label class="flex flex-col gap-1 text-sm">
-      Kedaluwarsa sinyal (candle)
-      <input type="number" class="input input-sm w-full" min="4" max="500" bind:value={expiry} />
+      Kedaluwarsa sinyal (candle) dan bursa kripto
+      <div class="join w-full">
+        <input type="number" class="input input-sm join-item w-1/2" min="4" max="500" bind:value={expiry} aria-label="Kedaluwarsa sinyal (candle)" />
+        <select class="select select-sm join-item w-1/2" bind:value={venue} aria-label="Bursa untuk simbol kripto">
+          {#each CRYPTO_VENUES as v (v.id)}<option value={v.id}>{v.label}</option>{/each}
+        </select>
+      </div>
     </label>
     <div class="flex flex-col gap-1 text-sm sm:col-span-2 lg:col-span-3">
       Simbol (maks 5)
@@ -251,7 +259,7 @@
                   {#if 'error' in s}
                     <span class="block text-xs text-error">{s.error}</span>
                   {:else}
-                    <span class="block text-xs text-base-content/70">{s.source === 'binance' ? 'Binance' : 'Yahoo'} · {s.bars} candle · uji mulai {s.split?.slice(0, 10)}</span>
+                    <span class="block text-xs text-base-content/70">{CRYPTO_VENUES.find((v) => v.id === s.source)?.label ?? 'Yahoo'} · {s.bars} candle · uji mulai {s.split?.slice(0, 10)}</span>
                   {/if}
                 </td>
                 {#if !('error' in s)}

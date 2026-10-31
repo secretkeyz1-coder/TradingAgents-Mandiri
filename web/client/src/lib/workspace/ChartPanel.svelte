@@ -11,6 +11,7 @@
   import { ws } from '../stores/workspace.svelte';
   import { theme, tokenColor } from '../theme.svelte';
   import TradingViewWidget from '../TradingViewWidget.svelte';
+  import { venueOf } from '../tv';
   import LayoutMenu from './LayoutMenu.svelte';
 
   // The chart canvas takes the panel's own surface and hairline colours.
@@ -24,7 +25,7 @@
   // too. IDX comes end-of-day only (the chart itself says "Data penghujung hari");
   // other exchanges are delayed (US stocks: Cboe One, "Data tertunda").
   const freshness = $derived(
-    /^(BINANCE|COINBASE|BYBIT|KRAKEN|BITSTAMP|CRYPTO|FX|FX_IDC|OANDA|FOREXCOM):/.test(ws.symbol)
+    /^(BINANCE|COINBASE|BYBIT|KRAKEN|BITSTAMP|OKX|BITGET|KUCOIN|GATEIO|INDODAX|CRYPTO|FX|FX_IDC|OANDA|FOREXCOM):/.test(ws.symbol)
       ? { label: 'Realtime', status: 'status-success', title: 'Harga mengalir realtime di chart TradingView' }
       : ws.symbol.startsWith('IDX:')
         ? {
@@ -97,6 +98,7 @@
               timeframe={ws.timeframe}
               onTimeframe={(tf) => ws.setTimeframe(tf)}
               {jumpRequest}
+              venue={venueOf(ws.symbol)}
               tools
             />
           {/key}

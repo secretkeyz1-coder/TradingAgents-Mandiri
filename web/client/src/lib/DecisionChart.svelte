@@ -34,6 +34,8 @@
   import { BandPrimitive } from './chart/rectangle';
   import { ShapesPrimitive, type Shape } from './chart/shapes';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
+  import { CRYPTO_VENUES, cryptoBase, type VenueId } from './tv';
+  import VenuePanel from './chart/VenuePanel.svelte';
   import { fib, fibLevel } from './indicators/fib';
   import { pob, SETUPS } from './indicators/pob';
   import { scalper } from './indicators/scalper';
@@ -52,6 +54,7 @@
     onTimeframe = undefined,
     jumpRequest = 0,
     tools = false,
+    venue = null,
   }: {
     /** Yahoo symbol, as the engine and the analyses store it (BBCA.JK). */
     symbol: string;
@@ -71,6 +74,8 @@
     jumpRequest?: number;
     /** The workspace chart: zoom, jump to date, navigator and indicators. */
     tools?: boolean;
+    /** For crypto: the venue whose candles to show (server/src/venues.ts); Binance when null. */
+    venue?: VenueId | null;
   } = $props();
 
   // The engine scores a decision over this many trading days from the first close after its date.
@@ -99,7 +104,8 @@
   const intraday = $derived(timeframe === '15m' || timeframe === '1h' || timeframe === '4h');
   let candles = $state<Candle[]>([]);
   let currency = $state<string | null>(null);
-  let source = $state<'binance' | 'yahoo' | undefined>(undefined);
+  let source = $state<string | undefined>(undefined);
+  const sourceLabel = $derived(CRYPTO_VENUES.find((v) => v.id === source)?.label ?? 'Binance');
   let loadError = $state('');
   let loading = $state(true);
   let fetched = $state<Decision[]>([]);
@@ -201,7 +207,8 @@
     const edge = (price: number, color: string) =>
       priceLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' }));
     const drawn: Shape[] = [];
-    for (const d of drawings) {
+    // Agent drawings are priced in USD: on a rupiah venue they would land nowhere near the candles.
+    for (const d of currency === 'IDR' ? [] : drawings) {
       const x = d.data;
       if (d.kind === 'level') level(x.price, roleColor(x.role), d.label);
       else if (d.kind === 'zone' || d.kind === 'box') {
@@ -465,9 +472,10 @@
     if (!tools) return;
     const s = symbol;
     const tf = timeframe;
+    const v = venue;
     let stale = false;
     api
-      .candles(s, '1y', tf)
+      .candles(s, '1y', tf, v)
       .then((series) => {
         if (!stale) scriptCandles = series.candles;
       })
@@ -656,10 +664,11 @@
     const s = symbol;
     const r = range;
     const tf = timeframe;
+    const v = venue;
     loading = true;
     loadError = '';
     api
-      .candles(s, r, tf)
+      .candles(s, r, tf, v)
       .then((series) => {
         candles = series.candles;
         currency = series.currency;
@@ -748,7 +757,9 @@
     <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
       <span class="font-mono font-semibold text-base-content">{symbol}</span>
       {#if currency}<span>· {currency}</span>{/if}
-      {#if source === 'binance'}<span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari Binance">real-time</span>{/if}
+      {#if source && source !== 'yahoo'}
+        <span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari {sourceLabel}">{sourceLabel} · real-time</span>
+      {/if}
       <span>· {decisions.length} keputusan AI</span>
       {#if hitRate != null}
         <span class="badge badge-sm {hitRate >= 0.5 ? 'badge-success' : 'badge-warning'} badge-soft">
@@ -823,6 +834,7 @@
           onclick={() => indicators.toggleFib()}>Fib GZ</button
         >
         <ScriptsMenu />
+        {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
         <AlertsMenu {symbol} />
       {/if}
     </div>

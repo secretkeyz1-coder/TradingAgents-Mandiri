@@ -149,8 +149,8 @@ export type CandleSeries = {
   exchangeTimezone: string | null;
   interval: Interval;
   candles: Candle[];
-  /** binance = real time; yahoo = delayed. */
-  source?: 'binance' | 'yahoo';
+  /** A crypto venue (binance, bybit, okx, …) = real time; yahoo = delayed. */
+  source?: string;
 };
 
 export type Decision = {
@@ -318,9 +318,11 @@ export type LabConfig = {
   costs: 'taker' | 'maker';
   split: number;
   expiry: number;
+  /** For crypto symbols: the venue whose bars to test on (default Binance). */
+  venue?: string;
 };
 export type LabSymbol =
-  | { symbol: string; source: 'binance' | 'yahoo'; bars: number; from: string; to: string; split: string | null; is: LabStats; oos: LabStats }
+  | { symbol: string; source: string; bars: number; from: string; to: string; split: string | null; is: LabStats; oos: LabStats }
   | { symbol: string; error: string };
 export type LabRun = {
   id: string;
@@ -392,8 +394,8 @@ export const api = {
   getBacktest: (id: string) => request<Backtest>(`/analyses/${id}`),
   createBacktest: (body: BacktestRequest) =>
     request<{ id: string; cells: number }>('/backtests', { method: 'POST', body: JSON.stringify(body) }),
-  candles: (symbol: string, range: string, interval: Interval = '1d') =>
-    request<CandleSeries>(`/candles?symbol=${encodeURIComponent(symbol)}&range=${range}&interval=${interval}`),
+  candles: (symbol: string, range: string, interval: Interval = '1d', venue?: string | null) =>
+    request<CandleSeries>(`/candles?symbol=${encodeURIComponent(symbol)}&range=${range}&interval=${interval}${venue ? `&venue=${venue}` : ''}`),
   decisions: (ticker: string) => request<Decision[]>(`/decisions?ticker=${encodeURIComponent(ticker)}`),
   agentSessions: (symbol: string) => request<AgentSession[]>(`/agent/sessions?symbol=${encodeURIComponent(symbol)}`),
   createAgentSession: (symbol: string) =>
