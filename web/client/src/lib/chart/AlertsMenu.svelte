@@ -75,7 +75,7 @@
     }
   }
 
-  const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP kena', loss: 'SL kena', expired: 'kedaluwarsa', replaced: 'diganti' };
+  const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP kena', loss: 'SL kena', exit: 'keluar (kondisi)', expired: 'kedaluwarsa', replaced: 'diganti' };
   const NAME: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone' };
   const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
 </script>

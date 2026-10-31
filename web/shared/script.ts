@@ -11,7 +11,10 @@
 //     crossunder/macd/bb/pivothigh/pivotlow   series helpers (NaN while warming up)
 //   plot(series, title, color?)     a line on the chart
 //   hline(price, title, color?)     a horizontal level
-//   signal(i, "BUY"|"SELL", { sl, tp, entry?, label? })   a trade signal at bar i
+//   signal(i, "BUY"|"SELL", { sl, tp, entry?, label?, exit?, maxBars?, exclusive? })   a trade signal at bar i
+//     exit: a boolean series; the trade closes at the close of the first later bar where it is true
+//     maxBars: closes at the close that many bars later (default: the run's expiry)
+//     exclusive: skipped while the previous trade is still open (one position at a time)
 // The newest bar may still be forming: signals on it are dropped.
 
 export type ScriptBar = { time: string; open: number; high: number; low: number; close: number; volume: number };
@@ -24,7 +27,8 @@ export type ScriptSignal = {
   entry: number;
   stopLoss: number;
   takeProfit: number;
-  outcome: 'win' | 'loss' | 'expired' | 'open';
+  /** win = target, loss = stop, exit = the script's exit condition, expired = time limit. */
+  outcome: 'win' | 'loss' | 'exit' | 'expired' | 'open';
   r: number | null;
   exitIndex: number | null;
 };
@@ -34,7 +38,8 @@ export type ScriptResult = {
   plots: { title: string; color: string | null; values: (number | null)[] }[];
   hlines: { price: number; title: string; color: string | null }[];
   inputs: { name: string; value: number | boolean | string; default: number | boolean | string }[];
-  stats: { count: number; wins: number; losses: number; expired: number; open: number; avgR: number | null };
+  /** wins and losses: closed with R above zero or not; tp, sl, exits, expired: how they closed. */
+  stats: { count: number; wins: number; losses: number; tp: number; sl: number; exits: number; expired: number; open: number; avgR: number | null };
 };
 
 export type ScriptRun = { ok: true; result: ScriptResult; ms: number } | { ok: false; error: string; ms: number };
@@ -196,38 +201,58 @@ function signal(i, side, opts) {
   if (na(sl) || na(tp)) throw new Error("signal(): sl dan tp wajib diisi");
   const dir = side === "BUY" ? 1 : -1;
   if ((entry - sl) * dir <= 0 || (tp - entry) * dir <= 0) throw new Error("signal(): untuk BUY harus sl < entry < tp, untuk SELL tp < entry < sl (candle " + time[i] + ")");
+  if (opts.exit !== undefined && (!Array.isArray(opts.exit) || opts.exit.length !== n)) throw new Error("signal(): exit harus array sepanjang jumlah candle");
+  const maxBars = opts.maxBars === undefined ? null : Number(opts.maxBars);
+  if (maxBars !== null && !(Number.isInteger(maxBars) && maxBars >= 1 && maxBars <= 2000)) throw new Error("signal(): maxBars harus bilangan bulat 1 sampai 2000");
   if (__signals.length >= __in.limits.maxSignals) throw new Error("terlalu banyak sinyal (maks " + __in.limits.maxSignals + ")");
-  __signals.push({ index: i, time: time[i], side, label: side + (opts.label ? " · " + String(opts.label).slice(0, 40) : ""), entry, stopLoss: sl, takeProfit: tp });
+  __signals.push({
+    index: i, time: time[i], side, label: side + (opts.label ? " · " + String(opts.label).slice(0, 40) : ""), entry, stopLoss: sl, takeProfit: tp,
+    exit: opts.exit || null, maxBars, exclusive: opts.exclusive === true,
+  });
 }
 `;
 
-/** Follows every signal on closed bars to its stop (first when both are touched), its target or expiry, and tallies them. */
+/**
+ * Follows every signal on closed bars, in a bar's order: its stop (first when stop and target are
+ * both touched), its target, its exit condition at the close, its time limit at the close. An
+ * exclusive signal that fires while the previous trade is still open is dropped. Then tallies them.
+ */
 const EPILOGUE = String.raw`
 ;(() => {
-  const expiry = __in.expiry;
   const sigs = __signals.slice().sort((a, b) => a.index - b.index);
+  const kept = [];
+  let busyUntil = -1;
   for (const s of sigs) {
+    if (s.exclusive && s.index <= busyUntil) continue;
     const dir = s.side === "BUY" ? 1 : -1;
     const risk = Math.abs(s.entry - s.stopLoss);
-    s.outcome = "open"; s.r = null; s.exitIndex = null;
+    const life = s.maxBars === null ? __in.expiry : s.maxBars;
+    let outcome = "open", r = null, exitIndex = null;
     for (let k = s.index + 1; k <= n - 2; k++) {
-      if (dir === 1 ? low[k] <= s.stopLoss : high[k] >= s.stopLoss) { s.outcome = "loss"; s.r = -1; s.exitIndex = k; break; }
-      if (dir === 1 ? high[k] >= s.takeProfit : low[k] <= s.takeProfit) { s.outcome = "win"; s.r = Math.abs(s.takeProfit - s.entry) / risk; s.exitIndex = k; break; }
-      if (k - s.index >= expiry) { s.outcome = "expired"; s.r = ((close[k] - s.entry) * dir) / risk; s.exitIndex = k; break; }
+      if (dir === 1 ? low[k] <= s.stopLoss : high[k] >= s.stopLoss) { outcome = "loss"; r = -1; exitIndex = k; break; }
+      if (dir === 1 ? high[k] >= s.takeProfit : low[k] <= s.takeProfit) { outcome = "win"; r = Math.abs(s.takeProfit - s.entry) / risk; exitIndex = k; break; }
+      if (s.exit && s.exit[k]) { outcome = "exit"; r = ((close[k] - s.entry) * dir) / risk; exitIndex = k; break; }
+      if (k - s.index >= life) { outcome = "expired"; r = ((close[k] - s.entry) * dir) / risk; exitIndex = k; break; }
     }
+    busyUntil = exitIndex === null ? Infinity : exitIndex;
+    kept.push({ index: s.index, time: s.time, side: s.side, label: s.label, entry: s.entry, stopLoss: s.stopLoss, takeProfit: s.takeProfit, outcome, r, exitIndex });
   }
-  const closed = sigs.filter((s) => s.r !== null);
+  const closed = kept.filter((s) => s.r !== null);
+  const count = (outcome) => kept.filter((s) => s.outcome === outcome).length;
   return {
-    signals: sigs,
+    signals: kept,
     plots: __plots,
     hlines: __hlines,
     inputs: __inputs,
     stats: {
-      count: sigs.length,
-      wins: sigs.filter((s) => s.outcome === "win").length,
-      losses: sigs.filter((s) => s.outcome === "loss").length,
-      expired: sigs.filter((s) => s.outcome === "expired").length,
-      open: sigs.filter((s) => s.outcome === "open").length,
+      count: kept.length,
+      wins: closed.filter((s) => s.r > 0).length,
+      losses: closed.filter((s) => s.r <= 0).length,
+      tp: count("win"),
+      sl: count("loss"),
+      exits: count("exit"),
+      expired: count("expired"),
+      open: count("open"),
       avgR: closed.length ? closed.reduce((a, s) => a + s.r, 0) / closed.length : null,
     },
   };
@@ -274,7 +299,11 @@ Series (array sepanjang n, NaN selama pemanasan): ta.sma(src,len) ta.ema(src,len
   ta.macd(src,fast=12,slow=26,signal=9) -> {macd,signal,hist}   ta.bb(src,len=20,mult=2) -> {mid,upper,lower}
   ta.pivothigh(len) ta.pivotlow(len) -> harga pivot, diletakkan di candle saat pivot baru terkonfirmasi (len candle sesudahnya), NaN di tempat lain
 Gambar: plot(series, judul, warna?) (maks 8)   hline(harga, judul, warna?)
-Sinyal: signal(i, "BUY"|"SELL", { sl, tp, entry?, label? }) -- entry default close[i]; BUY: sl < entry < tp, SELL: tp < entry < sl.
+Sinyal: signal(i, "BUY"|"SELL", { sl, tp, entry?, label?, exit?, maxBars?, exclusive? }) -- entry default close[i]; BUY: sl < entry < tp, SELL: tp < entry < sl.
+  Keluar lebih awal: exit = array boolean sepanjang n, posisi ditutup di close candle pertama setelah i yang bernilai true
+  (dicek setelah SL dan TP), misalnya close.map((c, k) => c > ta_sma5[k]); maxBars = tutup di close setelah sekian candle;
+  exclusive: true = satu posisi sekaligus, sinyal yang muncul saat posisi sebelumnya masih terbuka diabaikan.
+  Hasil: win = kena TP, loss = kena SL, exit = keluar oleh kondisi, expired = batas waktu; menang dihitung dari R di atas nol.
 Aturan: sinyal di candle terakhir (masih berjalan) diabaikan; TP/SL/kedaluwarsa (96 candle) dilacak otomatis; tidak ada akses jaringan,
 file atau halaman; batas 3 detik dan 128 MB. Bahasa: JavaScript biasa (const, let, for, if, Math.*).`;
 
@@ -357,6 +386,57 @@ plot(band.lower, "BB bawah", "gray");
 for (let i = 21; i < n; i++) {
   if (close[i] > band.upper[i] && close[i - 1] <= band.upper[i - 1]) signal(i, "BUY", { sl: band.mid[i], tp: close[i] + 2 * (close[i] - band.mid[i]) });
   if (close[i] < band.lower[i] && close[i - 1] >= band.lower[i - 1]) signal(i, "SELL", { sl: band.mid[i], tp: close[i] - 2 * (band.mid[i] - close[i]) });
+}`,
+  },
+  {
+    name: 'RSI(2) pullback (mean reversion)',
+    code: `// Mean reversion (sering menang, untung kecil): BELI saat RSI(2) jatuh di bawah batas selagi tren
+// besar naik (close di atas SMA 200), KELUAR saat close kembali di atas SMA 5. SL pelindung 3 ATR dan
+// TP pengaman 5 ATR jarang tersentuh; posisi ditutup paling lambat 10 candle, satu posisi sekaligus.
+// Uji di Lab pada harian: S&P 500 (^GSPC), emas (GC=F), BTC-USD.
+const longOnly = input("Beli saja", true);
+const level = input("Batas RSI(2)", 10);
+const slAtr = input("SL pelindung (ATR)", 3);
+const tpAtr = input("TP pengaman (ATR)", 5);
+const maxBars = input("Maks candle", 10);
+const rsi2 = ta.rsi(close, 2);
+const trend = ta.sma(close, 200);
+const mean = ta.sma(close, 5);
+const atr = ta.atr(14);
+plot(trend, "SMA 200", "royalblue");
+plot(mean, "SMA 5", "orange");
+const backUp = close.map((c, k) => c > mean[k]);
+const backDown = close.map((c, k) => c < mean[k]);
+for (let i = 200; i < n; i++) {
+  if (close[i] > trend[i] && rsi2[i] < level)
+    signal(i, "BUY", { sl: close[i] - slAtr * atr[i], tp: close[i] + tpAtr * atr[i], exit: backUp, maxBars, exclusive: true, label: "RSI2 " + rsi2[i].toFixed(0) });
+  if (!longOnly && close[i] < trend[i] && rsi2[i] > 100 - level)
+    signal(i, "SELL", { sl: close[i] + slAtr * atr[i], tp: close[i] - tpAtr * atr[i], exit: backDown, maxBars, exclusive: true, label: "RSI2 " + rsi2[i].toFixed(0) });
+}`,
+  },
+  {
+    name: 'Bollinger revert (mean reversion)',
+    code: `// Mean reversion: BELI saat close jatuh di bawah Bollinger bawah (20, 2) selagi tren besar naik
+// (di atas SMA 200), KELUAR saat close kembali di atas garis tengah. SL pelindung 3 ATR, TP pengaman
+// 5 ATR, paling lama 10 candle, satu posisi sekaligus.
+const longOnly = input("Beli saja", true);
+const slAtr = input("SL pelindung (ATR)", 3);
+const tpAtr = input("TP pengaman (ATR)", 5);
+const maxBars = input("Maks candle", 10);
+const band = ta.bb(close, 20, 2);
+const trend = ta.sma(close, 200);
+const atr = ta.atr(14);
+plot(trend, "SMA 200", "royalblue");
+plot(band.upper, "BB atas", "gray");
+plot(band.mid, "BB tengah", "gray");
+plot(band.lower, "BB bawah", "gray");
+const backUp = close.map((c, k) => c > band.mid[k]);
+const backDown = close.map((c, k) => c < band.mid[k]);
+for (let i = 200; i < n; i++) {
+  if (close[i] > trend[i] && close[i] < band.lower[i])
+    signal(i, "BUY", { sl: close[i] - slAtr * atr[i], tp: close[i] + tpAtr * atr[i], exit: backUp, maxBars, exclusive: true, label: "BB bawah" });
+  if (!longOnly && close[i] < trend[i] && close[i] > band.upper[i])
+    signal(i, "SELL", { sl: close[i] + slAtr * atr[i], tp: close[i] - tpAtr * atr[i], exit: backDown, maxBars, exclusive: true, label: "BB atas" });
 }`,
   },
 ];

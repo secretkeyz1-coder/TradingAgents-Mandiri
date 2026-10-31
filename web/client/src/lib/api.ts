@@ -128,7 +128,7 @@ export type SignalAlert = {
   indicator: string;
   timeframe: '15m' | '1h' | '4h' | '1d';
   primed: boolean;
-  last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'expired' | 'replaced' } | null;
+  last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced' } | null;
 };
 export type SignalAlerts = {
   items: SignalAlert[];
@@ -257,8 +257,12 @@ export type LedgerStats = {
   key: string;
   count: number;
   closed: number;
+  /** Closed with net R above zero, and the rest. */
   wins: number;
   losses: number;
+  /** Closed at the target, at the stop, and any other way. */
+  tp: number;
+  sl: number;
   other: number;
   open: number;
   winRate: number | null;
@@ -283,7 +287,7 @@ export type LedgerItem = {
   entry: number;
   stopLoss: number;
   takeProfit: number;
-  status: 'open' | 'win' | 'loss' | 'expired' | 'replaced';
+  status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced';
   exitTime: string | null;
   grossR: number | null;
   costR: number;

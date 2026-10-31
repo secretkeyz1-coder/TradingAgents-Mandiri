@@ -115,6 +115,12 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Mesin dijalankan worker (`worker/lab.py`, perintah `lab`), skrip di sandbox yang sama dengan chart dengan batas 30 detik. Satu uji berjalan pada satu waktu, maksimal 60 uji per pengguna per 24 jam, 30 hasil terakhir disimpan (`lab_runs`).
 - Template skrip "Donchian breakout" dan "Trend EMA 50/200 + pullback" disediakan untuk diuji di 4j dan harian. Strategi yang lolos dicatat live di buku catatan (`LEDGER_SCRIPTS` di `ledger.ts`): saat ini Donchian breakout harian, persis seperti diuji (periode 20, SL 2 ATR, TP 4 ATR, kedaluwarsa 120 candle).
 
+### Keluar berdasarkan kondisi (skrip)
+
+- `signal(i, side, { sl, tp, exit, maxBars, exclusive })`: `exit` adalah array boolean, posisi ditutup di close candle pertama setelah sinyal yang bernilai true (dicek setelah SL dan TP); `maxBars` menutup posisi setelah sekian candle; `exclusive: true` berarti satu posisi sekaligus.
+- Hasil baru `exit` (keluar oleh kondisi) tampil di chart, editor, notifikasi, Lab dan buku catatan. Win rate di buku catatan dan Lab dihitung dari trade yang untung setelah biaya, bukan dari TP yang tersentuh; jumlah TP dan SL tetap ditampilkan terpisah.
+- Template "RSI(2) pullback" dan "Bollinger revert" (mean reversion: beli saat harga terlalu jauh di bawah rata-rata dalam tren naik, keluar saat kembali ke rata-rata). Di Lab, RSI(2) harian pada S&P 500 menang 78-80% dengan hasil positif setelah biaya, tetapi baru 43 trade dalam 5 tahun.
+
 ### Buku catatan sinyal (tab Sinyal)
 
 - Setiap sinyal mesin bawaan (PoB 15m/1j, Scalper 15m, Fib 15m/1j/harian) pada `SIGNAL_LEDGER_SYMBOLS` (default BTC-USD, ETH-USD, GC=F) dicatat sekali saat lahir, beku, lalu dinilai saat candle berikutnya tutup, oleh pemindai yang sama dengan notifikasi.

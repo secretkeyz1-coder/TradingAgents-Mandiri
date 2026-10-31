@@ -264,8 +264,12 @@ export type LedgerStats = {
   key: string;
   count: number;
   closed: number;
+  /** Closed with net R above zero (after costs), and the rest: what the win rate counts. */
   wins: number;
   losses: number;
+  /** How they closed: target, stop, anything else (exit condition, time limit, replaced). */
+  tp: number;
+  sl: number;
   other: number;
   open: number;
   winRate: number | null;
@@ -292,15 +296,18 @@ function stats(key: string, rows: Row[]): LedgerStats {
     peak = Math.max(peak, run);
     deepest = Math.max(deepest, peak - run);
   }
-  const wins = done.filter((r) => r.status === "win").length;
-  const losses = done.filter((r) => r.status === "loss").length;
+  const wins = results.filter((x) => x > 0).length;
+  const tp = done.filter((r) => r.status === "win").length;
+  const sl = done.filter((r) => r.status === "loss").length;
   return {
     key,
     count: rows.length,
     closed: done.length,
     wins,
-    losses,
-    other: done.length - wins - losses,
+    losses: done.length - wins,
+    tp,
+    sl,
+    other: done.length - tp - sl,
     open: rows.filter((r) => r.status === "open").length,
     winRate: done.length ? wins / done.length : null,
     expectancy: done.length ? run / done.length : null,
@@ -380,7 +387,7 @@ async function recapText(title: string, from: Date, to: Date): Promise<string> {
   const lines = [`<b>${escape(title)}</b>`];
   if (!s.closed) lines.push("Belum ada sinyal yang selesai pada periode ini.");
   else {
-    lines.push(`Selesai: ${s.closed} · TP ${s.wins} · SL ${s.losses}${s.other ? ` · lainnya ${s.other}` : ""}`);
+    lines.push(`Selesai: ${s.closed} · untung bersih ${s.wins} (${Math.round((s.winRate ?? 0) * 100)}%) · TP ${s.tp} · SL ${s.sl}${s.other ? ` · lainnya ${s.other}` : ""}`);
     lines.push(`Hasil bersih: <b>${r1(s.totalR)}</b> (≈ ${s.totalR >= 0 ? "+" : "−"}${Math.abs(Math.round(s.totalR * RISK_USD)).toLocaleString("id-ID")} USD akun simulasi, risiko ${RISK_PCT}% per sinyal)`);
     const parts = groupStats(closed, (r) => `${NAMES[r.source] ?? r.source} ${r.timeframe === "1d" ? "harian" : r.timeframe === "1h" ? "1j" : r.timeframe}`).map(
       (g) => `${escape(g.key)} ${r1(g.totalR)} (${g.closed})`,

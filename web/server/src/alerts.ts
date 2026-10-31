@@ -99,6 +99,7 @@ function closeMessage(
   const what: Record<string, string> = {
     win: `✅ TP kena · ${price(e.takeProfit)} (+${(Math.abs(e.takeProfit - e.entry) / risk).toFixed(2).replace(".", ",")}R)`,
     loss: `❌ SL kena · ${price(e.stopLoss)} (−1R)`,
+    exit: "🚪 Keluar oleh kondisi skrip",
     expired: "⏱ Kedaluwarsa tanpa kena TP/SL",
     replaced: "↩ Diganti sinyal baru",
   };

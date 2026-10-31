@@ -554,7 +554,7 @@
     }),
   );
 
-  const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', expired: 'kedaluwarsa', open: 'masih berjalan' };
+  const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', exit: 'keluar oleh kondisi skrip', expired: 'kedaluwarsa', open: 'masih berjalan' };
   /** "28 Okt 21:45" for intraday bars, the date for daily ones. */
   const stamp = (t: string) => {
     const d = new Date(`${day(t)}T00:00:00Z`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -867,7 +867,7 @@
               <p class="text-base-content/70">Belum ada sinyal di candle yang dimuat.</p>
             {/if}
             <p class="font-mono tabular-nums text-base-content/70">
-              {card.stats.count} sinyal · {card.stats.wins} TP · {card.stats.losses} SL{card.stats.avgR == null ? '' : ` · ${card.stats.avgR.toFixed(2).replace('.', ',')}R`}
+              {card.stats.count} sinyal · {card.stats.tp} TP · {card.stats.sl} SL{card.stats.exits ? ` · ${card.stats.exits} keluar` : ''}{card.stats.avgR == null ? '' : ` · ${card.stats.avgR.toFixed(2).replace('.', ',')}R`}
             </p>
           {/if}
         </section>

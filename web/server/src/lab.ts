@@ -63,7 +63,8 @@ function stats(trades: Scored[]): LabStats {
   const mean = (f: (t: Scored) => number) => (n ? trades.reduce((a, t) => a + f(t), 0) / n : null);
   return {
     n,
-    win: n ? trades.filter((t) => t.r > 0).length / n : null,
+    // A win is a trade that paid after costs, whatever closed it.
+    win: n ? trades.filter((t) => t.net > 0).length / n : null,
     gross: mean((t) => t.r),
     cost: mean((t) => t.cost),
     net: mean((t) => t.net),

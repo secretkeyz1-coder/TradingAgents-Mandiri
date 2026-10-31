@@ -262,7 +262,8 @@ export const userScripts = pgTable(
 
 /** Built-in engines, or "script:<user_scripts.id>" for a user's own script. */
 export type SignalIndicator = "pob" | "scalper" | "fib" | `script:${string}`;
-export type SignalStatus = "open" | "win" | "loss" | "expired" | "replaced";
+/** win = target, loss = stop, exit = a script's exit condition, expired = time limit, replaced = a newer signal. */
+export type SignalStatus = "open" | "win" | "loss" | "exit" | "expired" | "replaced";
 
 /** A user's request to hear about new signals of one indicator on one symbol and timeframe. */
 export const signalAlerts = pgTable(

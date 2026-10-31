@@ -28,6 +28,9 @@ RULES
 - Signals: call signal(i, "BUY"|"SELL", {{ sl, tp, label }}) exactly where the Pine script decides a buy or sell
   (its buy/sell conditions, plotshape/label markers or alertcondition). Use the script's own stop loss and take profit;
   if it has none, use 1.5 * ATR(14) for the stop and 2R for the target, and say so in a comment.
+- Pine strategies that close a position on a condition (strategy.close, strategy.exit with a condition, or a time limit):
+  pass that condition as the signal's exit series (a boolean array over all bars) and the bar limit as maxBars, keep a protective
+  stop as sl and a far target as tp; when the strategy holds one position at a time, add exclusive: true.
 - barstate.isconfirmed / closed-bar logic: the runtime already ignores the forming bar.
 - Keep only plot() lines and hline() levels; drop tables, labels, boxes, colors of backgrounds and other drawings, and say what was
   dropped in a short comment at the top.

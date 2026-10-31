@@ -14,7 +14,7 @@
   const NAMES: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone', donchian: 'Donchian breakout' };
   const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
   const SESSION: Record<string, string> = { asia: 'Asia', london: 'London', newyork: 'New York' };
-  const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP', loss: 'SL', expired: 'kedaluwarsa', replaced: 'diganti' };
+  const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP', loss: 'SL', exit: 'keluar', expired: 'kedaluwarsa', replaced: 'diganti' };
   const GROUPS = [
     { key: 'bySource', label: 'Per mesin' },
     { key: 'bySymbol', label: 'Per simbol' },
@@ -163,10 +163,10 @@
       <div class="stat">
         <div class="stat-title">Sinyal selesai</div>
         <div class="stat-value text-2xl tabular-nums">{t.closed}</div>
-        <div class="stat-desc">TP {t.wins} · SL {t.losses} · lainnya {t.other} · berjalan {t.open}</div>
+        <div class="stat-desc">TP {t.tp} · SL {t.sl} · lainnya {t.other} · berjalan {t.open}</div>
       </div>
       <div class="stat">
-        <div class="stat-title">Win rate</div>
+        <div class="stat-title" title="Bagian sinyal selesai yang untung setelah biaya">Win rate (bersih)</div>
         <div class="stat-value text-2xl tabular-nums">{pct(t.winRate)}</div>
         <div class="stat-desc">Profit factor {num(t.profitFactor)}</div>
       </div>
