@@ -15,12 +15,12 @@ import { db } from "./db";
 import { analyses, users, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
 import { enqueue, subscribe } from "./jobs";
 import { SYMBOL_PATTERN } from "./market";
+import { capMessage, limitsOf, needsVerification } from "./plans";
 import { overLimit, room } from "./usage";
 import { getCatalog } from "./worker";
 
 const WIB_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
-const MAX_ITEMS = 10;
 // A server that starts long after the scheduled time does not catch up with that day's run.
 const CATCH_UP_MS = 3 * 3_600_000;
 
@@ -152,7 +152,9 @@ function notifyWhenDone(userId: string, ids: string[], skipped: string[], title:
 
 /** Queue one analysis per symbol on this user's watchlist, as many as today's caps allow. */
 async function startRun(user: User, runId?: string): Promise<{ ids: string[]; skipped: string[] } | { error: string }> {
-  const items = await db.select().from(watchlist).where(eq(watchlist.userId, user.id)).orderBy(asc(watchlist.createdAt));
+  if (needsVerification(user)) return { error: "Verifikasi email kamu dulu untuk menjalankan analisa watchlist" };
+  // As many symbols as the plan holds, oldest first: a lapsed plan pauses the rest.
+  const items = (await db.select().from(watchlist).where(eq(watchlist.userId, user.id)).orderBy(asc(watchlist.createdAt))).slice(0, limitsOf(user).watchlist);
   if (!items.length) return { error: "Watchlist kosong" };
   const catalog = await getCatalog();
   const { provider, quickModel, deepModel } = catalog.defaults;
@@ -232,7 +234,7 @@ watchApi.get("/watchlist", async (c) => {
   const [lastRun] = await db.select().from(watchRuns).where(eq(watchRuns.userId, user.id)).orderBy(desc(watchRuns.day)).limit(1);
   return c.json({
     items: items.map((w) => ({ symbol: w.symbol, tvSymbol: w.tvSymbol, last: recent.find((a) => a.ticker === w.symbol) ?? null })),
-    max: MAX_ITEMS,
+    max: limitsOf(user).watchlist,
     schedule: { time: settings.time, days: [...settings.days], next: nextRun(), analysts: settings.analysts, depth: settings.depth },
     telegram: {
       bot: Boolean(settings.telegramToken),
@@ -250,8 +252,9 @@ watchApi.post("/watchlist", async (c) => {
   const body = addSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "Simbol tidak valid" }, 400);
   const user = c.get("user");
-  if ((await db.$count(watchlist, eq(watchlist.userId, user.id))) >= MAX_ITEMS) {
-    return c.json({ error: `Watchlist maksimal ${MAX_ITEMS} simbol` }, 400);
+  const max = limitsOf(user).watchlist;
+  if ((await db.$count(watchlist, eq(watchlist.userId, user.id))) >= max) {
+    return c.json({ error: capMessage(user, max, "simbol di watchlist") }, 400);
   }
   await db
     .insert(watchlist)

@@ -126,6 +126,45 @@ import { auth } from './auth.svelte';
 
 export type { PlanId, PlanLimits };
 
+export type PaymentStatus = 'pending' | 'claimed' | 'paid' | 'rejected' | 'cancelled';
+/** A subscription order (server/src/billing.ts): rupiah, the unique code included in the amount. */
+export type Payment = {
+  id: string;
+  reference: string;
+  plan: PlanId;
+  period: 'month' | 'year';
+  founding: boolean;
+  amount: number;
+  uniqueCode: number;
+  status: PaymentStatus;
+  note: string | null;
+  adminNote: string | null;
+  createdAt: string;
+  claimedAt: string | null;
+  paidAt: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+};
+export type Billing = {
+  /** False until the server has PAYMENT_INSTRUCTIONS. */
+  open: boolean;
+  instructions: string;
+  orderDays: number;
+  founding: { price: number; left: number; mine: boolean };
+  orders: Payment[];
+};
+export type AdminPayment = Payment & { user: { username: string; email: string | null; phone: string | null } };
+export type AdminOverview = {
+  members: number;
+  newWeek: number;
+  verified: number;
+  pro: number;
+  creator: number;
+  trials: number;
+  revenue: { month: number; last30: number };
+  orders: { open: number; claimed: number };
+};
+
 /** A user's own indicator script (web/shared/script.ts). */
 export type UserScript = { id: string; name: string; code: string; pine: string | null; updatedAt: string };
 export type UserScripts = {
@@ -421,6 +460,15 @@ export const api = {
   /** `current` is left out when the account has no password yet (Google only). */
   changePassword: (current: string | undefined, next: string) =>
     request<{ ok: true }>('/me/password', { method: 'POST', body: JSON.stringify({ current, next }) }),
+  billing: () => request<Billing>('/billing'),
+  order: (body: { plan: 'pro' | 'creator'; period: 'month' | 'year'; founding?: boolean }) =>
+    request<Payment>('/billing/orders', { method: 'POST', body: JSON.stringify(body) }),
+  claimOrder: (id: string, note: string) => request<Payment>(`/billing/orders/${id}/claim`, { method: 'POST', body: JSON.stringify({ note }) }),
+  cancelOrder: (id: string) => request<Payment>(`/billing/orders/${id}/cancel`, { method: 'POST' }),
+  adminPayments: (status: 'open' | 'paid' | 'all') => request<AdminPayment[]>(`/admin/payments?status=${status}`),
+  confirmPayment: (id: string, note = '') => request<Payment>(`/admin/payments/${id}/confirm`, { method: 'POST', body: JSON.stringify({ note }) }),
+  rejectPayment: (id: string, reason: string) => request<Payment>(`/admin/payments/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  adminOverview: () => request<AdminOverview>('/admin/overview'),
   users: () => request<Account[]>('/users'),
   createUser: (body: { username: string; password: string; role: Account['role']; email?: string }) =>
     request<Account>('/users', { method: 'POST', body: JSON.stringify(body) }),

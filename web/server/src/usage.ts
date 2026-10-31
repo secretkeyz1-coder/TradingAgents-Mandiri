@@ -6,7 +6,7 @@
 import { and, count, eq, gte, type SQL } from "drizzle-orm";
 import type { User } from "./auth";
 import { db } from "./db";
-import { limitsOf, needsVerification } from "./plans";
+import { limitsOf, needsVerification, planOf } from "./plans";
 import { agentMessages, agentSessions, analyses } from "./db/schema";
 
 const DAY_MS = 86_400_000;
@@ -91,5 +91,6 @@ export async function overLimit(user: User, kind: Kind, add = 1): Promise<string
   const head = ownFull
     ? `Batas harian ${mine.limit} ${what} untuk akunmu tercapai: ${mine.used} terpakai hari ini`
     : `Batas harian total server untuk ${what} tercapai`;
-  return `${head}${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.`;
+  const upgrade = ownFull && user.role !== "admin" && planOf(user) !== "creator" ? " Naikkan paket di menu akun → Paket & tagihan untuk kuota lebih besar." : "";
+  return `${head}${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.${upgrade}`;
 }

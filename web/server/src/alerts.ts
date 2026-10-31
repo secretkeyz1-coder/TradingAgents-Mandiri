@@ -15,6 +15,7 @@ import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
 import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
+import { capMessage, limitsOf } from "./plans";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
 import { toScriptBars } from "../../shared/script";
 import { binancePair, binancePerpetual } from "./binance";
@@ -23,7 +24,6 @@ import { runOnSymbol, type ScriptTimeframe } from "./script-run";
 import { escape, publicUrl, sendTelegram, telegramBot } from "./watch";
 import { runCommand } from "./worker";
 
-const MAX_ALERTS = 15;
 const STALE_BARS = Number(process.env.SIGNAL_STALE_BARS ?? 4);
 /** Minutes between scans; hourly pairs are scanned every third slot. */
 const SLOT_MINUTES = 5;
@@ -132,12 +132,20 @@ async function scan(only?: string[], withHourly = true) {
   running = true;
   try {
     const rows = await db
-      .select({ alert: signalAlerts, chat: users.telegramChatId })
+      .select({ alert: signalAlerts, chat: users.telegramChatId, owner: { role: users.role, plan: users.plan, planUntil: users.planUntil } })
       .from(signalAlerts)
       .innerJoin(users, eq(signalAlerts.userId, users.id))
-      .where(and(eq(users.disabled, false), only?.length ? inArray(signalAlerts.id, only) : undefined));
+      .where(and(eq(users.disabled, false), only?.length ? inArray(signalAlerts.id, only) : undefined))
+      .orderBy(asc(signalAlerts.createdAt));
+    // Each account is watched for as many alerts as its plan allows, oldest first: a lapsed plan pauses the rest.
+    const held = new Map<string, number>();
+    const allowed = rows.filter((r) => {
+      const n = (held.get(r.alert.userId!) ?? 0) + 1;
+      held.set(r.alert.userId!, n);
+      return n <= limitsOf(r.owner).alerts;
+    });
     // Hourly and daily pairs ride every third slot (15 minutes); their bars close rarely.
-    const wanted = rows.filter((r) => withHourly || r.alert.timeframe === "15m");
+    const wanted = allowed.filter((r) => withHourly || r.alert.timeframe === "15m");
     // The signal ledger (ledger.ts) rides the same scan; a new alert's silent first scan leaves it out.
     const ledger = only ? [] : await ledgerPairs(withHourly);
     if (!wanted.length && !ledger.length) return;
@@ -310,7 +318,7 @@ alertsApi.get("/alerts", async (c) => {
         last: last ? { signalTime: last.signalTime, label: last.label, status: last.status } : null,
       };
     }),
-    max: MAX_ALERTS,
+    max: limitsOf(user).alerts,
     combos: [
       ...COMBOS,
       ...(await db.select().from(userScripts).where(eq(userScripts.userId, user.id)).orderBy(asc(userScripts.name))).flatMap((s) =>
@@ -344,7 +352,8 @@ alertsApi.post("/alerts", async (c) => {
   const venue = storedVenue(venueOfTv(tvSymbol));
   if (venue && !cryptoBase(symbol)) return c.json({ error: "Bursa hanya untuk simbol kripto" }, 400);
   const count = (await db.select({ id: signalAlerts.id }).from(signalAlerts).where(eq(signalAlerts.userId, user.id))).length;
-  if (count >= MAX_ALERTS) return c.json({ error: `Maksimal ${MAX_ALERTS} notifikasi per akun` }, 409);
+  const max = limitsOf(user).alerts;
+  if (count >= max) return c.json({ error: capMessage(user, max, "notifikasi") }, 409);
   const [row] = await db
     .insert(signalAlerts)
     .values({ userId: user.id, symbol: symbol.toUpperCase(), tvSymbol: tvSymbol.toUpperCase(), indicator: indicator as SignalIndicator, timeframe, venue })

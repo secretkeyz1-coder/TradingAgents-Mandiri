@@ -1,6 +1,9 @@
 <script lang="ts">
-  // Admin only: the accounts. There is no sign-up, so this is where people get
-  // in; each change is saved as soon as it is made.
+  // Admin only: the accounts. People also sign up themselves when SIGNUP=open;
+  // here the admin makes accounts, sets a plan by hand (recorded as a free
+  // grant in the payments), verifies an e-mail when mail cannot be sent, and
+  // changes the rest. Each change is saved as soon as it is made.
+  import { PLANS, PLAN_IDS, type PlanId } from '../../../../shared/plans';
   import { api, type Account } from '../api';
   import { auth } from '../auth.svelte';
 
@@ -14,6 +17,27 @@
   let role = $state<Account['role']>('member');
   let resetting = $state<string | null>(null);
   let resetPassword = $state('');
+  let planning = $state<string | null>(null);
+  let planChoice = $state<PlanId>('pro');
+  let planEnd = $state('');
+
+  /** Today plus `days`, as YYYY-MM-DD in WIB. */
+  const dayFromNow = (days: number) => new Date(Date.now() + 7 * 3_600_000 + days * 86_400_000).toISOString().slice(0, 10);
+  const shortDay = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  function startPlan(a: Account) {
+    planning = a.id;
+    planChoice = a.plan === 'free' ? 'pro' : a.plan;
+    planEnd = a.planUntil ? new Date(new Date(a.planUntil).getTime() + 7 * 3_600_000).toISOString().slice(0, 10) : dayFromNow(30);
+  }
+
+  function savePlan(event: SubmitEvent, a: Account) {
+    event.preventDefault();
+    act(async () => {
+      await api.updateUser(a.id, { plan: planChoice, planUntil: planChoice === 'free' ? null : planEnd || null });
+      planning = null;
+    }, `Paket ${a.username} diatur.`);
+  }
 
   async function load() {
     try {
@@ -68,7 +92,7 @@
       <div>
         <h2 id="users-title" class="text-lg font-semibold">Pengguna</h2>
         <p class="text-sm text-base-content/70">
-          Tiap akun punya riwayat, chat agent, skill, dan watchlist sendiri. Kuota kosong = default server.
+          Tiap akun punya riwayat, chat agent, skill, dan watchlist sendiri. Kuota kosong = kuota paketnya (admin: default server).
         </p>
       </div>
       <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
@@ -82,6 +106,7 @@
         <thead>
           <tr>
             <th>Nama</th>
+            <th>Paket</th>
             <th>Peran</th>
             <th>Status</th>
             <th class="text-right">Analisa/hari</th>
@@ -93,7 +118,37 @@
           {#each accounts as a (a.id)}
             {@const self = a.id === auth.user?.id}
             <tr class:opacity-60={a.disabled}>
-              <td class="font-mono">{a.username}{#if self}<span class="ml-1 text-xs text-base-content/70">(kamu)</span>{/if}</td>
+              <td>
+                <span class="font-mono">{a.username}</span>{#if self}<span class="ml-1 text-xs text-base-content/70">(kamu)</span>{/if}
+                {#if a.email}
+                  <span class="block text-xs text-base-content/70">
+                    {a.email}{a.phone ? ` · ${a.phone}` : ''}
+                    {#if !a.emailVerified}
+                      · <button class="link" onclick={() => act(() => api.updateUser(a.id, { emailVerified: true }), `Email ${a.username} ditandai terverifikasi.`)}>verifikasi manual</button>
+                    {/if}
+                  </span>
+                {/if}
+              </td>
+              <td>
+                {#if a.role === 'admin'}
+                  <span class="text-xs text-base-content/70">admin (Creator)</span>
+                {:else if planning === a.id}
+                  <form class="join" onsubmit={(e) => savePlan(e, a)}>
+                    <select class="select join-item select-xs" bind:value={planChoice} aria-label="Paket {a.username}">
+                      {#each PLAN_IDS as id (id)}<option value={id}>{PLANS[id].name}</option>{/each}
+                    </select>
+                    {#if planChoice !== 'free'}
+                      <input class="input join-item input-xs w-32" type="date" bind:value={planEnd} aria-label="Berlaku sampai" title="Kosongkan untuk tanpa batas waktu" />
+                    {/if}
+                    <button class="btn btn-xs join-item" type="submit">Simpan</button>
+                    <button class="btn btn-ghost btn-xs join-item" type="button" onclick={() => (planning = null)}>Batal</button>
+                  </form>
+                {:else}
+                  <button class="btn btn-ghost btn-xs" onclick={() => startPlan(a)} title="Ubah paket">
+                    {PLANS[a.plan].name}{a.onTrial ? ' · trial' : ''}{a.planUntil ? ` s.d. ${shortDay(a.planUntil)}` : ''}
+                  </button>
+                {/if}
+              </td>
               <td>
                 <select
                   class="select select-xs"

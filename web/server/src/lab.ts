@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { labRuns, userScripts } from "./db/schema";
+import { capMessage, limitsOf } from "./plans";
 import { tradeCost } from "./ledger";
 import { getLabCandles, LAB_MAX_DAYS, SYMBOL_PATTERN, type Interval } from "./market";
 import { quickjs } from "./script-run";
@@ -24,7 +25,6 @@ export const LAB_ENGINES: Record<string, { label: string; timeframes: string[] }
   fib: { label: "Fib Golden Zone", timeframes: ["15m", "1h", "4h", "1d"] },
 };
 const MAX_RUNS_KEPT = 30;
-const MAX_RUNS_PER_DAY = 60;
 const ENGINE_TIMEOUT_MS = 3 * 60_000;
 /** One run at a time on the server: a run is minutes of CPU for long histories. */
 let running = false;
@@ -190,7 +190,8 @@ labApi.post("/lab/run", async (c) => {
     .select({ today: sql<number>`count(*)::int` })
     .from(labRuns)
     .where(and(eq(labRuns.userId, user.id), gte(labRuns.createdAt, new Date(Date.now() - 86_400_000))));
-  if (today >= MAX_RUNS_PER_DAY) return c.json({ error: `Batas ${MAX_RUNS_PER_DAY} uji per 24 jam tercapai` }, 429);
+  const perDay = limitsOf(user).labRuns;
+  if (today >= perDay) return c.json({ error: capMessage(user, perDay, "uji Lab per 24 jam") }, 429);
   if (running) return c.json({ error: "Lab sedang menjalankan uji lain. Coba lagi sebentar lagi." }, 429);
   running = true;
   try {

@@ -5,6 +5,8 @@
   // as soon as it is imported.
   import { PLANS } from '../../../shared/plans';
   import { api } from './api';
+  import BillingDialog from './account/BillingDialog.svelte';
+  import PaymentsDialog from './account/PaymentsDialog.svelte';
   import ProfileDialog from './account/ProfileDialog.svelte';
   import UsersDialog from './account/UsersDialog.svelte';
   import { auth } from './auth.svelte';
@@ -19,9 +21,9 @@
   const framed = $derived(!layout.focus || layoutOf(viewport) === 'narrow');
 
   let menu: HTMLDetailsElement | undefined = $state();
-  let dialog = $state<'profile' | 'users' | null>(null);
+  let dialog = $state<'profile' | 'billing' | 'users' | 'payments' | null>(null);
 
-  function open(which: 'profile' | 'users') {
+  function open(which: 'profile' | 'billing' | 'users' | 'payments') {
     if (menu) menu.open = false;
     dialog = which;
   }
@@ -55,7 +57,9 @@
         </summary>
         <ul class="menu dropdown-content z-30 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-sm">
           <li><button onclick={() => open('profile')}>Profil</button></li>
+          {#if !auth.isAdmin}<li><button onclick={() => open('billing')}>Paket & tagihan</button></li>{/if}
           {#if auth.isAdmin}<li><button onclick={() => open('users')}>Pengguna</button></li>{/if}
+          {#if auth.isAdmin}<li><button onclick={() => open('payments')}>Pembayaran</button></li>{/if}
           {#if auth.enabled}<li><button onclick={() => auth.logout()}>Keluar</button></li>{/if}
         </ul>
       </details>
@@ -84,6 +88,10 @@
 
 {#if dialog === 'profile'}
   <ProfileDialog onclose={() => (dialog = null)} />
+{:else if dialog === 'billing'}
+  <BillingDialog onclose={() => (dialog = null)} />
 {:else if dialog === 'users'}
   <UsersDialog onclose={() => (dialog = null)} />
+{:else if dialog === 'payments'}
+  <PaymentsDialog onclose={() => (dialog = null)} />
 {/if}

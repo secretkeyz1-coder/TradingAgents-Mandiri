@@ -24,5 +24,11 @@ export function onTrial(u: PlanFields & Pick<User, "trialStartedAt">): boolean {
   );
 }
 
+/** "Paket Gratis maksimal 3 notifikasi." and where to get more. */
+export function capMessage(u: PlanFields, limit: number, what: string): string {
+  const plan = planOf(u);
+  return `Paket ${PLANS[plan].name} maksimal ${limit} ${what}.${plan === "creator" ? "" : " Naikkan paket di menu akun → Paket & tagihan."}`;
+}
+
 /** When a trial that starts now ends. */
 export const trialEnd = () => new Date(Date.now() + TRIAL_DAYS * 86_400_000);

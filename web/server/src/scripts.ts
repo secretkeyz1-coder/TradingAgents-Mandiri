@@ -11,10 +11,10 @@ import { db } from "./db";
 import { signalAlerts, userScripts } from "./db/schema";
 import { SYMBOL_PATTERN } from "./market";
 import { runOnSymbol, SCRIPT_TIMEFRAMES } from "./script-run";
+import { capMessage, limitsOf } from "./plans";
 import { overLimit } from "./usage";
 import { getCatalog, runCommand } from "./worker";
 
-const MAX_SCRIPTS = 20;
 const nameSchema = z.string().trim().min(1, "Nama skrip wajib").max(40);
 const codeSchema = z.string().min(1, "Kode kosong").max(SCRIPT_LIMITS.maxCode);
 const idSchema = z.uuid();
@@ -23,15 +23,17 @@ export const scriptsApi = new Hono<AppEnv>();
 
 scriptsApi.get("/scripts", async (c) => {
   const rows = await db.select().from(userScripts).where(eq(userScripts.userId, c.get("user").id)).orderBy(asc(userScripts.name));
-  return c.json({ items: rows, max: MAX_SCRIPTS, templates: SCRIPT_TEMPLATES, reference: SCRIPT_REFERENCE, limits: SCRIPT_LIMITS });
+  return c.json({ items: rows, max: limitsOf(c.get("user")).scripts, templates: SCRIPT_TEMPLATES, reference: SCRIPT_REFERENCE, limits: SCRIPT_LIMITS });
 });
 
 scriptsApi.post("/scripts", async (c) => {
   const body = z.object({ name: nameSchema, code: codeSchema, pine: z.string().max(60_000).nullish() }).safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
-  const userId = c.get("user").id;
+  const user = c.get("user");
+  const userId = user.id;
   const count = (await db.select({ id: userScripts.id }).from(userScripts).where(eq(userScripts.userId, userId))).length;
-  if (count >= MAX_SCRIPTS) return c.json({ error: `Maksimal ${MAX_SCRIPTS} skrip per akun` }, 409);
+  const max = limitsOf(user).scripts;
+  if (count >= max) return c.json({ error: capMessage(user, max, "skrip") }, 409);
   const [row] = await db
     .insert(userScripts)
     .values({ userId, name: body.data.name, code: body.data.code, pine: body.data.pine ?? null })
