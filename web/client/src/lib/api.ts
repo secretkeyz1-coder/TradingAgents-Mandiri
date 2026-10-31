@@ -173,7 +173,7 @@ export type Analysis = AnalysisSummary & {
   hasReportHtml: boolean;
 };
 
-export type DrawingKind = 'level' | 'trendline' | 'zone' | 'fib' | 'trade_plan' | 'note';
+export type DrawingKind = 'level' | 'trendline' | 'zone' | 'box' | 'label' | 'fib' | 'trade_plan' | 'note';
 
 /** A drawing the chart agent put on a symbol's chart (validated by the worker). */
 export type Drawing = {
@@ -257,6 +257,7 @@ export type AgentTurn = {
   deepModel: string;
   language: string;
   backendUrl?: string;
+  timeframe?: Interval;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

@@ -20,6 +20,8 @@ export const LAYERS: { key: DrawingKind; label: string }[] = [
   { key: 'level', label: 'S/R' },
   { key: 'trendline', label: 'Trend' },
   { key: 'zone', label: 'Zona' },
+  { key: 'box', label: 'Kotak' },
+  { key: 'label', label: 'Label' },
   { key: 'fib', label: 'Fib' },
   { key: 'trade_plan', label: 'Rencana' },
   { key: 'note', label: 'Catatan' },
@@ -141,7 +143,7 @@ class AgentStore {
     this.liveText = '';
     this.#abort = new AbortController();
     try {
-      await api.sendAgentMessage(session.id, { ...base, message }, (type, d) => this.#onEvent(type, d), this.#abort.signal);
+      await api.sendAgentMessage(session.id, { ...base, message, timeframe: ws.timeframe },(type, d) => this.#onEvent(type, d), this.#abort.signal);
     } catch (e) {
       if ((e as Error).name !== 'AbortError') this.error = (e as Error).message;
     } finally {

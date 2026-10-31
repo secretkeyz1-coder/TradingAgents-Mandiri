@@ -41,6 +41,8 @@ const turnSchema = z.object({
   deepModel: z.string().trim().min(1).max(120),
   language: z.string().trim().min(1).max(40).default("Indonesian"),
   backendUrl: z.url().max(300).optional().or(z.literal("").transform(() => undefined)),
+  /** The candles the user's chart shows, so the agent draws boxes on the bars they see. */
+  timeframe: z.enum(["15m", "1h", "4h", "1d", "1wk", "1mo"]).optional(),
 });
 
 /** One turn per session at a time: a second send while the agent works is refused. */

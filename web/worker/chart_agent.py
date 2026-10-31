@@ -475,6 +475,27 @@ def fib_golden_zone(m: Market, timeframe: str = "1d", recent: int = 5) -> dict:
     }
 
 
+def supply_demand_zones(m: Market, timeframe: str = "1d", per_side: int = 3, impulse_atr: float = 1.5) -> dict:
+    """Live supply and demand zones (zones.py) nearest to price, each with its box (from_time, top, bottom),
+    whether it flipped, and how often price came back to it."""
+    from zones import find_zones
+
+    df = _scalper_bars(m, timeframe)
+    bars = [{"time": r.Date, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)} for r in df.itertuples()]
+    result = find_zones(bars, impulse_atr=max(0.8, min(float(impulse_atr), 4.0)), per_side=max(1, min(int(per_side), 6)))
+    if result is None:
+        return {"timeframe": timeframe, "error": f"baru {len(bars)} candle {timeframe}, kurang untuk menghitung"}
+    for z in result["zones"]:
+        z.update(top=_r(z["top"]), bottom=_r(z["bottom"]), distance_pct=round(z["distance_pct"], 2))
+    return {
+        "timeframe": timeframe,
+        "last_close": _r(result["last_close"]),
+        "last_bar": result["last_bar"],
+        "zones": result["zones"],
+        "how_to_draw": "draw_box(from_time, None, top, bottom, label, role=type, extend=True) per zona; FLIPPED = zona yang sudah ditembus lalu berbalik fungsi.",
+    }
+
+
 def snapshot(m: Market) -> dict:
     """What the agent knows at the start of every turn: the same figures the tools
     return, computed up front, so a plain question ("RSI?", "draw S/R") costs no
@@ -519,6 +540,14 @@ class DrawingError(ValueError):
     pass
 
 
+DRAW_ROLES = {"demand": "demand", "bullish": "demand", "buy": "demand", "supply": "supply", "bearish": "supply", "sell": "supply",
+              "warning": "warning", "info": "info"}
+
+
+def _role(role) -> str:
+    return DRAW_ROLES.get(str(role or "").lower(), "neutral")
+
+
 class Canvas:
     """Turns draw_* calls into checked drawings: prices inside the instrument's
     real range, dates inside its history (a trendline may project 90 days ahead)."""
@@ -536,6 +565,15 @@ class Canvas:
         if not (self.m.low * 0.5 <= v <= self.m.high * 1.5):
             raise DrawingError(f"{name}={v} di luar rentang harga {self.m.symbol} ({_r(self.m.low)}–{_r(self.m.high)})")
         return _r(v)
+
+    def when(self, value, name: str, future_days: int = 3) -> str:
+        """A date (YYYY-MM-DD) or an intraday bar time (YYYY-MM-DD HH:MM), as the analysis tools give them."""
+        text = str(value).strip().replace("T", " ")[:16]
+        if len(text) == 10:
+            return self.day(text, name, future_days)
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", text):
+            raise DrawingError(f"{name} harus YYYY-MM-DD atau YYYY-MM-DD HH:MM")
+        return f"{self.day(text[:10], name, future_days)} {text[11:]}"
 
     def day(self, value, name: str, future_days: int = 0) -> str:
         try:
@@ -567,6 +605,8 @@ def _system_prompt(job: dict, m: Market) -> str:
     drawings = job.get("drawings") or []
     on_chart = "\n".join(f"- {d['kind']}: {d.get('label') or ''}" for d in drawings[-15:]) or "(kosong)"
     summary = job.get("summary") or "(tidak ada)"
+    chart_tf = job.get("timeframe") or "1d"
+    zone_tf = chart_tf if chart_tf in ("15m", "1h", "1d") else ("1h" if chart_tf == "4h" else "1d")
     skills = "\n".join(
         f"- {s['definition']['name']} (v{s['version']}): {s['definition']['description']} — dipakai saat: {s['definition']['when_to_use']}"
         for s in job.get("skills") or []
@@ -584,6 +624,10 @@ fibonacci, past decisions); every tool call makes the user wait several seconds.
 Rules:
 - Every price or date you state or draw must come from a tool result or the data above. Never estimate numbers yourself.
 - To show analysis on the chart, call the draw_* tools. Draw only what supports your answer; prefer a few clear drawings.
+- The user's chart shows {chart_tf} candles. A request for a box, rectangle, "kotak" or zone box means draw_box; a tag or callout at a
+  price means draw_label. For supply/demand, order blocks or "zona" boxes call supply_demand_zones (timeframe {zone_tf}) and draw
+  every zone it returns with draw_box(from_time=zone.from_time, to_time=None, top, bottom, label=zone.label, role=zone.type, extend=True).
+  On intraday charts use the bar times (YYYY-MM-DD HH:MM) from intraday tool results, never daily dates you made up.
 - You analyse; you never place, suggest placing, or simulate orders. This is research, not financial advice; say so briefly when you give a trade plan.
 - When the user states a lasting preference or fact about themselves or this symbol, store it with remember. Use forget when asked.
 - Keep answers short: what you found, what you drew, the key levels.
@@ -628,6 +672,7 @@ SKILL_STEPS: dict[str, Callable] = {
     "scalper_signal": scalper_signal,
     "pob_signal": pob_signal,
     "fib_golden_zone": fib_golden_zone,
+    "supply_demand_zones": supply_demand_zones,
 }
 SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{2,39}$")
 
@@ -775,6 +820,13 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
                               capture_output=True, text=True, timeout=60, encoding="utf-8")
         return done.stdout.strip() or f"skrip gagal dijalankan: {done.stderr.strip()[-300:]}"
 
+    @tool("supply_demand_zones")
+    def supply_demand_zones_tool(timeframe: str = "1d", per_side: int = 3) -> str:
+        """Supply and demand zones on 15m, 1h or 1d bars: the live zones nearest to price, each with the box to draw
+        (from_time, top, bottom), its label, whether it flipped (supply to demand or back) and how often price returned to it.
+        Use it when asked for supply/demand, order blocks or zone boxes, then draw each zone with draw_box."""
+        return json.dumps(supply_demand_zones(m, timeframe, per_side))
+
     @tool("fib_golden_zone")
     def fib_golden_zone_tool(timeframe: str = "1d", recent: int = 5) -> str:
         """Fibonacci golden zone pullback signals on 15m, 1h or 1d bars: the impulse leg waiting for a pullback into
@@ -798,9 +850,29 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     @tool
     def draw_zone(top: float, bottom: float, label: str, role: str = "neutral") -> str:
-        """Draw a horizontal price zone between `bottom` and `top`. role: supply, demand or neutral."""
+        """Draw a price zone between `bottom` and `top` across the whole chart (a full-width shaded band). role: supply, demand or neutral.
+        For a box that starts at a bar, use draw_box."""
         t, b = canvas.price(top, "top"), canvas.price(bottom, "bottom")
         return canvas.add("zone", label, {"top": max(t, b), "bottom": min(t, b), "role": role if role in ("supply", "demand") else "neutral"})
+
+    @tool
+    def draw_box(from_time: str, to_time: str | None, top: float, bottom: float, label: str, role: str = "neutral", extend: bool = False) -> str:
+        """Draw a rectangle (box / kotak) from bar `from_time` to bar `to_time` between `bottom` and `top`, with `label` shown on its
+        right edge (e.g. "DEMAND ZONE | BUY"). Times are YYYY-MM-DD, or YYYY-MM-DD HH:MM for intraday bars, taken from tool results.
+        extend=True (or to_time None) stretches it to the latest bar, like a zone still in play.
+        role picks the colour: demand/bullish (green), supply/bearish (red), warning (gold), info (blue) or neutral."""
+        t, b = canvas.price(top, "top"), canvas.price(bottom, "bottom")
+        start = canvas.when(from_time, "from_time")
+        end = None if extend or not to_time else canvas.when(to_time, "to_time", 90)
+        if end is not None and end < start:
+            start, end = end, start
+        return canvas.add("box", label, {"from": start, "to": end, "top": max(t, b), "bottom": min(t, b), "role": _role(role)})
+
+    @tool
+    def draw_label(at_time: str, price: float, text: str, role: str = "neutral") -> str:
+        """Put a callout label (a tag with a pointer) at a bar time and price, e.g. "TP1 77401 OK" or "FIBO SELL REVERSAL 1.618-1.880".
+        at_time: YYYY-MM-DD or YYYY-MM-DD HH:MM from tool results. role picks the colour, as in draw_box."""
+        return canvas.add("label", text, {"time": canvas.when(at_time, "at_time"), "price": canvas.price(price, "price"), "text": str(text)[:60], "role": _role(role)})
 
     @tool
     def draw_fib(high: float, low: float, label: str = "Fibonacci") -> str:
@@ -877,8 +949,8 @@ def build_tools(m: Market, canvas: Canvas, emit: Emit, memories: list[dict], ski
 
     return [
         get_market_summary, find_pivots_tool, support_resistance_tool, fit_trendline_tool, fibonacci_tool,
-        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, fib_golden_zone_tool, custom_script_tool, draw_level, draw_trendline, draw_zone, draw_fib,
-        draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
+        indicators_tool, latest_decisions_tool, scalper_signal_tool, pob_signal_tool, fib_golden_zone_tool, supply_demand_zones_tool, custom_script_tool, draw_level, draw_trendline, draw_zone,
+        draw_box, draw_label, draw_fib, draw_trade_plan, annotate, remember, forget, use_skill, propose_skill,
     ]
 
 

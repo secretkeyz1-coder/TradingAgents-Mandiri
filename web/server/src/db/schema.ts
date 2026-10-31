@@ -161,7 +161,7 @@ export const agentMemories = pgTable("agent_memories", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export type DrawingKind = "level" | "trendline" | "zone" | "fib" | "trade_plan" | "note";
+export type DrawingKind = "level" | "trendline" | "zone" | "box" | "label" | "fib" | "trade_plan" | "note";
 
 /** A drawing the agent put on a symbol's chart; validated by the worker against real prices. */
 export const chartDrawings = pgTable(

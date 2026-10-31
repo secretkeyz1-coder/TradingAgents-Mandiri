@@ -32,6 +32,7 @@
   import { toScriptBars, type ScriptRun } from '../../../shared/script';
   import Navigator from './chart/Navigator.svelte';
   import { BandPrimitive } from './chart/rectangle';
+  import { ShapesPrimitive, type Shape } from './chart/shapes';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
   import { fib, fibLevel } from './indicators/fib';
   import { pob, SETUPS } from './indicators/pob';
@@ -116,6 +117,12 @@
   const toTime = (t: string): Time => (t.length > 10 ? (Math.floor(Date.parse(`${t}Z`) / 1000) as UTCTimestamp) : (t as Time));
   /** The first bar on or after a date, where dated things (decisions, notes, trendline ends) go. */
   const atDay = (date: string) => candles.find((c) => day(c.time) >= date)?.time;
+  /** The bar holding a time ("YYYY-MM-DD HH:MM" or a date): on intraday charts the last bar starting at or before it. */
+  const atBar = (when: string) => {
+    if (!intraday || when.length <= 10) return atDay(day(when));
+    const key = (t: string) => t.slice(0, 16).replace('T', ' ');
+    return candles.findLast((c) => key(c.time) <= when)?.time ?? (candles.length && when < key(candles[0].time) ? candles[0].time : undefined);
+  };
   /** Trading days on the chart, in order. */
   const days = $derived.by(() => {
     const out: string[] = [];
@@ -173,6 +180,7 @@
   // Agent drawings: price lines on the candle series, trendlines as two-point line series.
   let priceLines: IPriceLine[] = [];
   let lineSeries: ISeriesApi<'Line'>[] = [];
+  const shapes = new ShapesPrimitive();
   $effect(() => {
     if (!mounted) return;
     const p = palette;
@@ -183,13 +191,31 @@
     lineSeries = [];
     const level = (price: number, color: string, title: string, style = LineStyle.Dashed) =>
       priceLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
-    const roleColor = (role: string) => (role === 'support' || role === 'demand' ? p.up : role === 'resistance' || role === 'supply' ? p.down : p.accent);
+    const ROLE_TOKEN: Record<string, string> = { warning: '--color-warning', info: '--color-info' };
+    const roleColor = (role: string) =>
+      role === 'support' || role === 'demand' ? p.up : role === 'resistance' || role === 'supply' ? p.down : ROLE_TOKEN[role] ? tokenColor(ROLE_TOKEN[role]) : p.accent;
+    const roleFill = (role: string) =>
+      tokenColor(role === 'support' || role === 'demand' ? '--color-success' : role === 'resistance' || role === 'supply' ? '--color-error' : (ROLE_TOKEN[role] ?? '--color-accent'), 0.13);
+    // Boxes keep their edges on the price axis, without a line across the chart.
+    const edge = (price: number, color: string) =>
+      priceLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' }));
+    const drawn: Shape[] = [];
     for (const d of drawings) {
       const x = d.data;
       if (d.kind === 'level') level(x.price, roleColor(x.role), d.label);
-      else if (d.kind === 'zone') {
-        level(x.top, roleColor(x.role), d.label, LineStyle.Dotted);
-        level(x.bottom, roleColor(x.role), '', LineStyle.Dotted);
+      else if (d.kind === 'zone' || d.kind === 'box') {
+        const from = d.kind === 'zone' ? candles[0]?.time : atBar(x.from);
+        if (!from) continue;
+        const end = d.kind === 'box' && x.to ? atBar(x.to) : undefined;
+        // An end past the last bar keeps the box open to the right edge.
+        const to = end && candles.length && end !== candles.at(-1)!.time ? end : null;
+        const color = roleColor(x.role);
+        drawn.push({ type: 'box', from: toTime(from), to: to ? toTime(to) : null, top: x.top, bottom: x.bottom, color, fill: roleFill(x.role), text: d.label });
+        edge(x.top, color);
+        edge(x.bottom, color);
+      } else if (d.kind === 'label') {
+        const at = atBar(x.time);
+        if (at) drawn.push({ type: 'label', time: toTime(at), price: x.price, color: roleColor(x.role), text: x.text || d.label });
       } else if (d.kind === 'fib') {
         for (const f of x.levels) level(f.price, p.accent, `${(f.ratio * 100).toFixed(1)}%`, LineStyle.SparseDotted);
       } else if (d.kind === 'trade_plan') {
@@ -214,6 +240,7 @@
         lineSeries.push(s);
       }
     }
+    shapes.set(drawn, getComputedStyle(container).fontFamily);
   });
 
   onMount(() => {
@@ -231,6 +258,7 @@
     candleSeries.attachPrimitive(band);
     candleSeries.attachPrimitive(pobBand);
     candleSeries.attachPrimitive(fibBand);
+    candleSeries.attachPrimitive(shapes);
     chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
       if (r) visible = { from: r.from, to: r.to };
     });
