@@ -96,6 +96,20 @@ export type Account = {
   telegramChatId: string | null;
   /** The page's own per-account settings: saved layout, indicator inputs. */
   preferences: { layout?: Record<string, unknown>; indicators?: Record<string, unknown> };
+  email: string | null;
+  emailVerified: boolean;
+  /** WhatsApp number in +62 form. */
+  phone: string | null;
+  /** Signs in with Google. */
+  google: boolean;
+  /** False for an account that only signs in with Google. */
+  hasPassword: boolean;
+  /** The plan in force (shared/plans.ts), its end (null = none) and what it allows. */
+  plan: PlanId;
+  planUntil: string | null;
+  onTrial: boolean;
+  trialUsed: boolean;
+  limits: PlanLimits;
   createdAt: string;
 };
 
@@ -107,7 +121,10 @@ export type Backtest = BacktestSummary & {
   startedAt: string | null;
 };
 
+import type { PlanId, PlanLimits } from '../../../shared/plans';
 import { auth } from './auth.svelte';
+
+export type { PlanId, PlanLimits };
 
 /** A user's own indicator script (web/shared/script.ts). */
 export type UserScript = { id: string; name: string; code: string; pine: string | null; updatedAt: string };
@@ -394,18 +411,27 @@ export const api = {
   /** `everyone`: an admin's view of every user's history. */
   list: (everyone = false) => request<AnalysisSummary[]>(`/analyses${everyone ? '?scope=all' : ''}`),
   me: () => request<Account>('/me'),
-  updateMe: (patch: { telegramChatId: string | null }) => request<Account>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
+  updateMe: (patch: { telegramChatId?: string | null; phone?: string | null }) => request<Account>('/me', { method: 'PATCH', body: JSON.stringify(patch) }),
+  resendVerification: () => request<{ ok: true; mailed: boolean }>('/me/verify-email', { method: 'POST' }),
+  /** A new address takes effect once its verification link is opened. */
+  setEmail: (email: string) => request<{ user: Account; mailed: boolean }>('/me/email', { method: 'POST', body: JSON.stringify({ email }) }),
   /** Each key replaces that preference whole; null removes it. */
   updatePreferences: (patch: Partial<Record<keyof Account['preferences'], Record<string, unknown> | null>>) =>
     request<Account>('/me/preferences', { method: 'PATCH', body: JSON.stringify(patch) }),
-  changePassword: (current: string, next: string) =>
+  /** `current` is left out when the account has no password yet (Google only). */
+  changePassword: (current: string | undefined, next: string) =>
     request<{ ok: true }>('/me/password', { method: 'POST', body: JSON.stringify({ current, next }) }),
   users: () => request<Account[]>('/users'),
-  createUser: (body: { username: string; password: string; role: Account['role'] }) =>
+  createUser: (body: { username: string; password: string; role: Account['role']; email?: string }) =>
     request<Account>('/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (
     id: string,
-    patch: Partial<Pick<Account, 'role' | 'disabled' | 'dailyAnalysisLimit' | 'dailyChatLimit'>> & { password?: string },
+    patch: Partial<Pick<Account, 'role' | 'disabled' | 'dailyAnalysisLimit' | 'dailyChatLimit' | 'plan'>> & {
+      password?: string;
+      /** Last day of the plan, YYYY-MM-DD; null = no end. */
+      planUntil?: string | null;
+      emailVerified?: true;
+    },
   ) => request<Account>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   get: (id: string) => request<Analysis>(`/analyses/${id}`),
   create: (body: AnalysisRequest) =>

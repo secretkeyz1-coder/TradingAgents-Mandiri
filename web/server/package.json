@@ -14,12 +14,14 @@
     "ccxt": "^4.5.91",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.14",
+    "nodemailer": "^10.3.1",
     "postgres": "^3.4.9",
     "quickjs-emscripten-core": "^0.32.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
+    "@types/nodemailer": "^8.0.2",
     "drizzle-kit": "^0.31.11",
     "typescript": "^7.0.2"
   }

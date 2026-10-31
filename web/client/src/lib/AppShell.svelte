@@ -3,6 +3,8 @@
   // old page links are translated there, so the shell only draws the frame.
   // Loaded only once the user is signed in: the workspace store calls the API
   // as soon as it is imported.
+  import { PLANS } from '../../../shared/plans';
+  import { api } from './api';
   import ProfileDialog from './account/ProfileDialog.svelte';
   import UsersDialog from './account/UsersDialog.svelte';
   import { auth } from './auth.svelte';
@@ -23,6 +25,17 @@
     if (menu) menu.open = false;
     dialog = which;
   }
+
+  const TONE = { success: 'alert-success', error: 'alert-error', info: 'alert-info' } as const;
+  let resent = $state('');
+  async function resend() {
+    try {
+      const r = await api.resendVerification();
+      resent = r.mailed ? 'Tautan baru sudah dikirim.' : 'Pengiriman email belum diatur di server; minta admin memverifikasi akunmu.';
+    } catch (e) {
+      resent = (e as Error).message;
+    }
+  }
 </script>
 
 <div class="flex h-dvh flex-col bg-base-100">
@@ -38,7 +51,7 @@
       <details class="dropdown dropdown-end shrink-0" bind:this={menu}>
         <summary class="btn btn-ghost btn-sm gap-1.5 font-normal" aria-label="Menu akun {auth.user.username}">
           <span class="max-w-28 truncate font-mono">{auth.user.username}</span>
-          {#if auth.isAdmin}<span class="badge badge-xs badge-ghost">admin</span>{/if}
+          {#if auth.isAdmin}<span class="badge badge-xs badge-ghost">admin</span>{:else}<span class="badge badge-xs badge-ghost">{PLANS[auth.user.plan].name}{auth.user.onTrial ? ' · trial' : ''}</span>{/if}
         </summary>
         <ul class="menu dropdown-content z-30 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-sm">
           <li><button onclick={() => open('profile')}>Profil</button></li>
@@ -48,6 +61,22 @@
       </details>
     {/if}
   </header>
+
+  {#if auth.notice}
+    <div role="status" class="alert alert-soft {TONE[auth.notice.tone]} shrink-0 justify-between rounded-none border-x-0 border-t-0 px-4 py-2 text-sm">
+      <span>{auth.notice.text}</span>
+      <button class="btn btn-ghost btn-xs" onclick={() => (auth.notice = null)}>Tutup</button>
+    </div>
+  {/if}
+  {#if auth.user?.email && !auth.user.emailVerified}
+    <div class="alert alert-soft alert-warning shrink-0 flex-wrap justify-between gap-2 rounded-none border-x-0 border-t-0 px-4 py-2 text-sm">
+      <span>
+        Verifikasi <strong>{auth.user.email}</strong> untuk memakai analisa AI dan chat agent{auth.user.trialUsed ? '' : ', sekaligus mengaktifkan trial Pro'}. Cek kotak masuk dan
+        folder spam.
+      </span>
+      {#if resent}<span class="text-xs">{resent}</span>{:else}<button class="btn btn-xs" onclick={resend}>Kirim ulang tautan</button>{/if}
+    </div>
+  {/if}
 
   <WorkspaceShell />
   <UpdateNotice />

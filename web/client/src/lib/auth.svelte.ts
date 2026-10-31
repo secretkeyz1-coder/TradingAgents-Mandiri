@@ -1,10 +1,27 @@
 // Who is signed in. The server says whether a login is needed at all (none
 // without APP_PASSWORD, as in local development) and keeps the session in an
-// HttpOnly cookie, so this side only asks and reacts.
+// HttpOnly cookie, so this side only asks and reacts. Sign-up, the links sent
+// by e-mail (verify, new password) and Google sign-in end up here too.
 
 import type { Account } from './api';
 
 type Session = { auth: boolean; user: Account | null };
+/** What the server offers on the login page (server/src/auth.ts). */
+export type AuthConfig = { signup: boolean; google: boolean; mail: boolean; trialDays: number };
+type Notice = { text: string; tone: 'success' | 'error' | 'info' };
+
+/** The ?notice=… a server redirect leaves in the address after a link or Google sign-in. */
+const NOTICES: Record<string, Notice> = {
+  'trial-started': { text: 'Email terverifikasi. Trial Pro kamu sudah aktif.', tone: 'success' },
+  'email-verified': { text: 'Email terverifikasi.', tone: 'success' },
+  'verify-failed': { text: 'Tautan verifikasi sudah kedaluwarsa atau sudah dipakai. Kirim ulang dari menu Profil.', tone: 'error' },
+  'email-taken': { text: 'Email itu sudah dipakai akun lain.', tone: 'error' },
+  'google-failed': { text: 'Masuk dengan Google gagal. Coba lagi.', tone: 'error' },
+  'google-cancelled': { text: 'Masuk dengan Google dibatalkan.', tone: 'info' },
+  'google-off': { text: 'Masuk dengan Google belum diaktifkan di server ini.', tone: 'info' },
+  'signup-closed': { text: 'Pendaftaran belum dibuka. Minta akses ke admin.', tone: 'info' },
+  'account-disabled': { text: 'Akun ini dinonaktifkan. Hubungi admin.', tone: 'error' },
+};
 
 class Auth {
   /** 'checking' until the first answer; 'out' shows the login page. */
@@ -14,12 +31,29 @@ class Auth {
   isAdmin = $derived(this.user?.role === 'admin');
   /** Set when the session check itself failed (server down), not when signed out. */
   error = $state('');
+  config = $state<AuthConfig>({ signup: false, google: false, mail: false, trialDays: 7 });
+  /** A message from the link that opened the page, shown once. */
+  notice = $state<Notice | null>(null);
+
+  /** Takes ?notice=… out of the address, so a reload does not show it again. */
+  takeNotice() {
+    const at = location.hash.indexOf('?');
+    if (at < 0) return;
+    const q = new URLSearchParams(location.hash.slice(at + 1));
+    const code = q.get('notice');
+    if (!code) return;
+    this.notice = NOTICES[code] ?? null;
+    q.delete('notice');
+    const rest = q.toString();
+    history.replaceState(null, '', `${location.pathname}${location.hash.slice(0, at)}${rest ? `?${rest}` : ''}`);
+  }
 
   async check() {
     try {
       const res = await fetch('/api/session');
       if (res.status === 401) {
         this.enabled = true;
+        await this.loadConfig();
         this.state = 'out';
         return;
       }
@@ -31,22 +65,48 @@ class Auth {
     }
   }
 
-  /** Returns an error message, or '' once signed in. */
-  async login(username: string, password: string): Promise<string> {
+  async loadConfig() {
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) return body.error ?? `HTTP ${res.status}`;
-      this.error = '';
-      this.#signedIn(body);
-      return '';
-    } catch (e) {
-      return `Server tidak bisa dihubungi (${(e as Error).message}).`;
+      const res = await fetch('/api/auth/config');
+      if (res.ok) this.config = await res.json();
+    } catch {
+      /* the login form works without the extras */
     }
+  }
+
+  async #post(path: string, body: unknown): Promise<{ ok: boolean; body: Record<string, unknown> }> {
+    try {
+      const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      return { ok: res.ok, body: await res.json().catch(() => ({ error: `HTTP ${res.status}` })) };
+    } catch (e) {
+      return { ok: false, body: { error: `Server tidak bisa dihubungi (${(e as Error).message}).` } };
+    }
+  }
+
+  /** Each returns an error message, or '' when it worked. */
+  async login(username: string, password: string): Promise<string> {
+    const r = await this.#post('/api/login', { username, password });
+    if (!r.ok) return String(r.body.error ?? 'Gagal masuk');
+    this.error = '';
+    this.#signedIn(r.body as Session);
+    return '';
+  }
+
+  async signup(form: { email: string; password: string; phone: string; acceptTerms: boolean }): Promise<string> {
+    const r = await this.#post('/api/signup', { ...form, phone: form.phone || undefined });
+    if (!r.ok) return String(r.body.error ?? 'Gagal mendaftar');
+    this.#signedIn(r.body as Session);
+    return '';
+  }
+
+  async forgot(email: string): Promise<string> {
+    const r = await this.#post('/api/password/forgot', { email });
+    return r.ok ? '' : String(r.body.error ?? 'Gagal mengirim');
+  }
+
+  async reset(token: string, password: string): Promise<string> {
+    const r = await this.#post('/api/password/reset', { token, password });
+    return r.ok ? '' : String(r.body.error ?? 'Gagal menyimpan');
   }
 
   async logout() {

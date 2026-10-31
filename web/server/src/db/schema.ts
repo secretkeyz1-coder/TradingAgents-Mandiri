@@ -1,4 +1,5 @@
 import { bigint, bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type { Period, PlanId } from "../../../shared/plans";
 
 export type AnalysisStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -62,8 +63,8 @@ export type Role = "admin" | "member";
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   username: text("username").notNull().unique(),
-  /** argon2id, from Bun.password. */
-  passwordHash: text("password_hash").notNull(),
+  /** argon2id, from Bun.password; null for an account that only signs in with Google. */
+  passwordHash: text("password_hash"),
   role: text("role").$type<Role>().notNull().default("member"),
   disabled: boolean("disabled").notNull().default(false),
   /** Per-user daily caps; null means the server default (DAILY_*_LIMIT). */
@@ -75,8 +76,77 @@ export const users = pgTable("users", {
   preferences: jsonb("preferences").$type<Record<string, unknown>>().notNull().default({}),
   /** In every session cookie; bumping it signs the user out everywhere. */
   sessionVersion: integer("session_version").notNull().default(1),
+  /** Sign-in and mail address, lower case; null for accounts the admin made before e-mail existed. */
+  email: text("email").unique(),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  /** WhatsApp number in +62 form, given at sign-up; not verified yet. */
+  phone: text("phone"),
+  /** The Google account id, once the user signs in with Google. */
+  googleSub: text("google_sub").unique(),
+  /** Subscription (shared/plans.ts): held until planUntil, then the account is on Gratis; null = no end. */
+  plan: text("plan").$type<PlanId>().notNull().default("free"),
+  planUntil: timestamp("plan_until", { withTimezone: true }),
+  /** When the one Pro trial started; null = not used yet. */
+  trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
+  /** When the user accepted the terms and privacy policy at sign-up. */
+  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** One-time links sent by e-mail: verify an address, or set a new password. Only the token's hash is kept. */
+export const authTokens = pgTable(
+  "auth_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"verify" | "reset">().notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    /** The address the link went to: the one a verify link confirms. */
+    email: text("email").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("auth_tokens_user_idx").on(t.userId)],
+);
+
+export type PaymentStatus = "pending" | "claimed" | "paid" | "rejected" | "cancelled";
+
+/**
+ * Subscription payments, confirmed by an admin for now (bank transfer or QRIS).
+ * An admin's grant without payment is recorded here too, at amount 0.
+ */
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Shown to the payer and on the receipt, e.g. TA-7K3Q9P. */
+    reference: text("reference").notNull().unique(),
+    plan: text("plan").$type<PlanId>().notNull(),
+    period: text("period").$type<Period>().notNull(),
+    founding: boolean("founding").notNull().default(false),
+    /** Rupiah to pay: the price plus a unique code, so one bank statement line matches one order. */
+    amount: integer("amount").notNull(),
+    uniqueCode: integer("unique_code").notNull().default(0),
+    status: text("status").$type<PaymentStatus>().notNull().default("pending"),
+    /** What the payer wrote when saying it is paid: bank, sender name. */
+    note: text("note"),
+    adminNote: text("admin_note"),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    /** The plan period this payment bought, set when it is confirmed. */
+    periodStart: timestamp("period_start", { withTimezone: true }),
+    periodEnd: timestamp("period_end", { withTimezone: true }),
+    confirmedBy: uuid("confirmed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("payments_user_idx").on(t.userId), index("payments_status_idx").on(t.status)],
+);
 
 /** The owner column every user's data carries. Nullable only so old rows can be given to the first admin at boot. */
 const owner = () => uuid("user_id").references(() => users.id, { onDelete: "cascade" });

@@ -1,18 +1,23 @@
-// Accounts and sessions. The admin creates accounts (no sign-up); the first
-// admin is made from APP_USER / APP_PASSWORD at boot and receives everything
-// stored before accounts existed. The login page posts here and gets an
-// HMAC-signed session cookie; scripts may send HTTP Basic credentials instead.
-// With no APP_PASSWORD (local development) there is no login: every request
-// acts as that first admin.
-import { createHmac } from "node:crypto";
-import { and, count, eq, isNull, ne, sql } from "drizzle-orm";
+// Accounts and sessions. The first admin is made from APP_USER / APP_PASSWORD
+// at boot and receives everything stored before accounts existed. The admin
+// makes accounts; with SIGNUP=open people also sign up themselves, by e-mail
+// (verified by a link, which starts the Pro trial) or with Google. The login
+// page posts here and gets an HMAC-signed session cookie; scripts may send HTTP
+// Basic credentials instead. With no APP_PASSWORD (local development) there is
+// no login: every request acts as that first admin.
+import { createHash, createHmac, randomBytes } from "node:crypto";
+import { and, count, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { z } from "zod";
 import { config } from "./config";
 import { db } from "./db";
-import { agentMemories, agentSessions, agentSkills, analyses, chartDrawings, users, watchlist, watchRuns } from "./db/schema";
+import { agentMemories, agentSessions, agentSkills, analyses, authTokens, chartDrawings, payments, users, watchlist, watchRuns } from "./db/schema";
+import { composeMail, mailEnabled, sendMail } from "./mail";
+import { limitsOf, onTrial, planOf, trialEnd } from "./plans";
+import { BRAND } from "../../shared/brand";
+import { PLAN_IDS, TRIAL_DAYS } from "../../shared/plans";
 
 export type User = typeof users.$inferSelect;
 /** Every authenticated route reads the signed-in user with c.get("user"). */
@@ -34,8 +39,13 @@ const secret = process.env.SESSION_SECRET || createHmac("sha256", config.appPass
 /** Hashed once, so a login for a name that does not exist costs the same time as a wrong password. */
 const decoyHash = Bun.password.hash("decoy-password-for-timing");
 
-async function checkPassword(username: string, password: string): Promise<User | null> {
-  const [user] = await db.select().from(users).where(eq(users.username, username.trim().toLowerCase()));
+/** Sign in by user name or e-mail address. An account with no password (Google only) never matches. */
+async function checkPassword(login: string, password: string): Promise<User | null> {
+  const name = login.trim().toLowerCase();
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(name.includes("@") ? eq(users.email, name) : eq(users.username, name));
   const ok = await Bun.password.verify(password, user?.passwordHash ?? (await decoyHash));
   return user && ok && !user.disabled ? user : null;
 }
@@ -144,8 +154,137 @@ export const publicUser = (u: User) => ({
   dailyChatLimit: u.dailyChatLimit,
   telegramChatId: u.telegramChatId,
   preferences: u.preferences ?? {},
+  email: u.email,
+  emailVerified: Boolean(u.emailVerifiedAt),
+  phone: u.phone,
+  google: Boolean(u.googleSub),
+  hasPassword: Boolean(u.passwordHash),
+  /** The plan in force, its end (null = none) and what it allows. */
+  plan: planOf(u),
+  planUntil: planOf(u) === u.plan ? u.planUntil : null,
+  onTrial: onTrial(u),
+  trialUsed: Boolean(u.trialStartedAt),
+  limits: limitsOf(u),
   createdAt: u.createdAt,
 });
+
+// --------------------------------------------------------------------------- sign-up and e-mail links
+
+/** Self sign-up (e-mail and Google) only with SIGNUP=open; otherwise only the admin makes accounts. */
+export const signupOpen = () => authEnabled() && process.env.SIGNUP === "open";
+const GOOGLE_ID = process.env.GOOGLE_CLIENT_ID ?? "";
+const GOOGLE_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
+export const googleEnabled = () => authEnabled() && Boolean(GOOGLE_ID && GOOGLE_SECRET);
+const OAUTH_COOKIE = "ta_oauth";
+const OAUTH_PATH = "/api/auth/google";
+
+/** Where links in e-mails point: PUBLIC_URL, else the address this request came in on. */
+function siteUrl(c: Context): string {
+  const configured = (process.env.PUBLIC_URL ?? "").replace(/\/+$/, "");
+  if (configured) return configured;
+  const url = new URL(c.req.url);
+  return `${c.req.header("x-forwarded-proto") ?? url.protocol.slice(0, -1)}://${c.req.header("host") ?? url.host}`;
+}
+
+const secureCookie = (c: Context) => c.req.header("x-forwarded-proto") === "https" || new URL(c.req.url).protocol === "https:";
+
+/** At most `max` attempts per key within the window (in memory: a restart forgets them). */
+function limiter(max: number, windowMs: number) {
+  const seen = new Map<string, number[]>();
+  return (key: string) => {
+    const now = Date.now();
+    const recent = (seen.get(key) ?? []).filter((t) => t > now - windowMs);
+    if (recent.length >= max) return false;
+    recent.push(now);
+    seen.set(key, recent);
+    if (seen.size > 10_000) seen.clear();
+    return true;
+  };
+}
+const signupLimit = limiter(5, 3_600_000);
+const mailLimit = limiter(5, 3_600_000);
+
+const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
+
+/** A one-time link token. Only its hash is stored; earlier unused ones of the same kind stop working. */
+async function issueToken(userId: string, kind: "verify" | "reset", email: string, ttlMs: number): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  await db.delete(authTokens).where(and(eq(authTokens.userId, userId), eq(authTokens.kind, kind), isNull(authTokens.usedAt)));
+  await db.insert(authTokens).values({ userId, kind, tokenHash: hashToken(token), email, expiresAt: new Date(Date.now() + ttlMs) });
+  return token;
+}
+
+/** Spends a link token once: its row, or null when it is unknown, used or expired. */
+async function useToken(token: string, kind: "verify" | "reset") {
+  if (!/^[\w-]{20,100}$/.test(token)) return null;
+  const [row] = await db
+    .update(authTokens)
+    .set({ usedAt: new Date() })
+    .where(and(eq(authTokens.tokenHash, hashToken(token)), eq(authTokens.kind, kind), isNull(authTokens.usedAt), gt(authTokens.expiresAt, new Date())))
+    .returning();
+  return row ?? null;
+}
+
+/** The address is proven: record it, and start the one Pro trial of an account on Gratis. */
+async function markVerified(user: User, email: string): Promise<User> {
+  const trial = !user.trialStartedAt && user.role !== "admin" && planOf(user) === "free";
+  const [updated] = await db
+    .update(users)
+    .set({
+      email,
+      emailVerifiedAt: user.emailVerifiedAt && user.email === email ? user.emailVerifiedAt : new Date(),
+      ...(trial ? { plan: "pro" as const, planUntil: trialEnd(), trialStartedAt: new Date() } : {}),
+    })
+    .where(eq(users.id, user.id))
+    .returning();
+  return updated;
+}
+
+async function sendVerification(c: Context, user: User, email: string) {
+  const token = await issueToken(user.id, "verify", email, 24 * 3_600_000);
+  const trial = !user.trialStartedAt && user.role !== "admin" && planOf(user) === "free";
+  return sendMail(
+    composeMail(
+      email,
+      `Verifikasi email ${BRAND.name}`,
+      [
+        `Halo ${user.username},`,
+        `Klik tombol di bawah untuk memastikan ${email} milikmu.${trial ? ` Setelah itu paket Pro aktif gratis selama ${TRIAL_DAYS} hari.` : ""}`,
+      ],
+      { label: "Verifikasi email", url: `${siteUrl(c)}/api/verify-email?token=${token}` },
+      ["Tautan ini berlaku 24 jam. Abaikan email ini kalau kamu tidak merasa mendaftar."],
+    ),
+  );
+}
+
+const emailSchema = z.string().trim().toLowerCase().pipe(z.email("Email tidak valid").max(200));
+
+/** "0812-3456-7890" → "+6281234567890"; empty → null; undefined when it is not a phone number. */
+function normalizePhone(raw: string | null | undefined): string | null | undefined {
+  const digits = (raw ?? "").replace(/[\s().-]/g, "");
+  if (!digits) return null;
+  const e164 = digits.startsWith("+") ? digits : digits.startsWith("62") ? `+${digits}` : digits.startsWith("0") ? `+62${digits.slice(1)}` : `+${digits}`;
+  return /^\+\d{9,15}$/.test(e164) ? e164 : undefined;
+}
+
+/** A free user name from the e-mail's local part: "budi.s", else "budi.s4821". */
+async function freeUsername(email: string): Promise<string> {
+  const base = (
+    email
+      .split("@")[0]
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, "")
+      .replace(/^[^a-z0-9]+/, "") || "trader"
+  )
+    .slice(0, 24)
+    .padEnd(3, "0");
+  for (let i = 0; i < 20; i++) {
+    const name = i === 0 ? base : `${base}${1000 + Math.floor(Math.random() * 9000)}`;
+    const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.username, name));
+    if (!taken) return name;
+  }
+  return `trader${randomBytes(4).toString("hex")}`;
+}
 
 // --------------------------------------------------------------------------- before the guard
 
@@ -184,6 +323,181 @@ authApi.post("/logout", (c) => {
   return c.json({ ok: true });
 });
 
+/** What the login page offers. */
+authApi.get("/auth/config", (c) => c.json({ signup: signupOpen(), google: googleEnabled(), mail: mailEnabled(), trialDays: TRIAL_DAYS }));
+
+const signupSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(8, "Kata sandi minimal 8 karakter").max(200),
+  phone: z.string().max(24).optional(),
+  acceptTerms: z.literal(true, { error: "Setujui Syarat & Ketentuan dan Kebijakan Privasi dulu" }),
+});
+
+authApi.post("/signup", async (c) => {
+  if (!signupOpen()) return c.json({ error: "Pendaftaran belum dibuka" }, 403);
+  if (!signupLimit(clientAddress(c))) return c.json({ error: "Terlalu banyak pendaftaran dari jaringan ini. Coba lagi nanti." }, 429);
+  const body = signupSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
+  const { email, password } = body.data;
+  const phone = normalizePhone(body.data.phone);
+  if (phone === undefined) return c.json({ error: "Nomor HP tidak valid, contoh 0812 3456 7890" }, 400);
+  const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+  if (exists) return c.json({ error: "Email ini sudah terdaftar. Masuk, atau pakai Lupa kata sandi." }, 409);
+  const [created] = await db
+    .insert(users)
+    .values({ username: await freeUsername(email), email, phone, passwordHash: await Bun.password.hash(password), termsAcceptedAt: new Date() })
+    .onConflictDoNothing()
+    .returning();
+  if (!created) return c.json({ error: "Email ini sudah terdaftar. Masuk, atau pakai Lupa kata sandi." }, 409);
+  const sent = await sendVerification(c, created, email);
+  await startSession(c, created);
+  return c.json({ auth: true, user: publicUser(created), mailed: sent.ok }, 201);
+});
+
+/** The link in the verification e-mail: confirm the address, then open the app with a notice. */
+authApi.get("/verify-email", async (c) => {
+  const row = await useToken(c.req.query("token") ?? "", "verify");
+  if (!row) return c.redirect("/app#/?notice=verify-failed");
+  // The address may have been taken by another account since the link was sent.
+  const [other] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.email, row.email), ne(users.id, row.userId)));
+  if (other) return c.redirect("/app#/?notice=email-taken");
+  const [user] = await db.select().from(users).where(eq(users.id, row.userId));
+  if (!user || user.disabled) return c.redirect("/app#/?notice=verify-failed");
+  const started = !user.trialStartedAt;
+  const updated = await markVerified(user, row.email);
+  return c.redirect(`/app#/?notice=${started && updated.trialStartedAt ? "trial-started" : "email-verified"}`);
+});
+
+authApi.post("/password/forgot", async (c) => {
+  const body = z.object({ email: emailSchema }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "Email tidak valid" }, 400);
+  if (!mailLimit(`forgot:${clientAddress(c)}`) || !mailLimit(`forgot:${body.data.email}`)) {
+    return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
+  }
+  // The same answer whether or not the address has an account, so this form cannot find accounts.
+  const [user] = await db.select().from(users).where(eq(users.email, body.data.email));
+  if (user && !user.disabled) {
+    const token = await issueToken(user.id, "reset", body.data.email, 3_600_000);
+    await sendMail(
+      composeMail(
+        body.data.email,
+        `Atur ulang kata sandi ${BRAND.name}`,
+        [`Halo ${user.username},`, "Ada permintaan mengatur ulang kata sandi akunmu. Klik tombol di bawah untuk membuat kata sandi baru."],
+        { label: "Buat kata sandi baru", url: `${siteUrl(c)}/app#/reset?token=${token}` },
+        ["Tautan ini berlaku 1 jam dan hanya bisa dipakai sekali. Kalau kamu tidak meminta, abaikan email ini: kata sandimu tetap."],
+      ),
+    );
+  }
+  return c.json({ ok: true, mail: mailEnabled() });
+});
+
+authApi.post("/password/reset", async (c) => {
+  const body = z
+    .object({ token: z.string().max(200), password: z.string().min(8, "Kata sandi minimal 8 karakter").max(200) })
+    .safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
+  const row = await useToken(body.data.token, "reset");
+  const [user] = row ? await db.select().from(users).where(eq(users.id, row.userId)) : [];
+  if (!row || !user || user.disabled) return c.json({ error: "Tautan sudah kedaluwarsa atau sudah dipakai. Minta tautan baru." }, 400);
+  // A new session version signs out every other browser.
+  const [updated] = await db
+    .update(users)
+    .set({ passwordHash: await Bun.password.hash(body.data.password), sessionVersion: sql`${users.sessionVersion} + 1` })
+    .where(eq(users.id, user.id))
+    .returning();
+  // The link reached the inbox, so the address is proven as well.
+  const verified = updated.email === row.email ? await markVerified(updated, row.email) : updated;
+  await startSession(c, verified);
+  return c.json({ auth: true, user: publicUser(verified) });
+});
+
+/** Sign in or sign up with Google (authorization code with PKCE); the state and verifier ride in a short signed cookie. */
+authApi.get("/auth/google", async (c) => {
+  if (!googleEnabled()) return c.redirect("/app#/?notice=google-off");
+  const state = randomBytes(16).toString("base64url");
+  const verifier = randomBytes(48).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  await setSignedCookie(c, OAUTH_COOKIE, `${state}|${verifier}|${Date.now() + 600_000}`, secret, {
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: secureCookie(c),
+    path: OAUTH_PATH,
+    maxAge: 600,
+  });
+  const params = new URLSearchParams({
+    client_id: GOOGLE_ID,
+    redirect_uri: `${siteUrl(c)}${OAUTH_PATH}/callback`,
+    response_type: "code",
+    scope: "openid email profile",
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    prompt: "select_account",
+  });
+  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+authApi.get("/auth/google/callback", async (c) => {
+  const fail = (why: string) => c.redirect(`/app#/?notice=${why}`);
+  const saved = await getSignedCookie(c, secret, OAUTH_COOKIE);
+  deleteCookie(c, OAUTH_COOKIE, { path: OAUTH_PATH });
+  const [state, verifier, until] = (saved || "").split("|");
+  if (!saved || !state || state !== c.req.query("state") || !(Number(until) > Date.now())) return fail("google-failed");
+  const code = c.req.query("code");
+  if (!code) return fail("google-cancelled");
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE_ID,
+      client_secret: GOOGLE_SECRET,
+      redirect_uri: `${siteUrl(c)}${OAUTH_PATH}/callback`,
+      grant_type: "authorization_code",
+      code_verifier: verifier,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  const tokens = (await res?.json().catch(() => null)) as { id_token?: string } | null;
+  if (!res?.ok || !tokens?.id_token) return fail("google-failed");
+  // Google checks the token's signature; this checks it is for this app, from Google, with a verified address.
+  const info = (await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokens.id_token)}`, { signal: AbortSignal.timeout(10_000) })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as { aud?: string; iss?: string; sub?: string; email?: string; email_verified?: string | boolean } | null;
+  const verified = info?.email_verified === true || info?.email_verified === "true";
+  if (!info?.sub || !info.email || info.aud !== GOOGLE_ID || !["accounts.google.com", "https://accounts.google.com"].includes(info.iss ?? "") || !verified) {
+    return fail("google-failed");
+  }
+  const email = info.email.toLowerCase();
+  let [user] = await db.select().from(users).where(eq(users.googleSub, info.sub));
+  if (!user) {
+    const [byEmail] = await db.select().from(users).where(eq(users.email, email));
+    if (byEmail) {
+      // Link Google to the account with this address. If the address was never verified, whoever
+      // signed up with it may not own it: their password and sessions end, only the inbox owner gets in.
+      const unproven = !byEmail.emailVerifiedAt;
+      [user] = await db
+        .update(users)
+        .set({ googleSub: info.sub, ...(unproven ? { passwordHash: null, sessionVersion: sql`${users.sessionVersion} + 1` } : {}) })
+        .where(eq(users.id, byEmail.id))
+        .returning();
+    } else {
+      if (!signupOpen()) return fail("signup-closed");
+      [user] = await db
+        .insert(users)
+        .values({ username: await freeUsername(email), email, googleSub: info.sub, passwordHash: null, termsAcceptedAt: new Date() })
+        .returning();
+    }
+    user = await markVerified(user, email);
+  }
+  if (user.disabled) return fail("account-disabled");
+  await startSession(c, user);
+  return c.redirect("/app");
+});
+
 // --------------------------------------------------------------------------- the signed-in user
 
 export const meApi = new Hono<AppEnv>();
@@ -193,10 +507,11 @@ meApi.get("/me", (c) => c.json(publicUser(c.get("user"))));
 const passwordSchema = z.string().min(8, "Kata sandi minimal 8 karakter").max(200);
 
 meApi.post("/me/password", async (c) => {
-  const body = z.object({ current: z.string().max(500), next: passwordSchema }).safeParse(await c.req.json().catch(() => null));
+  const body = z.object({ current: z.string().max(500).optional(), next: passwordSchema }).safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
   const me = c.get("user");
-  if (!(await Bun.password.verify(body.data.current, me.passwordHash))) return c.json({ error: "Kata sandi sekarang salah" }, 400);
+  // An account that signs in only with Google sets its first password without one.
+  if (me.passwordHash && !(await Bun.password.verify(body.data.current ?? "", me.passwordHash))) return c.json({ error: "Kata sandi sekarang salah" }, 400);
   // A new session version signs out every other browser; this one gets a fresh cookie.
   const [updated] = await db
     .update(users)
@@ -209,15 +524,51 @@ meApi.post("/me/password", async (c) => {
 
 meApi.patch("/me", async (c) => {
   const body = z
-    .object({ telegramChatId: z.string().trim().max(40).regex(/^-?\d*$/, "Chat ID Telegram berupa angka").nullable() })
+    .object({
+      telegramChatId: z.string().trim().max(40).regex(/^-?\d*$/, "Chat ID Telegram berupa angka").nullable().optional(),
+      phone: z.string().max(24).nullable().optional(),
+    })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
+  const phone = body.data.phone === undefined ? undefined : normalizePhone(body.data.phone);
+  if (body.data.phone && phone === undefined) return c.json({ error: "Nomor HP tidak valid, contoh 0812 3456 7890" }, 400);
   const [updated] = await db
     .update(users)
-    .set({ telegramChatId: body.data.telegramChatId || null })
+    .set({
+      ...(body.data.telegramChatId !== undefined ? { telegramChatId: body.data.telegramChatId || null } : {}),
+      ...(body.data.phone !== undefined ? { phone } : {}),
+    })
     .where(eq(users.id, c.get("user").id))
     .returning();
   return c.json(publicUser(updated));
+});
+
+/** Send the verification link again. */
+meApi.post("/me/verify-email", async (c) => {
+  const me = c.get("user");
+  if (!me.email) return c.json({ error: "Akun ini belum punya email" }, 400);
+  if (me.emailVerifiedAt) return c.json({ ok: true, mailed: false });
+  if (!mailLimit(`verify:${me.id}`)) return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
+  const sent = await sendVerification(c, me, me.email);
+  return c.json({ ok: true, mailed: sent.ok });
+});
+
+/** Add or change the e-mail address: a new one takes effect once its link is opened. */
+meApi.post("/me/email", async (c) => {
+  const body = z.object({ email: emailSchema }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
+  const me = c.get("user");
+  const { email } = body.data;
+  const [taken] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.email, email), ne(users.id, me.id)));
+  if (taken) return c.json({ error: "Email ini sudah dipakai akun lain" }, 409);
+  if (!mailLimit(`email:${me.id}`)) return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
+  // An account without an address takes it now (unverified), so it can sign in and reset with it.
+  const [user] = me.email ? [me] : await db.update(users).set({ email }).where(eq(users.id, me.id)).returning();
+  const sent = await sendVerification(c, user, email);
+  return c.json({ user: publicUser(user), mailed: sent.ok });
 });
 
 // The page's own settings (panel layout, indicator inputs). Opaque to the server:
@@ -265,6 +616,7 @@ usersApi.post("/users", async (c) => {
         .trim()
         .toLowerCase()
         .regex(USERNAME, "Nama pengguna 3–32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung"),
+      email: emailSchema.optional(),
       password: passwordSchema,
       role: roleSchema.default("member"),
       dailyAnalysisLimit: limitSchema.optional(),
@@ -291,11 +643,20 @@ usersApi.patch("/users/:id", async (c) => {
       password: passwordSchema.optional(),
       dailyAnalysisLimit: limitSchema.optional(),
       dailyChatLimit: limitSchema.optional(),
+      plan: z.enum(PLAN_IDS).optional(),
+      /** The last day of the plan (WIB), or null for no end. */
+      planUntil: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal berupa YYYY-MM-DD")
+        .nullable()
+        .optional(),
+      /** Mark the e-mail verified by hand (when mail cannot be sent). */
+      emailVerified: z.literal(true).optional(),
     })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
   const me = c.get("user");
-  const change = body.data;
+  const { plan, planUntil, emailVerified, ...change } = body.data;
   if (id === me.id && (change.disabled || change.role === "member")) {
     return c.json({ error: "Kamu tidak bisa menonaktifkan atau menurunkan akunmu sendiri" }, 400);
   }
@@ -308,14 +669,35 @@ usersApi.patch("/users/:id", async (c) => {
   }
   const { password, ...rest } = change;
   const signOut = password !== undefined || change.disabled === true;
-  const [updated] = await db
+  const until = planUntil === undefined ? undefined : planUntil === null ? null : new Date(`${planUntil}T23:59:59+07:00`);
+  let [updated] = await db
     .update(users)
     .set({
       ...rest,
       ...(password !== undefined ? { passwordHash: await Bun.password.hash(password) } : {}),
       ...(signOut ? { sessionVersion: sql`${users.sessionVersion} + 1` } : {}),
+      ...(plan !== undefined ? { plan } : {}),
+      ...(until !== undefined ? { planUntil: until } : {}),
     })
     .where(eq(users.id, id))
     .returning();
-  return updated ? c.json(publicUser(updated)) : c.json({ error: "Not found" }, 404);
+  if (!updated) return c.json({ error: "Not found" }, 404);
+  if (emailVerified && updated.email) updated = await markVerified(updated, updated.email);
+  if (plan !== undefined || until !== undefined) {
+    // An admin's grant goes into the payment history too, at no charge.
+    await db.insert(payments).values({
+      userId: updated.id,
+      reference: `GRANT-${randomBytes(4).toString("hex").toUpperCase()}`,
+      plan: updated.plan,
+      period: "month",
+      amount: 0,
+      status: "paid",
+      adminNote: `Diatur admin ${me.username}`,
+      paidAt: new Date(),
+      periodStart: new Date(),
+      periodEnd: updated.planUntil,
+      confirmedBy: me.id,
+    });
+  }
+  return c.json(publicUser(updated));
 });

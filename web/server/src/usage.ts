@@ -6,6 +6,7 @@
 import { and, count, eq, gte, type SQL } from "drizzle-orm";
 import type { User } from "./auth";
 import { db } from "./db";
+import { limitsOf, needsVerification } from "./plans";
 import { agentMessages, agentSessions, analyses } from "./db/schema";
 
 const DAY_MS = 86_400_000;
@@ -54,8 +55,10 @@ async function chatUsed(since: Date, userId?: string): Promise<number> {
   return row?.n ?? 0;
 }
 
+/** An account's own cap, else its plan's (shared/plans.ts); admins keep the server defaults. */
 const limitFor = (user: User, kind: Kind) =>
-  (kind === "analyses" ? user.dailyAnalysisLimit : user.dailyChatLimit) ?? (kind === "analyses" ? limits.analyses : limits.chat);
+  (kind === "analyses" ? user.dailyAnalysisLimit : user.dailyChatLimit) ??
+  (user.role === "admin" ? (kind === "analyses" ? limits.analyses : limits.chat) : limitsOf(user)[kind]);
 
 /** One user's use today against their own caps. */
 export async function usage(user: User): Promise<Usage> {
@@ -79,6 +82,7 @@ export async function room(user: User, kind: Kind): Promise<number> {
 
 /** Why `add` more analyses (or chat turns) would go over a cap today, or null when they fit. */
 export async function overLimit(user: User, kind: Kind, add = 1): Promise<string | null> {
+  if (needsVerification(user)) return "Verifikasi email kamu dulu untuk memakai analisa AI dan chat agent. Tautannya ada di email pendaftaran.";
   const left = await room(user, kind);
   if (add <= left) return null;
   const mine = (await usage(user))[kind];

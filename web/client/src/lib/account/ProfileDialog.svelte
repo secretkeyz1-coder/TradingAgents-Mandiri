@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The signed-in user's own settings: today's quota, the Telegram chat that
-  // gets their watchlist summary, and their password.
+  // The signed-in user's own settings: plan and today's quota, e-mail and
+  // WhatsApp, the Telegram chat that gets their messages, and their password.
+  import { PLANS } from '../../../../shared/plans';
   import { api } from '../api';
   import { auth } from '../auth.svelte';
   import { usage } from '../stores/usage.svelte';
@@ -14,12 +15,20 @@
   let chatId = $state(auth.user?.telegramChatId ?? '');
   let chatSaved = $state('');
   let chatError = $state('');
+  let newEmail = $state('');
+  let emailMessage = $state('');
+  let emailError = $state('');
+  let phone = $state(auth.user?.phone ?? '');
+  let phoneMessage = $state('');
+  let phoneError = $state('');
   let current = $state('');
   let next = $state('');
   let repeat = $state('');
   let pwMessage = $state('');
   let pwError = $state('');
   let busy = $state(false);
+
+  const day = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
   async function saveChat(event: SubmitEvent) {
     event.preventDefault();
@@ -33,6 +42,43 @@
     }
   }
 
+  async function savePhone(event: SubmitEvent) {
+    event.preventDefault();
+    phoneMessage = phoneError = '';
+    try {
+      auth.user = await api.updateMe({ phone: phone.trim() || null });
+      phone = auth.user.phone ?? '';
+      phoneMessage = 'Tersimpan.';
+    } catch (e) {
+      phoneError = (e as Error).message;
+    }
+  }
+
+  async function changeEmail(event: SubmitEvent) {
+    event.preventDefault();
+    emailMessage = emailError = '';
+    try {
+      const r = await api.setEmail(newEmail.trim());
+      auth.user = r.user;
+      emailMessage = r.mailed
+        ? `Tautan verifikasi dikirim ke ${newEmail.trim()}. Alamat baru berlaku setelah tautannya dibuka.`
+        : 'Pengiriman email belum diatur di server; minta admin memverifikasi alamatmu.';
+      newEmail = '';
+    } catch (e) {
+      emailError = (e as Error).message;
+    }
+  }
+
+  async function resend() {
+    emailMessage = emailError = '';
+    try {
+      const r = await api.resendVerification();
+      emailMessage = r.mailed ? 'Tautan verifikasi baru sudah dikirim.' : 'Pengiriman email belum diatur di server; minta admin memverifikasi alamatmu.';
+    } catch (e) {
+      emailError = (e as Error).message;
+    }
+  }
+
   async function changePassword(event: SubmitEvent) {
     event.preventDefault();
     pwMessage = pwError = '';
@@ -42,8 +88,11 @@
     }
     busy = true;
     try {
-      await api.changePassword(current, next);
-      pwMessage = 'Kata sandi diganti. Browser lain yang masuk dengan akun ini sudah dikeluarkan.';
+      await api.changePassword(auth.user?.hasPassword ? current : undefined, next);
+      pwMessage = auth.user?.hasPassword
+        ? 'Kata sandi diganti. Browser lain yang masuk dengan akun ini sudah dikeluarkan.'
+        : 'Kata sandi dibuat. Sekarang kamu juga bisa masuk dengan email dan kata sandi.';
+      if (auth.user) auth.user = { ...auth.user, hasPassword: true };
       current = next = repeat = '';
     } catch (e) {
       pwError = (e as Error).message;
@@ -67,12 +116,54 @@
       <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
     </div>
 
-    {#if usage.value}
+    {#if auth.user}
       <section class="flex flex-col gap-1">
-        <h3 class="text-sm font-semibold">Kuota hari ini</h3>
-        <p class="text-sm tabular-nums">Analisa: {quota(usage.value.analyses.used, usage.value.analyses.limit)} · Chat: {quota(usage.value.chat.used, usage.value.chat.limit)}</p>
-        <p class="text-xs text-base-content/70">Reset pukul 00.00 WIB. Admin bisa mengubah batas akunmu.</p>
+        <h3 class="text-sm font-semibold">Paket</h3>
+        <p class="text-sm">
+          <strong>{PLANS[auth.user.plan].name}</strong>{auth.user.onTrial ? ' (trial)' : ''}{auth.user.planUntil ? `, berlaku sampai ${day(auth.user.planUntil)}` : ''}
+        </p>
+        {#if usage.value}
+          <p class="text-sm tabular-nums">
+            Hari ini: analisa {quota(usage.value.analyses.used, usage.value.analyses.limit)} · chat {quota(usage.value.chat.used, usage.value.chat.limit)}
+          </p>
+        {/if}
+        <p class="text-xs text-base-content/70">
+          Uji Lab {auth.user.limits.labRuns}/hari · notifikasi {auth.user.limits.alerts} · watchlist {auth.user.limits.watchlist} simbol · skrip {auth.user.limits.scripts}. Kuota harian
+          reset pukul 00.00 WIB.
+        </p>
       </section>
+
+      <section class="flex flex-col gap-2">
+        <h3 class="text-sm font-semibold">Email</h3>
+        {#if auth.user.email}
+          <p class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="font-mono">{auth.user.email}</span>
+            {#if auth.user.emailVerified}<span class="badge badge-xs badge-success badge-soft">terverifikasi</span>
+            {:else}<span class="badge badge-xs badge-warning badge-soft">belum terverifikasi</span>
+              <button class="btn btn-ghost btn-xs" type="button" onclick={resend}>Kirim ulang tautan</button>{/if}
+            {#if auth.user.google}<span class="badge badge-xs badge-ghost">Google</span>{/if}
+          </p>
+        {:else}
+          <p class="text-xs text-base-content/70">Tambahkan email supaya bisa masuk dengan email dan mengatur ulang kata sandi sendiri.</p>
+        {/if}
+        <form class="join w-full" onsubmit={changeEmail}>
+          <input class="input join-item input-sm w-full" type="email" autocomplete="email" placeholder={auth.user.email ? 'Email baru' : 'nama@email.com'} required bind:value={newEmail} />
+          <button class="btn btn-sm join-item" type="submit">{auth.user.email ? 'Ganti' : 'Tambah'}</button>
+        </form>
+        {#if emailMessage}<p role="status" class="text-xs text-base-content/80">{emailMessage}</p>{/if}
+        {#if emailError}<p role="alert" class="text-xs text-error">{emailError}</p>{/if}
+      </section>
+
+      <form class="flex flex-col gap-2" onsubmit={savePhone}>
+        <h3 class="text-sm font-semibold">WhatsApp</h3>
+        <div class="join w-full">
+          <input class="input join-item input-sm w-full" type="tel" inputmode="tel" autocomplete="tel" placeholder="0812 3456 7890" bind:value={phone} />
+          <button class="btn btn-sm join-item" type="submit">Simpan</button>
+        </div>
+        <p class="text-xs text-base-content/70">Untuk bantuan dan notifikasi WhatsApp nanti; tidak dipakai untuk promosi tanpa izinmu.</p>
+        {#if phoneMessage}<span class="text-xs text-success">{phoneMessage}</span>{/if}
+        {#if phoneError}<span role="alert" class="text-xs text-error">{phoneError}</span>{/if}
+      </form>
     {/if}
 
     <form class="flex flex-col gap-2" onsubmit={saveChat}>
@@ -100,13 +191,17 @@
     </form>
 
     <form class="flex flex-col gap-2" onsubmit={changePassword}>
-      <h3 class="text-sm font-semibold">Ganti kata sandi</h3>
-      <input class="input input-sm w-full" type="password" autocomplete="current-password" placeholder="Kata sandi sekarang" required bind:value={current} />
+      <h3 class="text-sm font-semibold">{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</h3>
+      {#if auth.user?.hasPassword}
+        <input class="input input-sm w-full" type="password" autocomplete="current-password" placeholder="Kata sandi sekarang" required bind:value={current} />
+      {:else}
+        <p class="text-xs text-base-content/70">Akunmu masuk dengan Google. Buat kata sandi kalau ingin bisa masuk dengan email juga.</p>
+      {/if}
       <input class="input input-sm w-full" type="password" autocomplete="new-password" placeholder="Kata sandi baru (min. 8 karakter)" minlength="8" required bind:value={next} />
       <input class="input input-sm w-full" type="password" autocomplete="new-password" placeholder="Ulangi kata sandi baru" minlength="8" required bind:value={repeat} />
       {#if pwError}<p role="alert" class="text-sm text-error">{pwError}</p>{/if}
       {#if pwMessage}<p role="status" class="text-sm text-success">{pwMessage}</p>{/if}
-      <button class="btn btn-primary btn-sm self-start" type="submit" disabled={busy}>Ganti kata sandi</button>
+      <button class="btn btn-primary btn-sm self-start" type="submit" disabled={busy}>{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</button>
     </form>
   </div>
   <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
