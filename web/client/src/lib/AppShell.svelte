@@ -10,6 +10,7 @@
   import { layout } from './stores/layout.svelte';
   import { layoutOf, viewport } from './stores/viewport.svelte';
   import SymbolSearch from './SymbolSearch.svelte';
+  import UpdateNotice from './UpdateNotice.svelte';
   import WorkspaceShell from './workspace/WorkspaceShell.svelte';
 
   // Focus mode gives the chart the whole window; phones have no focus mode.
@@ -49,6 +50,7 @@
   </header>
 
   <WorkspaceShell />
+  <UpdateNotice />
 </div>
 
 {#if dialog === 'profile'}
