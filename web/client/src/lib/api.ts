@@ -308,6 +308,8 @@ export type Ledger = {
     /** Venues crypto is recorded on (binance = the default source, which the simulated account counts), and the one shown. */
     venues: string[];
     venue: string;
+    /** Round-trip cost of a crypto trade, as a fraction of price. */
+    cryptoCost: number;
     startBalance: number;
     riskPct: number;
     riskUsd: number;

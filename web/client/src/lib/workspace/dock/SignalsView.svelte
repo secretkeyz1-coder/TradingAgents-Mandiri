@@ -151,7 +151,7 @@
       <p>
         Setiap sinyal mesin bawaan dan strategi yang lolos Lab (Donchian harian) pada <strong>{data?.config.symbols.join(', ') ?? '…'}</strong> dicatat saat lahir dan dinilai otomatis di akun simulasi
         {#if data}<strong>{usd(data.config.startBalance)} USD</strong>, risiko <strong>{data.config.riskPct}%</strong> ({usd(data.config.riskUsd)} USD) per sinyal{/if},
-        setelah biaya spread, fee, dan slippage.
+        setelah biaya trading{data ? ` (kripto ${feeText(data.config.cryptoCost)} per trade: fee taker saat masuk dan keluar)` : ''}.
       </p>
       <p class="text-xs text-base-content/70">
         Kripto dan emas 15m/1j memakai harga real-time Binance (emas dari kontrak XAUUSDT, tanpa jam saat pasar spot tutup). Emas harian masih dari Yahoo dan ditandai "tertunda".
@@ -246,7 +246,7 @@
           Kripto yang dicatat di semua bursa, dengan filter di atas. Sinyal bisa berbeda antarbursa karena harga dan sumbu candle tiap bursa sedikit berbeda.
           {#if realFees}
             Biaya nyata: fee taker dasar tiap bursa (tanpa diskon VIP, BNB, atau token), dibayar saat masuk dan saat keluar; slippage dan pajak kripto belum
-            termasuk. Akun utama memakai asumsi biaya kripto 0,12% per trade.
+            termasuk. Akun utama memakai biaya kripto {data ? feeText(data.config.cryptoCost) : '…'} per trade.
             {#if unknownFees.length}Fee {unknownFees.join(', ')} belum diketahui (atur SIGNAL_VENUE_FEES), jadi tidak ditampilkan.{/if}
           {/if}
         </p>

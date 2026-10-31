@@ -16,7 +16,7 @@
 // Settings (env): SIGNAL_LEDGER_SYMBOLS (default BTC-USD,ETH-USD,GC=F),
 // SIGNAL_LEDGER_VENUES (crypto, default binance,bybit,okx,indodax),
 // SIGNAL_PAPER_BALANCE (10000), SIGNAL_PAPER_RISK_PCT (1), SIGNAL_COSTS (JSON,
-// per symbol {"pct": 0.0012} or {"abs": 0.4}, per venue "BTC-USD@indodax"),
+// per symbol {"pct": 0.002} or {"abs": 0.4}, per venue "BTC-USD@indodax"),
 // SIGNAL_VENUE_FEES (JSON, taker fee per side for the comparison at real fees,
 // {"gate": 0.002}), SIGNAL_RECAP_TIME (HH:MM WIB, 05:15).
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
@@ -98,14 +98,15 @@ const COSTS: Record<string, Cost> = (() => {
 })();
 
 /**
- * Round-trip cost of one trade in price units. Taker (market orders): crypto 0.12% (fees and
- * slippage) on every venue, gold 0.40 USD, others 0.10%, or SIGNAL_COSTS ("BTC-USD@indodax" for one
+ * Round-trip cost of one trade in price units. Taker (market orders): crypto 0.2% on every venue
+ * (Binance's base taker fee, 0.1%, on entry and exit; slippage not included; 0.12% until November
+ * 2026, see drizzle/0013), gold 0.40 USD, others 0.10%, or SIGNAL_COSTS ("BTC-USD@indodax" for one
  * venue, an abs cost then in its quote currency). Maker (limit orders at the level, for the strategy
  * lab): crypto and others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
  */
 export function tradeCost(symbol: string, price: number, maker = false, venue = ""): number {
   if (maker) return symbol === "GC=F" ? 0.4 : 0.0005 * price;
-  const c = COSTS[`${symbol}@${venue}`] ?? COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.0012 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
+  const c = COSTS[`${symbol}@${venue}`] ?? COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.002 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
   return c.abs ?? (c.pct ?? 0) * price;
 }
 
@@ -413,6 +414,8 @@ ledgerApi.get("/ledger", async (c) => {
       symbols: LEDGER_SYMBOLS,
       venues: LEDGER_VENUES.map((v) => v || "binance"),
       venue: venue || "binance",
+      /** Round-trip cost of a crypto trade as a fraction of price (the default source's). */
+      cryptoCost: tradeCost("BTC-USD", 1),
       startBalance: START_BALANCE,
       riskPct: RISK_PCT,
       riskUsd: RISK_USD,
