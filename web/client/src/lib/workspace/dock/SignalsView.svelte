@@ -11,7 +11,7 @@
   import { theme, tokenColor } from '../../theme.svelte';
   import { toTradingView } from '../../tv';
 
-  const NAMES: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone' };
+  const NAMES: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone', donchian: 'Donchian breakout' };
   const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
   const SESSION: Record<string, string> = { asia: 'Asia', london: 'London', newyork: 'New York' };
   const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP', loss: 'SL', expired: 'kedaluwarsa', replaced: 'diganti' };
@@ -117,7 +117,7 @@
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="flex max-w-[75ch] flex-col gap-1 text-sm">
       <p>
-        Setiap sinyal mesin bawaan pada <strong>{data?.config.symbols.join(', ') ?? '…'}</strong> dicatat saat lahir dan dinilai otomatis di akun simulasi
+        Setiap sinyal mesin bawaan dan strategi yang lolos Lab (Donchian harian) pada <strong>{data?.config.symbols.join(', ') ?? '…'}</strong> dicatat saat lahir dan dinilai otomatis di akun simulasi
         {#if data}<strong>{usd(data.config.startBalance)} USD</strong>, risiko <strong>{data.config.riskPct}%</strong> ({usd(data.config.riskUsd)} USD) per sinyal{/if},
         setelah biaya spread, fee, dan slippage.
       </p>

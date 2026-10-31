@@ -19,6 +19,8 @@ import { binancePair, binancePerpetual } from "./binance";
 import { db } from "./db";
 import { ledgerRecaps, ledgerSignals, signalAlerts, users, type SignalStatus } from "./db/schema";
 import { getCandles, SYMBOL_PATTERN } from "./market";
+import { quickjs } from "./script-run";
+import { runScript, SCRIPT_TEMPLATES, toScriptBars } from "../../shared/script";
 import { escape, publicUrl, sendTelegram } from "./watch";
 
 export type LedgerSignal = {
@@ -43,7 +45,15 @@ export const LEDGER_COMBOS: { source: string; timeframe: "15m" | "1h" | "1d" }[]
   { source: "fib", timeframe: "1h" },
   { source: "fib", timeframe: "1d" },
 ];
-const NAMES: Record<string, string> = { pob: "PoB BYSTRA", scalper: "Scalper Pro+", fib: "Fib Golden Zone" };
+/**
+ * Strategies that passed the strategy lab, recorded live as scripts in the sandbox: the template
+ * as tested (its default inputs) and the expiry the lab used. Two years of bars, so the indicators
+ * have long settled before the signals that count.
+ */
+export const LEDGER_SCRIPTS: { source: string; timeframe: "1d"; template: string; expiry: number }[] = [
+  { source: "donchian", timeframe: "1d", template: "Donchian breakout (trend following)", expiry: 120 },
+];
+const NAMES: Record<string, string> = { pob: "PoB BYSTRA", scalper: "Scalper Pro+", fib: "Fib Golden Zone", donchian: "Donchian breakout" };
 
 export const LEDGER_SYMBOLS = (process.env.SIGNAL_LEDGER_SYMBOLS ?? "BTC-USD,ETH-USD,GC=F")
   .split(",")
@@ -143,10 +153,45 @@ export async function ledgerPairs(withHourly: boolean): Promise<{ symbol: string
   return [...pairs.values()];
 }
 
+/** The lab-passed scripts' signals on the tracked symbols, keyed as the scan's results are. */
+export async function ledgerScriptSignals(): Promise<Map<string, LedgerSignal[]>> {
+  const found = new Map<string, LedgerSignal[]>();
+  for (const strategy of LEDGER_SCRIPTS) {
+    const code = SCRIPT_TEMPLATES.find((t) => t.name === strategy.template)?.code;
+    if (!code) continue;
+    for (const symbol of LEDGER_SYMBOLS) {
+      try {
+        const bars = toScriptBars((await getCandles(symbol, "2y", strategy.timeframe)).candles);
+        const run = runScript(await quickjs(), code, bars, { expiry: strategy.expiry });
+        if (!run.ok) throw new Error(run.error);
+        const last = bars.length - 1;
+        found.set(
+          `${symbol}|${strategy.timeframe}|${strategy.source}`,
+          run.result.signals.map((x) => ({
+            time: x.time,
+            side: x.side,
+            label: x.label,
+            entry: x.entry,
+            stop_loss: x.stopLoss,
+            take_profit: x.takeProfit,
+            outcome: x.outcome,
+            exit_time: x.exitIndex == null ? null : bars[x.exitIndex].time,
+            bars_ago: last - x.index,
+            r: x.r,
+          })),
+        );
+      } catch (e) {
+        console.error(`ledger ${strategy.source} ${symbol}: ${(e as Error).message}`);
+      }
+    }
+  }
+  return found;
+}
+
 /** Store what a scan found for the ledger's pairs: new signals once, finished ones scored. */
 export async function recordLedger(found: Map<string, LedgerSignal[]>) {
   for (const symbol of LEDGER_SYMBOLS) {
-    for (const c of LEDGER_COMBOS) {
+    for (const c of [...LEDGER_COMBOS, ...LEDGER_SCRIPTS]) {
       const signals = found.get(`${symbol}|${c.timeframe}|${c.source}`);
       if (!signals?.length) continue;
       const tz = await zoneOf(symbol, c.timeframe);

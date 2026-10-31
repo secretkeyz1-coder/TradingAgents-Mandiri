@@ -14,7 +14,7 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
-import { ledgerPairs, recordLedger } from "./ledger";
+import { ledgerPairs, ledgerScriptSignals, recordLedger } from "./ledger";
 import { SYMBOL_PATTERN } from "./market";
 import { runOnSymbol, type ScriptTimeframe } from "./script-run";
 import { escape, publicUrl, sendTelegram, telegramBot } from "./watch";
@@ -244,6 +244,8 @@ async function scan(only?: string[], withHourly = true) {
       if (!alert.primed) await db.update(signalAlerts).set({ primed: true }).where(eq(signalAlerts.id, alert.id));
     }
     if (ledger.length) await recordLedger(found).catch((err) => console.error("signal ledger", err));
+    // Daily strategies from the lab: their bars close once a day, so the hourly slots are enough.
+    if (ledger.length && withHourly) await recordLedger(await ledgerScriptSignals()).catch((err) => console.error("signal ledger scripts", err));
   } finally {
     running = false;
   }

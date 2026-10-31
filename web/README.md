@@ -113,7 +113,7 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Uji mesin bawaan (PoB, Scalper, Fib) atau skrip sendiri pada riwayat panjang: kripto dari Binance (15m s.d. 1 tahun, 1j s.d. 3 tahun, 4j/harian s.d. 5 tahun), emas intraday dari XAUUSDT, lainnya dari Yahoo.
 - Setiap trade dipotong biaya taker atau maker (`tradeCost` di `server/src/ledger.ts`). Riwayat dibagi: data awal untuk membentuk strategi, data uji (20/30/40% terakhir) untuk memeriksa. Strategi "lolos" hanya bila positif setelah biaya di keduanya dengan minimal 30 trade di data uji.
 - Mesin dijalankan worker (`worker/lab.py`, perintah `lab`), skrip di sandbox yang sama dengan chart dengan batas 30 detik. Satu uji berjalan pada satu waktu, maksimal 60 uji per pengguna per 24 jam, 30 hasil terakhir disimpan (`lab_runs`).
-- Template skrip "Donchian breakout" dan "Trend EMA 50/200 + pullback" disediakan untuk diuji di 4j dan harian.
+- Template skrip "Donchian breakout" dan "Trend EMA 50/200 + pullback" disediakan untuk diuji di 4j dan harian. Strategi yang lolos dicatat live di buku catatan (`LEDGER_SCRIPTS` di `ledger.ts`): saat ini Donchian breakout harian, persis seperti diuji (periode 20, SL 2 ATR, TP 4 ATR, kedaluwarsa 120 candle).
 
 ### Buku catatan sinyal (tab Sinyal)
 
