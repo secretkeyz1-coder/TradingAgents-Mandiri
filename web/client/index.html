@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="id" data-theme="cobalt-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,156 +18,264 @@
       if (location.hash.startsWith('#/')) location.replace('/app' + location.hash);
     </script>
   </head>
-  <body class="bg-base-100 text-base-content">
-    <div class="border-b border-base-300 bg-base-200/60">
-      <div data-tape class="mx-auto flex max-w-6xl gap-6 overflow-x-auto px-4 py-2 text-sm whitespace-nowrap [scrollbar-width:none]" aria-label="Harga pasar">
-        <span class="text-base-content/60">Memuat harga BTC, ETH, emas, IHSG, dan S&amp;P 500…</span>
-      </div>
-    </div>
+  <body class="bg-base-200 text-base-content">
     <!-- site:header -->
     <main>
-      <section class="mx-auto grid max-w-6xl gap-10 px-4 pt-12 pb-16 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:pt-20">
-        <div class="flex flex-col gap-6 lg:pt-4">
-          <h1 class="text-4xl font-semibold tracking-[-0.03em] sm:text-5xl lg:text-[3.5rem] lg:leading-[1.05]">Pasar dibaca AI. Strategimu diuji dengan jujur.</h1>
-          <p class="max-w-xl text-lg text-base-content/75">
-            {{BRAND}} memadukan analisa multi-agent AI dengan Lab yang memotong biaya nyata dan mengunci data uji, lalu mencatat setiap sinyal live apa adanya.
+      <section class="relative overflow-hidden">
+        <div class="relative z-10 mx-auto flex max-w-6xl flex-col items-center gap-7 px-4 pt-20 text-center sm:pt-24">
+          <h1 class="hero-title text-[clamp(3.5rem,10vw,8.75rem)] font-semibold">Uji dulu.<br />Baru masuk.</h1>
+          <p class="max-w-xl text-lg text-base-content/75 sm:text-xl">
+            Riset trading dimulai dari bukti. AI membaca pasar, Lab menguji strategimu dengan biaya nyata, dan setiap sinyal tercatat apa adanya.
           </p>
-          <div class="flex flex-wrap gap-3">
-            <a class="btn btn-primary" href="/app#/signup">Daftar gratis</a>
-            <a class="btn" href="/harga">Lihat harga</a>
+          <div class="flex flex-wrap items-center justify-center gap-2">
+            <a class="btn btn-primary btn-lg rounded-full px-7" href="/app#/signup">Mulai gratis</a>
+            <a class="btn btn-ghost btn-lg rounded-full" href="#harga">Lihat harga</a>
           </div>
-          <p class="text-sm text-base-content/70">Pro gratis {{TRIAL_DAYS}} hari setelah email terverifikasi. Tanpa kartu kredit.</p>
+          <p class="text-sm text-base-content/60">Pro gratis {{TRIAL_DAYS}} hari setelah email terverifikasi. Tanpa kartu kredit.</p>
         </div>
-
-        <section class="flex min-w-0 flex-col rounded-box border border-base-300 bg-base-100 shadow-sm" aria-labelledby="desk-title">
-          <header class="flex flex-wrap items-baseline justify-between gap-2 border-b border-base-300 px-5 py-3">
-            <h2 id="desk-title" class="font-semibold">Meja riset hari ini</h2>
-            <p data-desk-time class="text-xs text-base-content/70">Memuat harga…</p>
-          </header>
-          <div data-desk-assets class="flex flex-col divide-y divide-base-300 py-1">
-            <p class="px-5 py-6 text-sm text-base-content/60">Harga BTC, ETH, emas, dan IHSG muncul di sini.</p>
-          </div>
-          <div class="flex flex-col gap-4 border-t border-base-300 px-5 py-4">
-            <div class="flex items-start gap-2">
-              <span class="badge badge-sm badge-info badge-soft mt-0.5 shrink-0">AI</span>
-              <p data-brief-headline class="font-medium">Memuat bacaan AI…</p>
+        <figure class="relative mt-2">
+          <div class="relative h-80 sm:h-[440px]">
+            <div class="landscape-glow" aria-hidden="true"></div>
+            <svg data-landscape class="absolute inset-0 size-full" viewBox="0 0 1440 440" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <div data-landscape-now class="absolute left-[95.83%] hidden" aria-hidden="true">
+              <span data-now-dot class="now-dot absolute top-0 left-0 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-current"></span>
+              <span data-now-tag></span>
             </div>
-            <p data-brief-summary class="text-sm text-base-content/75"></p>
-            <div data-brief-case class="grid gap-3 sm:grid-cols-2">
-              <div class="rounded-field bg-success/10 p-3">
+          </div>
+          <figcaption class="mx-auto max-w-6xl px-4 pt-3 text-xs text-base-content/60 sm:absolute sm:inset-x-0 sm:bottom-5 sm:pt-0">
+            Pemandangan ini dibuat dari data: harga penutupan 30 hari BTC, ETH, SOL, emas, IHSG, S&amp;P 500, dan USD/IDR. Garis paling depan adalah BTC.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="mx-auto max-w-6xl px-4 pt-4 pb-24 sm:pb-32" aria-label="Chart BTC dengan bacaan AI">
+        <div class="overflow-hidden rounded-[1.25rem] border border-base-300 bg-base-100">
+          <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-base-300 px-4 py-3 text-sm">
+            <strong class="text-[15px] font-semibold">BTC/USDT</strong>
+            <span class="text-base-content/60">Binance</span>
+            <span class="rounded-md bg-base-content/5 px-2.5 py-1">Harian, 30 hari</span>
+            <span data-chart-time class="ml-auto text-base-content/60"></span>
+          </div>
+          <div class="grid lg:grid-cols-[minmax(0,1fr)_17rem]">
+            <div class="flex min-w-0 flex-col gap-5 px-4 pt-5 pb-4">
+              <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+                <div class="flex flex-col gap-2 px-1">
+                  <p class="flex items-baseline gap-2">
+                    <span data-chart-price class="text-[2.75rem] leading-none font-semibold tracking-tight tabular-nums">–</span>
+                    <span class="text-sm text-base-content/60">USDT</span>
+                  </p>
+                  <p class="flex gap-1.5 text-[15px]"><span data-chart-change class="tabular-nums">–</span><span class="text-base-content/60">1 hari</span></p>
+                </div>
+                <div class="flex max-w-full flex-[0_1_24rem] flex-col gap-2 rounded-[0.875rem] border border-base-300 bg-base-content/[0.03] p-4">
+                  <p class="flex items-center gap-2 text-[13px] text-base-content/60">
+                    <span class="badge badge-sm badge-accent font-semibold">AI</span><span data-chart-ai-time>Bacaan AI</span>
+                  </p>
+                  <p data-chart-ai class="text-[15px] leading-snug">Memuat bacaan AI…</p>
+                </div>
+              </div>
+              <div data-chart class="relative h-80"></div>
+            </div>
+            <aside class="border-t border-base-300 py-3 lg:border-t-0 lg:border-l" aria-label="Daftar pantau">
+              <h2 class="px-4 pt-1 pb-2.5 text-[13px] font-medium text-base-content/60">Daftar pantau</h2>
+              <div data-watch><p class="px-4 py-2 text-sm text-base-content/60">Memuat harga…</p></div>
+              <p class="mx-4 mt-2 text-xs text-base-content/60">Kripto real-time. Emas dan IHSG tertunda.</p>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section id="pasar" class="mx-auto flex max-w-6xl flex-col gap-7 px-4 pb-24 sm:pb-32">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <h2 class="section-title text-4xl font-semibold sm:text-5xl lg:text-[3.5rem]">Ringkasan pasar</h2>
+          <p class="text-sm text-base-content/60">Kripto real-time dari bursa. Emas, indeks, dan kurs tertunda.</p>
+        </div>
+        <div data-market class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+          <p class="col-span-full text-sm text-base-content/60">Memuat harga BTC, ETH, SOL, emas, IHSG, S&amp;P 500, dan USD/IDR…</p>
+        </div>
+      </section>
+
+      <section class="border-y border-base-300 bg-base-100/50">
+        <div class="mx-auto grid max-w-6xl gap-14 px-4 py-24 sm:py-32 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+          <div class="flex flex-col gap-5">
+            <h2 class="section-title text-4xl font-semibold sm:text-5xl lg:text-[3.5rem]">Pasar dibaca AI, tiap enam jam.</h2>
+            <p class="text-lg text-base-content/75">
+              Model AI membaca angka yang kami hitung dari data pasar, yaitu harga, perubahan, rata-rata, RSI, dan rentang 30 hari, ditambah sinyal live terbaru. Hasilnya bacaan
+              singkat dengan argumen bull dan bear untuk tiap aset.
+            </p>
+            <p class="text-[15px] text-base-content/60">Tanpa berita dan tanpa saran membeli atau menjual. Angka yang dibaca AI selalu ditampilkan, jadi bacaannya bisa kamu cek sendiri.</p>
+          </div>
+          <div class="min-w-0 overflow-hidden rounded-[1.25rem] border border-base-300 bg-base-100">
+            <div class="flex flex-col gap-2.5 border-b border-base-300 px-6 py-5">
+              <p class="flex items-center gap-2 text-[13px] text-base-content/60">
+                <span class="badge badge-sm badge-accent font-semibold">AI</span><span data-brief-time>Bacaan AI</span>
+              </p>
+              <p data-brief-headline class="text-xl leading-snug font-semibold tracking-tight">Memuat bacaan AI…</p>
+              <p data-brief-summary class="text-[15px] leading-relaxed text-base-content/75"></p>
+            </div>
+            <div data-brief-assets role="group" aria-label="Pilih aset untuk melihat bacaan AI" class="flex flex-wrap gap-2 px-6 pt-4.5"></div>
+            <div data-brief-case class="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-3 px-6 py-4">
+              <div class="rounded-xl bg-success/10 p-4">
                 <h3 class="text-sm font-semibold text-success">Argumen bull <span data-brief-asset></span></h3>
-                <p data-brief-bull class="mt-1 text-sm"></p>
+                <p data-brief-bull class="mt-2 text-[15px]"></p>
               </div>
-              <div class="rounded-field bg-error/10 p-3">
-                <h3 class="text-sm font-semibold text-error">Argumen bear</h3>
-                <p data-brief-bear class="mt-1 text-sm"></p>
+              <div class="rounded-xl bg-error/10 p-4">
+                <h3 class="text-sm font-semibold text-error">Argumen bear <span data-brief-asset></span></h3>
+                <p data-brief-bear class="mt-2 text-[15px]"></p>
               </div>
             </div>
-            <p data-brief-watch class="text-sm"></p>
-            <p data-brief-risk class="text-sm text-base-content/75"></p>
-            <details data-brief-figures class="text-xs text-base-content/75">
-              <summary class="cursor-pointer select-none">Angka yang dibaca AI</summary>
-              <div class="mt-2 overflow-x-auto">
-                <table class="table table-xs">
-                  <thead>
-                    <tr><th>Aset</th><th>1 hari</th><th>7 hari</th><th>30 hari</th><th>RSI 14</th><th>Rata-rata 20</th><th>Rata-rata 50</th></tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </details>
-            <p class="text-xs text-base-content/60">
-              <span data-brief-time></span> Diperbarui tiap enam jam, hanya dari angka di atas. Bacaan kondisi pasar, bukan nasihat keuangan. Klik aset untuk melihat bacaannya.
-            </p>
-          </div>
-        </section>
-      </section>
-
-      <section id="peta" class="border-t border-base-300 bg-base-200/40">
-        <div class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-14">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div class="flex max-w-2xl flex-col gap-2">
-              <h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Peta kripto 24 jam</h2>
-              <p class="text-base-content/75">24 koin dengan volume terbesar di Binance. Kotak terbesar punya volume terbesar; warnanya mengikuti perubahan harga.</p>
+            <p data-brief-watch class="px-6 pb-2 text-[15px]"></p>
+            <p data-brief-risk class="px-6 pb-4 text-sm text-base-content/60"></p>
+            <div data-brief-figures class="overflow-x-auto px-6">
+              <table class="table table-xs min-w-[34rem]">
+                <caption class="pb-2 text-left text-xs text-base-content/60">Angka yang dibaca AI</caption>
+                <thead>
+                  <tr class="text-base-content/60"><th>Aset</th><th>1 hari</th><th>7 hari</th><th>30 hari</th><th>RSI 14</th><th>Rata-rata 20</th><th>Rata-rata 50</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
             </div>
-            <p data-map-time class="text-xs text-base-content/70"></p>
-          </div>
-          <div data-map role="list" aria-label="Peta kripto 24 jam" class="grid grid-flow-dense auto-rows-[3.75rem] grid-cols-4 gap-1 sm:grid-cols-6 lg:grid-cols-8">
-            <p class="col-span-full text-sm text-base-content/60">Memuat peta…</p>
+            <p class="px-6 pt-3 pb-6 text-xs text-base-content/60">Diperbarui tiap enam jam, hanya dari angka di atas. Bacaan kondisi pasar, bukan nasihat keuangan.</p>
           </div>
         </div>
       </section>
 
-      <section id="fitur" class="border-t border-base-300">
-        <div class="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-16">
-          <div class="flex max-w-2xl flex-col gap-3">
-            <h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Dua belas agent AI berdebat sebelum memutuskan</h2>
-            <p class="text-base-content/75">
-              Analisa multi-agent bekerja seperti meja riset: analis mengumpulkan data, peneliti bull dan bear beradu argumen, trader menyusun rencana, tim risiko mengujinya, lalu
-              manajer portofolio memutuskan beli, tahan, atau jual, lengkap dengan alasannya.
-            </p>
-          </div>
-          <ol class="grid gap-6 lg:grid-cols-5 lg:gap-4" aria-label="Alur analisa multi-agent">
-            <li class="relative flex gap-4 before:absolute before:top-4 before:-bottom-6 before:left-[5px] before:w-px before:bg-base-300 lg:flex-col lg:before:top-[5px] lg:before:right-[-1rem] lg:before:bottom-auto lg:before:left-4 lg:before:h-px lg:before:w-auto">
-              <span class="relative mt-1 size-3 shrink-0 rounded-full bg-base-content lg:mt-0" aria-hidden="true"></span>
-              <div class="flex flex-col gap-1.5">
-                <h3 class="font-semibold">Empat analis</h3>
-                <p class="text-sm text-base-content/75">Pasar, sentimen, berita, dan fundamental mengumpulkan datanya masing-masing.</p>
-              </div>
-            </li>
-            <li class="relative flex gap-4 before:absolute before:top-4 before:-bottom-6 before:left-[5px] before:w-px before:bg-base-300 lg:flex-col lg:before:top-[5px] lg:before:right-[-1rem] lg:before:bottom-auto lg:before:left-4 lg:before:h-px lg:before:w-auto">
-              <span class="relative mt-1 size-3 shrink-0 rounded-full bg-base-content lg:mt-0" aria-hidden="true"></span>
-              <div class="flex flex-col gap-1.5">
-                <h3 class="font-semibold">Bull lawan bear</h3>
-                <p class="text-sm text-base-content/75">Dua peneliti beradu argumen, manajer riset menimbang siapa yang lebih kuat.</p>
-              </div>
-            </li>
-            <li class="relative flex gap-4 before:absolute before:top-4 before:-bottom-6 before:left-[5px] before:w-px before:bg-base-300 lg:flex-col lg:before:top-[5px] lg:before:right-[-1rem] lg:before:bottom-auto lg:before:left-4 lg:before:h-px lg:before:w-auto">
-              <span class="relative mt-1 size-3 shrink-0 rounded-full bg-base-content lg:mt-0" aria-hidden="true"></span>
-              <div class="flex flex-col gap-1.5">
-                <h3 class="font-semibold">Trader</h3>
-                <p class="text-sm text-base-content/75">Menyusun rencana: arah, titik masuk, dan risikonya.</p>
-              </div>
-            </li>
-            <li class="relative flex gap-4 before:absolute before:top-4 before:-bottom-6 before:left-[5px] before:w-px before:bg-base-300 lg:flex-col lg:before:top-[5px] lg:before:right-[-1rem] lg:before:bottom-auto lg:before:left-4 lg:before:h-px lg:before:w-auto">
-              <span class="relative mt-1 size-3 shrink-0 rounded-full bg-base-content lg:mt-0" aria-hidden="true"></span>
-              <div class="flex flex-col gap-1.5">
-                <h3 class="font-semibold">Tim risiko</h3>
-                <p class="text-sm text-base-content/75">Agresif, netral, dan konservatif menguji rencana itu dari tiga sudut.</p>
-              </div>
-            </li>
-            <li class="relative flex gap-4 lg:flex-col">
-              <span class="relative mt-1 size-3 shrink-0 rounded-full bg-accent lg:mt-0" aria-hidden="true"></span>
-              <div class="flex flex-col gap-1.5">
-                <h3 class="font-semibold">Keputusan</h3>
-                <p class="text-sm text-base-content/75">Manajer portofolio memutuskan beli, tahan, atau jual, dengan laporan lengkapnya.</p>
-              </div>
-            </li>
-          </ol>
-          <div class="flex flex-col gap-3 rounded-box bg-base-200/60 p-5">
-            <h3 class="font-semibold">Lalu tanya agent chart, ia menjawab di chart</h3>
-            <p class="text-sm text-base-content/75">Minta level, zona, atau rencana trade, dan agent menggambarnya langsung di chart yang sedang kamu lihat.</p>
-            <ul class="flex flex-wrap gap-2 text-sm">
-              <li class="rounded-field border border-base-300 bg-base-100 px-3 py-1.5">Gambar zona supply dan demand BTC 1 jam</li>
-              <li class="rounded-field border border-base-300 bg-base-100 px-3 py-1.5">Di mana support terdekat emas?</li>
-              <li class="rounded-field border border-base-300 bg-base-100 px-3 py-1.5">Jelaskan sinyal Scalper terakhir di ETH 15m</li>
-              <li class="rounded-field border border-base-300 bg-base-100 px-3 py-1.5">Ringkas tren IHSG minggu ini</li>
-            </ul>
-          </div>
+      <section id="fitur" class="mx-auto flex max-w-6xl flex-col gap-12 px-4 py-24 sm:py-32">
+        <div class="flex flex-col gap-4">
+          <h2 class="section-title max-w-3xl text-4xl font-semibold sm:text-5xl lg:text-[3.5rem]">Dua belas agent AI berdebat sebelum memutuskan.</h2>
+          <p class="max-w-2xl text-lg text-base-content/75">
+            Analisa multi-agent bekerja seperti meja riset: analis mengumpulkan data, peneliti bull dan bear beradu argumen, trader menyusun rencana, tim risiko mengujinya, lalu
+            manajer portofolio memutuskan beli, tahan, atau jual, lengkap dengan alasannya.
+          </p>
         </div>
+        <ol class="grid gap-5 sm:grid-cols-2 lg:grid-cols-5" aria-label="Alur analisa multi-agent">
+          <li class="flex flex-col gap-2 border-t-2 border-base-300 pt-5">
+            <span class="text-[13px] text-base-content/60">4 agent</span>
+            <h3 class="text-xl font-semibold">Analis</h3>
+            <p class="text-[15px] text-base-content/75">Pasar, sentimen, berita, dan fundamental mengumpulkan datanya masing-masing.</p>
+          </li>
+          <li class="flex flex-col gap-2 border-t-2 border-base-300 pt-5">
+            <span class="text-[13px] text-base-content/60">3 agent</span>
+            <h3 class="text-xl font-semibold">Bull lawan bear</h3>
+            <p class="text-[15px] text-base-content/75">Dua peneliti beradu argumen; manajer riset menimbang mana yang lebih kuat.</p>
+          </li>
+          <li class="flex flex-col gap-2 border-t-2 border-base-300 pt-5">
+            <span class="text-[13px] text-base-content/60">1 agent</span>
+            <h3 class="text-xl font-semibold">Trader</h3>
+            <p class="text-[15px] text-base-content/75">Menyusun rencana: arah, titik masuk, dan risikonya.</p>
+          </li>
+          <li class="flex flex-col gap-2 border-t-2 border-base-300 pt-5">
+            <span class="text-[13px] text-base-content/60">3 agent</span>
+            <h3 class="text-xl font-semibold">Tim risiko</h3>
+            <p class="text-[15px] text-base-content/75">Agresif, netral, dan konservatif menguji rencana itu dari tiga sudut.</p>
+          </li>
+          <li class="flex flex-col gap-2 border-t-2 border-accent pt-5">
+            <span class="text-[13px] text-base-content/60">1 agent</span>
+            <h3 class="text-xl font-semibold">Manajer portofolio</h3>
+            <p class="text-[15px] text-base-content/75">Memutuskan beli, tahan, atau jual, dengan laporan lengkapnya.</p>
+          </li>
+        </ol>
       </section>
 
-      <section id="bukti" class="border-t border-base-300 bg-base-200/40">
-        <div class="mx-auto grid max-w-6xl gap-10 px-4 py-16 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-          <div class="flex min-w-0 flex-col gap-4">
-            <div class="flex flex-col gap-2">
-              <h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Setiap sinyal tercatat, termasuk yang rugi</h2>
-              <p class="text-base-content/75">Sinyal dicatat saat lahir, dibekukan, lalu dinilai otomatis setelah biaya 0,2% per trade. Ini delapan sinyal live terbaru.</p>
+      <section id="produk" class="mx-auto flex max-w-6xl flex-col gap-10 px-4 pb-24 sm:pb-32">
+        <h2 class="section-title max-w-3xl text-4xl font-semibold sm:text-5xl lg:text-[3.5rem]">Semua alat riset, di satu layar.</h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          <article class="flex min-w-0 flex-col gap-5 rounded-[1.25rem] border border-base-300 bg-base-100 p-6 sm:p-8">
+            <h3 class="text-[1.75rem] font-semibold tracking-tight">Lab strategi</h3>
+            <p class="text-base text-base-content/75">
+              Strategi dibentuk di data awal, lalu diperiksa di data uji yang dikunci, dengan biaya nyata 0,2% per trade. Lolos hanya bila untung di keduanya.
+            </p>
+            <dl class="flex flex-col border-t border-base-300">
+              <div class="flex justify-between gap-4 border-b border-base-300 py-4">
+                <div class="flex flex-col gap-1"><dt class="font-semibold">Donchian breakout harian</dt><dd class="text-sm text-base-content/60">98 trade di data uji, 1 Nov 2026</dd></div>
+                <div class="flex flex-col gap-1 text-right"><dd class="font-semibold text-success">Lolos</dd><dd class="text-sm text-base-content/60">+0,19R per trade</dd></div>
+              </div>
+              <div class="flex justify-between gap-4 border-b border-base-300 py-4">
+                <div class="flex flex-col gap-1"><dt class="font-semibold">Mesin sinyal bawaan, 15 menit</dt><dd class="text-sm text-base-content/60">Untung kotornya tipis</dd></div>
+                <div class="flex flex-col gap-1 text-right"><dd class="font-semibold text-error">Tidak lolos</dd><dd class="text-sm text-base-content/60">habis dimakan biaya</dd></div>
+              </div>
+            </dl>
+          </article>
+
+          <article id="peta" class="flex min-w-0 flex-col gap-5 rounded-[1.25rem] border border-base-300 bg-base-100 p-6 sm:p-8">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 class="text-[1.75rem] font-semibold tracking-tight">Peta kripto 24 jam</h3>
+              <p data-map-time class="text-xs text-base-content/60"></p>
             </div>
+            <p class="text-base text-base-content/75">24 koin dengan volume terbesar di Binance, urut dari yang terbesar. Warnanya mengikuti perubahan harga 24 jam.</p>
+            <div data-map role="list" aria-label="Peta kripto 24 jam" class="grid grid-cols-4 gap-1 sm:grid-cols-6">
+              <p class="col-span-full text-sm text-base-content/60">Memuat peta…</p>
+            </div>
+          </article>
+
+          <article class="flex min-w-0 flex-col gap-5 rounded-[1.25rem] border border-base-300 bg-base-100 p-6 sm:p-8">
+            <h3 class="text-[1.75rem] font-semibold tracking-tight">Skrip sendiri dan Pine Script</h3>
+            <p class="text-base text-base-content/75">
+              Tulis indikator, atau tempel Pine Script untuk diterjemahkan, lalu pakai di chart, Lab, dan notifikasi. Ini potongan template Donchian di aplikasi.
+            </p>
+            <pre class="overflow-x-auto rounded-xl border border-base-300 bg-base-200 p-4.5 font-mono text-[13px] leading-relaxed text-base-content/75"><code>const len = input("Periode Donchian", 20);
+const slAtr = input("SL (ATR)", 2);
+const tpAtr = input("TP (ATR)", 4);
+const hi = ta.highest(high, len);
+const atr = ta.atr(14);
+plot(hi, "Donchian atas", "teal");
+for (let i = len + 2; i &lt; n; i++) {
+  if (close[i] &gt; hi[i - 1] &amp;&amp; close[i - 1] &lt;= hi[i - 2])
+    signal(i, "BUY", {
+      sl: close[i] - slAtr * atr[i],
+      tp: close[i] + tpAtr * atr[i],
+      label: "Breakout",
+    });
+}</code></pre>
+          </article>
+
+          <article class="flex min-w-0 flex-col gap-5 rounded-[1.25rem] border border-base-300 bg-base-100 p-6 sm:p-8">
+            <h3 class="text-[1.75rem] font-semibold tracking-tight">Notifikasi Telegram</h3>
+            <p class="text-base text-base-content/75">Sinyal baru dan hasil TP atau SL dikirim ke Telegram, hanya dari candle yang sudah tutup.</p>
+            <div
+              class="flex max-w-md flex-col gap-1.5 self-start rounded-[0.875rem_0.875rem_0.875rem_0.25rem] border border-base-300 bg-base-content/[0.03] px-4 py-3.5 text-sm"
+              role="img"
+              aria-label="Contoh pesan notifikasi sinyal di Telegram"
+            >
+              <strong class="font-semibold">BUY · UT Bot</strong>
+              <span>Scalper Pro+ · BINANCE:ETHUSDT · 15m</span>
+              <span>Candle 31 Okt 15:30 (jam bursa), sudah tutup</span>
+              <span class="tabular-nums">Entry <strong class="font-semibold">2.251,13</strong> · SL 2.245,77 · TP 2.261,86</span>
+              <span class="text-accent underline">Buka chart</span>
+              <span class="text-[13px] text-base-content/60">Data Binance, real-time. Riset, bukan saran investasi.</span>
+            </div>
+          </article>
+        </div>
+        <dl class="grid gap-x-10 gap-y-6 border-t border-base-300 pt-8 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="flex flex-col gap-1">
+            <dt class="font-semibold">Agent chart</dt>
+            <dd class="text-sm text-base-content/75">Minta level, zona, atau rencana trade, dan agent menggambarnya langsung di chart yang sedang kamu lihat.</dd>
+          </div>
+          <div class="flex flex-col gap-1">
+            <dt class="font-semibold">Watchlist terjadwal</dt>
+            <dd class="text-sm text-base-content/75">Analisa AI otomatis untuk simbol pilihanmu tiap hari bursa, ringkasannya dikirim ke Telegram.</dd>
+          </div>
+          <div class="flex flex-col gap-1">
+            <dt class="font-semibold">Backtest keputusan AI</dt>
+            <dd class="text-sm text-base-content/75">Uji keputusan agent AI pada tanggal-tanggal lampau dan lihat seberapa sering ia benar.</dd>
+          </div>
+          <div class="flex flex-col gap-1">
+            <dt class="font-semibold">Harga dari 9 bursa kripto</dt>
+            <dd class="text-sm text-base-content/75">Binance, Bybit, OKX, Coinbase, Kraken, Bitget, KuCoin, Gate, dan Indodax, real-time dalam satu tampilan.</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section id="bukti" class="border-t border-base-300 bg-base-100/50">
+        <div class="mx-auto grid max-w-6xl gap-12 px-4 py-24 sm:py-32 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div class="flex min-w-0 flex-col gap-5">
+            <h2 class="section-title text-4xl font-semibold sm:text-5xl lg:text-[3.5rem]">Setiap sinyal tercatat, termasuk yang rugi.</h2>
+            <p class="max-w-2xl text-lg text-base-content/75">Sinyal dicatat saat lahir, dibekukan, lalu dinilai otomatis setelah biaya 0,2% per trade. Ini delapan sinyal live terbaru.</p>
             <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
               <table class="table table-sm">
                 <thead>
-                  <tr><th>Waktu (WIB)</th><th>Aset</th><th>Strategi</th><th>Arah</th><th class="text-right">Entry</th><th>Status</th><th class="text-right">Hasil bersih</th></tr>
+                  <tr class="text-base-content/60">
+                    <th>Waktu (WIB)</th><th>Aset</th><th>Strategi</th><th>Arah</th><th class="text-right">Entry</th><th>Status</th><th class="text-right">Hasil bersih</th>
+                  </tr>
                 </thead>
                 <tbody data-signals>
                   <tr><td colspan="7" class="text-base-content/60">Memuat sinyal…</td></tr>
@@ -175,94 +283,55 @@
               </table>
             </div>
           </div>
-          <div class="flex flex-col gap-5">
-            <div class="flex flex-col gap-1">
-              <h3 class="text-lg font-semibold">Rekor live 90 hari</h3>
-              <p class="text-sm text-base-content/70">Untung bersih dihitung setelah biaya, bukan dari target yang sempat tersentuh.</p>
+          <div class="flex flex-col gap-6">
+            <div class="flex flex-col gap-1.5">
+              <h3 class="text-xl font-semibold">Rekor live 90 hari</h3>
+              <p class="text-[15px] text-base-content/60">Dihitung setelah biaya, dari hasil akhir tiap sinyal, bukan dari target yang sempat tersentuh.</p>
             </div>
-            <dl data-record class="flex flex-col gap-4">
+            <dl data-record class="flex flex-col gap-6">
               <dd class="text-sm text-base-content/60">Memuat rekor…</dd>
             </dl>
-            <div class="flex flex-col gap-2 border-t border-base-300 pt-4">
-              <h3 class="text-lg font-semibold">Vonis Lab, 1 November 2026</h3>
-              <p class="text-sm"><strong class="text-success">Lolos:</strong> Donchian breakout harian, +0,19R per trade di data uji (98 trade) setelah biaya.</p>
-              <p class="text-sm"><strong class="text-error">Tidak lolos:</strong> mesin sinyal bawaan di 15 menit; untung kotornya tipis dan habis dimakan biaya.</p>
-            </div>
           </div>
         </div>
       </section>
 
-      <section class="border-t border-base-300">
-        <div class="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-16">
-          <h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Alat lain di layar yang sama</h2>
-          <dl class="grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
-            <div class="flex flex-col gap-1">
-              <dt class="font-semibold">Lab strategi</dt>
-              <dd class="text-sm text-base-content/75">Strategi dibentuk di data awal dan diperiksa di data uji yang dikunci, dengan biaya taker atau maker. Lolos hanya bila untung di keduanya.</dd>
-            </div>
-            <div class="flex flex-col gap-1">
-              <dt class="font-semibold">Skrip sendiri dan Pine Script</dt>
-              <dd class="text-sm text-base-content/75">Tulis indikator, atau tempel Pine Script untuk diterjemahkan, lalu pakai di chart, Lab, dan notifikasi.</dd>
-            </div>
-            <div class="flex flex-col gap-1">
-              <dt class="font-semibold">Harga dari 9 bursa kripto</dt>
-              <dd class="text-sm text-base-content/75">Binance, Bybit, OKX, Coinbase, Kraken, Bitget, KuCoin, Gate, dan Indodax, real-time dalam satu tampilan.</dd>
-            </div>
-            <div class="flex flex-col gap-1">
-              <dt class="font-semibold">Notifikasi Telegram</dt>
-              <dd class="text-sm text-base-content/75">Sinyal baru dan hasil TP atau SL dikirim ke Telegram, hanya dari candle yang sudah tutup.</dd>
-            </div>
-            <div class="flex flex-col gap-1">
-              <dt class="font-semibold">Watchlist terjadwal</dt>
-              <dd class="text-sm text-base-content/75">Analisa AI otomatis untuk simbol pilihanmu tiap hari bursa, ringkasannya dikirim ke Telegram.</dd>
-            </div>
-            <div class="flex flex-col gap-1">
-              <dt class="font-semibold">Backtest keputusan AI</dt>
-              <dd class="text-sm text-base-content/75">Uji keputusan agent AI pada tanggal-tanggal lampau dan lihat seberapa sering ia benar.</dd>
-            </div>
-          </dl>
+      <section id="harga" class="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-24 sm:py-32">
+        <div class="flex max-w-3xl flex-col gap-3.5">
+          <h2 class="section-title text-4xl font-semibold sm:text-5xl lg:text-[3.5rem]">Mulai gratis. Naik paket saat butuh kapasitas.</h2>
+          <p class="text-lg text-base-content/75">Fitur sama di semua paket; yang berbeda kapasitasnya. <a class="link" href="/harga">Bandingkan kapasitas lengkap</a>.</p>
         </div>
-      </section>
-
-      <section id="harga" class="border-t border-base-300 bg-base-200/40">
-        <div class="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-16">
-          <div class="flex flex-col gap-2">
-            <h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Harga</h2>
-            <p class="text-base-content/75">Fitur sama di semua paket; yang berbeda kapasitasnya. <a class="link" href="/harga">Bandingkan kapasitas lengkap</a>.</p>
-          </div>
-          <!-- site:pricing -->
-        </div>
+        <!-- site:pricing -->
       </section>
 
       <section class="border-t border-base-300">
-        <div class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-16">
-          <h2 class="text-2xl font-semibold tracking-tight sm:text-3xl">Pertanyaan umum</h2>
+        <div class="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-24 sm:py-32">
+          <h2 class="section-title text-4xl font-semibold sm:text-5xl">Pertanyaan umum</h2>
           <div class="join join-vertical w-full">
-            <details class="collapse collapse-arrow join-item border border-base-300">
+            <details class="collapse collapse-arrow join-item border border-base-300 bg-base-100">
               <summary class="collapse-title font-medium">Bagaimana ringkasan AI di halaman ini dibuat?</summary>
               <div class="collapse-content text-base-content/75">
                 <p>Tiap enam jam, model AI membaca angka yang kami hitung dari data pasar (harga, perubahan, rata-rata, RSI, rentang 30 hari) dan sinyal live terbaru, lalu menulis bacaan singkat beserta argumen bull dan bear. AI tidak diberi berita dan tidak menyuruh membeli atau menjual. Angka yang ia baca bisa kamu lihat di bawah ringkasannya.</p>
               </div>
             </details>
-            <details class="collapse collapse-arrow join-item border border-base-300">
+            <details class="collapse collapse-arrow join-item border border-base-300 bg-base-100">
               <summary class="collapse-title font-medium">Apakah ini sinyal yang pasti untung?</summary>
               <div class="collapse-content text-base-content/75">
                 <p>Tidak. {{BRAND}} adalah alat riset: ia membantu kamu menguji dan memantau strategi, bukan menjanjikan hasil. Hasil masa lalu tidak menjamin hasil di masa depan, dan semua angka kami tampilkan setelah biaya, termasuk yang rugi.</p>
               </div>
             </details>
-            <details class="collapse collapse-arrow join-item border border-base-300">
+            <details class="collapse collapse-arrow join-item border border-base-300 bg-base-100">
               <summary class="collapse-title font-medium">Data harganya dari mana?</summary>
               <div class="collapse-content text-base-content/75">
                 <p>Kripto real-time langsung dari bursanya. Emas, saham, indeks, dan kurs dari sumber data publik yang bisa tertunda; data yang tertunda selalu ditandai.</p>
               </div>
             </details>
-            <details class="collapse collapse-arrow join-item border border-base-300">
+            <details class="collapse collapse-arrow join-item border border-base-300 bg-base-100">
               <summary class="collapse-title font-medium">Bagaimana cara membayar?</summary>
               <div class="collapse-content text-base-content/75">
                 <p>Lewat transfer bank atau QRIS. Kamu mendapat jumlah dengan kode unik; paket aktif setelah kami memeriksa pembayarannya, biasanya di hari yang sama. Tidak ada perpanjangan otomatis.</p>
               </div>
             </details>
-            <details class="collapse collapse-arrow join-item border border-base-300">
+            <details class="collapse collapse-arrow join-item border border-base-300 bg-base-100">
               <summary class="collapse-title font-medium">Bisakah {{BRAND}} mengeksekusi order di akun brokerku?</summary>
               <div class="collapse-content text-base-content/75">
                 <p>Tidak. {{BRAND}} tidak terhubung ke akun broker dan tidak mengelola dana. Keputusan dan eksekusi tetap sepenuhnya di tanganmu.</p>
@@ -272,11 +341,9 @@
         </div>
       </section>
 
-      <section class="border-t border-base-300 bg-base-200/40">
-        <div class="mx-auto flex max-w-6xl flex-col items-start gap-4 px-4 py-16">
-          <h2 class="max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">Lihat bacaan AI untuk asetmu sendiri, dan uji strategimu dengan jujur.</h2>
-          <a class="btn btn-primary" href="/app#/signup">Daftar gratis</a>
-        </div>
+      <section class="flex flex-col items-center gap-8 border-t border-base-300 px-4 py-32 text-center sm:py-36">
+        <h2 class="hero-title text-[clamp(3.25rem,9vw,7.75rem)] font-semibold">Uji dulu.<br />Baru masuk.</h2>
+        <a class="btn btn-primary btn-lg rounded-full px-7" href="/app#/signup">Mulai gratis</a>
       </section>
     </main>
     <!-- site:footer -->

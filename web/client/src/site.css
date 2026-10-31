@@ -1,4 +1,4 @@
-/* The public site: the app's theme and type, plus long-text rules for the legal pages. */
+/* The public site: the app's theme and type, long-text rules for the legal pages, and the landing's display type and hero. */
 @import "./app.css";
 
 .legal h2 {
@@ -24,4 +24,61 @@
   margin: 0.5rem 0;
   padding-left: 1.25rem;
   list-style: disc;
+}
+
+/* The landing page. These sit outside Tailwind's layers, like app.css's h1/h2 rule they override. */
+.hero-title {
+  letter-spacing: -0.055em;
+  line-height: 0.92;
+}
+
+.section-title {
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+}
+
+/* Dawn behind the hero's ridges (src/site/landing.ts draws them); it reaches up behind the
+   headline and shows only above the ridges, which are opaque. */
+.landscape-glow {
+  --glow-core: 14% 18%;
+  --glow-wide: 50% 60%;
+  position: absolute;
+  inset: -240px 0 0;
+  background:
+    radial-gradient(var(--glow-core) at 82% 49%, color-mix(in oklab, var(--color-base-content) 55%, transparent), transparent 70%),
+    radial-gradient(
+      var(--glow-wide) at 82% 50%,
+      color-mix(in oklab, var(--color-accent) 36%, transparent),
+      color-mix(in oklab, var(--color-accent) 8%, transparent) 50%,
+      transparent 75%
+    );
+}
+
+/* On a phone the box is tall and narrow; widen the glow so it stays a low dawn, not an oval. */
+@media (max-width: 639px) {
+  .landscape-glow {
+    --glow-core: 34% 18%;
+    --glow-wide: 90% 60%;
+  }
+}
+
+/* The live price at the end of the front ridge. */
+.now-dot {
+  animation: now-pulse 2.4s ease-out infinite;
+}
+
+@keyframes now-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 55%, transparent);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .now-dot {
+    animation: none;
+  }
 }
