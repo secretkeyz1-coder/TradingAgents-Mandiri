@@ -19,13 +19,14 @@ export const VENUE_IDS = ["binance", "bybit", "okx", "coinbase", "kraken", "bitg
 export type VenueId = (typeof VENUE_IDS)[number];
 
 type Paging = "auto" | "manual" | "latest";
-export const VENUES: Record<VenueId, { label: string; tv: string; quote: string; paging: Paging; page: number }> = {
+/** rateLimit: milliseconds between requests where CCXT's default is faster than the venue allows (Bitget's history). */
+export const VENUES: Record<VenueId, { label: string; tv: string; quote: string; paging: Paging; page: number; rateLimit?: number }> = {
   binance: { label: "Binance", tv: "BINANCE", quote: "USDT", paging: "auto", page: 1000 },
   bybit: { label: "Bybit", tv: "BYBIT", quote: "USDT", paging: "auto", page: 1000 },
   okx: { label: "OKX", tv: "OKX", quote: "USDT", paging: "auto", page: 200 },
   coinbase: { label: "Coinbase", tv: "COINBASE", quote: "USD", paging: "manual", page: 300 },
   kraken: { label: "Kraken", tv: "KRAKEN", quote: "USD", paging: "latest", page: 720 },
-  bitget: { label: "Bitget", tv: "BITGET", quote: "USDT", paging: "auto", page: 200 },
+  bitget: { label: "Bitget", tv: "BITGET", quote: "USDT", paging: "auto", page: 200, rateLimit: 300 },
   kucoin: { label: "KuCoin", tv: "KUCOIN", quote: "USDT", paging: "manual", page: 1500 },
   gate: { label: "Gate", tv: "GATEIO", quote: "USDT", paging: "auto", page: 1000 },
   indodax: { label: "Indodax", tv: "INDODAX", quote: "IDR", paging: "latest", page: 1000 },
@@ -51,7 +52,7 @@ function exchange(venue: VenueId): Promise<Exchange> {
   if (known) return known;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const Cls = (ccxt.pro as any)[venue] ?? (ccxt as any)[venue];
-  const ex = new Cls({ enableRateLimit: true, timeout: 15_000 });
+  const ex = new Cls({ enableRateLimit: true, timeout: 15_000, ...(VENUES[venue].rateLimit ? { rateLimit: VENUES[venue].rateLimit } : {}) });
   const loading: Promise<Exchange> = ex.loadMarkets().then(() => ex);
   // A venue that failed to load is tried again a minute later, not on every request meanwhile.
   loading.catch((e: Error) => {
