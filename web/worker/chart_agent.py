@@ -218,8 +218,62 @@ def indicators(m: Market) -> dict:
 _BARS_CACHE: dict[tuple[str, str], pd.DataFrame] = {}
 
 
+# Crypto bars come from Binance (real time), with the windows web/server/src/market.ts uses:
+# a month of 15m bars, a year of 1h bars; daily bars reach further back for the daily engines.
+BINANCE_BARS = {"15m": 2880, "1h": 8760, "1d": 1000}
+BINANCE_HOSTS = ("https://data-api.binance.vision", "https://api.binance.com")
+
+
+def binance_pair(symbol: str) -> str | None:
+    """BTC-USD -> BTCUSDT; Yahoo's id-suffixed coins (APT21794-USD) -> APTUSDT."""
+    found = re.fullmatch(r"([A-Z0-9]+)-(USD|USDT|USDC)", symbol.upper())
+    if not found:
+        return None
+    return re.sub(r"^([A-Z]+)\d{3,}$", r"\1", found.group(1)) + "USDT"
+
+
+def _binance_bars(pair: str, timeframe: str) -> pd.DataFrame:
+    import urllib.request
+
+    count, rows, end = BINANCE_BARS[timeframe], [], None
+    while len(rows) < count:
+        query = f"/api/v3/klines?symbol={pair}&interval={timeframe}&limit=1000" + (f"&endTime={end}" if end else "")
+        page, last_error = None, None
+        for host in BINANCE_HOSTS:
+            try:
+                with urllib.request.urlopen(host + query, timeout=10) as res:
+                    page = json.loads(res.read())
+                break
+            except Exception as exc:  # the next host, then Yahoo
+                last_error = exc
+        if page is None:
+            raise ValueError(f"Binance {pair}: {last_error}")
+        if not page:
+            break
+        rows[:0] = page
+        if len(page) < 1000:
+            break
+        end = page[0][0] - 1
+    fmt = "%Y-%m-%d" if timeframe == "1d" else "%Y-%m-%d %H:%M"
+    df = pd.DataFrame([[k[0], float(k[1]), float(k[2]), float(k[3]), float(k[4])] for k in rows[-count:]],
+                      columns=["Date", "Open", "High", "Low", "Close"])
+    df["Date"] = pd.to_datetime(df["Date"], unit="ms", utc=True).dt.strftime(fmt)
+    return df
+
+
 def _scalper_bars(m: Market, timeframe: str) -> pd.DataFrame:
-    """Daily bars from the turn's market, or recent intraday bars from Yahoo."""
+    """Crypto bars from Binance; otherwise daily bars from the turn's market, or recent intraday bars from Yahoo."""
+    pair = binance_pair(m.symbol)
+    if pair and timeframe in BINANCE_BARS:
+        cached = _BARS_CACHE.get((m.symbol, timeframe))
+        if cached is not None:
+            return cached.copy()
+        try:
+            df = _binance_bars(pair, timeframe)
+            _BARS_CACHE[(m.symbol, timeframe)] = df
+            return df.copy()
+        except Exception:
+            pass  # Yahoo below
     if timeframe == "1d":
         return m.df[["Date", "Open", "High", "Low", "Close"]].copy()
     if timeframe not in SCALPER_BARS:
@@ -261,6 +315,7 @@ def scalper_signal(
     risk_reward: float = 2.0,
     entry_zone_atr: float = 0.25,
     history_bars: int = 0,
+    history_count: int = 10,
 ) -> dict:
     """Scalper Pro+ (the user's Pine script): UT Bot trail crossings, filtered by
     the EMA trend, RSI and optionally a liquidity sweep, with ATR stop/target.
@@ -346,7 +401,7 @@ def scalper_signal(
     # Each recent signal with the levels it would have had, followed on closed bars
     # to its stop, target, the next signal (which replaces it, as on the chart) or expiry.
     history = []
-    first = max(0, len(signals) - 10) if history_bars else len(signals)
+    first = max(0, len(signals) - history_count) if history_bars else len(signals)
     for pos in range(first, len(signals)):
         i, side = signals[pos]
         risk = atr_rk[i] * float(sl_atr)
@@ -367,8 +422,9 @@ def scalper_signal(
             if k - i >= history_bars:
                 outcome, exit_at = "expired", k
                 break
+        r = {"win": float(risk_reward), "loss": -1.0}.get(outcome, None if exit_at is None else (c[exit_at] - entry) * sign / risk)
         history.append({"time": df["Date"].iloc[i], "side": side, "entry": entry, "stop_loss": stop, "take_profit": target,
-                        "outcome": outcome, "exit_time": None if exit_at is None else df["Date"].iloc[exit_at], "bars_ago": last - i})
+                        "outcome": outcome, "exit_time": None if exit_at is None else df["Date"].iloc[exit_at], "bars_ago": last - i, "r": r})
     result: dict = {
         "timeframe": timeframe,
         "bars": n,

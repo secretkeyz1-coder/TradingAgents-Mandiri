@@ -107,6 +107,14 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
 - Saat notifikasi dinyalakan, sinyal yang sudah ada dicatat tanpa dikirim. Sinyal yang baru terlihat lebih dari `SIGNAL_STALE_BARS` candle (default 4) setelah muncul, misalnya karena server mati, dicatat tanpa dikirim.
+
+### Buku catatan sinyal (tab Sinyal)
+
+- Setiap sinyal mesin bawaan (PoB 15m/1j, Scalper 15m, Fib 15m/1j/harian) pada `SIGNAL_LEDGER_SYMBOLS` (default BTC-USD, ETH-USD, GC=F) dicatat sekali saat lahir, beku, lalu dinilai saat candle berikutnya tutup, oleh pemindai yang sama dengan notifikasi.
+- Akun simulasi `SIGNAL_PAPER_BALANCE` (10.000 USD), risiko `SIGNAL_PAPER_RISK_PCT` (1%) per sinyal, dikurangi biaya pulang-pergi: kripto 0,12% (fee + slippage), emas 0,40 USD, lainnya 0,10%; ubah per simbol lewat `SIGNAL_COSTS`.
+- Kripto memakai candle real-time Binance (`server/src/binance.ts`, dan `chart_agent.py` dengan jendela yang sama), jadi chart, notifikasi, agent dan ledger membaca candle yang sama. Emas masih Yahoo (tertunda) dan ditandai.
+- Saat pertama menyala, ledger mengisi riwayat dari candle lama (ditandai "riwayat", di luar statistik live). Sinyal yang terlihat lebih dari `SIGNAL_STALE_BARS` candle terlambat juga dianggap riwayat.
+- Rekap harian ke Telegram pukul `SIGNAL_RECAP_TIME` WIB (05:15, setelah New York tutup), mingguan tiap Sabtu; dikirim ke admin dan pengguna yang punya notifikasi. Admin bisa mengirim rekap tes dari tab Sinyal.
 - Data dari Yahoo dan bisa tertunda beberapa menit; emas memakai futures `GC=F`.
 
 API: `GET /api/alerts`, `POST /api/alerts {symbol, tvSymbol, indicator, timeframe}`, `DELETE /api/alerts/:id`, `POST /api/alerts/test`.

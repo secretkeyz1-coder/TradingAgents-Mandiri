@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
+import { ledgerPairs, recordLedger } from "./ledger";
 import { SYMBOL_PATTERN } from "./market";
 import { runOnSymbol, type ScriptTimeframe } from "./script-run";
 import { escape, publicUrl, sendTelegram, telegramBot } from "./watch";
@@ -51,6 +52,7 @@ type ScanSignal = {
   outcome: SignalStatus;
   exit_time: string | null;
   bars_ago: number;
+  r?: number | null;
 };
 type Alert = typeof signalAlerts.$inferSelect;
 
@@ -124,13 +126,22 @@ async function scan(only?: string[], withHourly = true) {
       .where(and(eq(users.disabled, false), only?.length ? inArray(signalAlerts.id, only) : undefined));
     // Hourly and daily pairs ride every third slot (15 minutes); their bars close rarely.
     const wanted = rows.filter((r) => withHourly || r.alert.timeframe === "15m");
-    if (!wanted.length) return;
+    // The signal ledger (ledger.ts) rides the same scan; a new alert's silent first scan leaves it out.
+    const ledger = only ? [] : await ledgerPairs(withHourly);
+    if (!wanted.length && !ledger.length) return;
 
-    const pairs = new Map<string, { symbol: string; timeframe: string; indicators: Set<string> }>();
+    const pairs = new Map<string, { symbol: string; timeframe: string; indicators: Set<string>; recent: number }>();
+    for (const p of ledger) {
+      const key = `${p.symbol}|${p.timeframe}`;
+      if (!pairs.has(key)) pairs.set(key, { symbol: p.symbol, timeframe: p.timeframe, indicators: new Set(), recent: 10 });
+      const pair = pairs.get(key)!;
+      for (const i of p.indicators) pair.indicators.add(i);
+      pair.recent = Math.max(pair.recent, p.recent);
+    }
     for (const { alert } of wanted) {
       if (SCRIPT_ID.test(alert.indicator)) continue;
       const key = `${alert.symbol}|${alert.timeframe}`;
-      if (!pairs.has(key)) pairs.set(key, { symbol: alert.symbol, timeframe: alert.timeframe, indicators: new Set() });
+      if (!pairs.has(key)) pairs.set(key, { symbol: alert.symbol, timeframe: alert.timeframe, indicators: new Set(), recent: 10 });
       pairs.get(key)!.indicators.add(alert.indicator);
     }
     const found = new Map<string, ScanSignal[]>();
@@ -190,7 +201,8 @@ async function scan(only?: string[], withHourly = true) {
       const known = new Map(
         (await db.select().from(signalEvents).where(eq(signalEvents.alertId, alert.id))).map((e) => [e.signalTime, e]),
       );
-      for (const s of signals) {
+      // A pair may carry the ledger's backfill; alerts look at the last ten, as before.
+      for (const s of signals.slice(-10)) {
         const seen = known.get(s.time);
         if (!seen) {
           const fresh = alert.primed && s.bars_ago <= STALE_BARS;
@@ -231,6 +243,7 @@ async function scan(only?: string[], withHourly = true) {
       }
       if (!alert.primed) await db.update(signalAlerts).set({ primed: true }).where(eq(signalAlerts.id, alert.id));
     }
+    if (ledger.length) await recordLedger(found).catch((err) => console.error("signal ledger", err));
   } finally {
     running = false;
   }

@@ -306,6 +306,63 @@ export const signalEvents = pgTable(
   (t) => [uniqueIndex("signal_events_alert_time_idx").on(t.alertId, t.signalTime)],
 );
 
+/**
+ * The signal ledger: every signal the built-in engines fire on the tracked symbols,
+ * whoever watches them, frozen at birth and scored against later bars, with the
+ * simulated account's costs. One row per engine, symbol, timeframe and signal bar.
+ */
+export const ledgerSignals = pgTable(
+  "ledger_signals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** pob, scalper, fib (later desk, script:<id>). */
+    source: text("source").notNull(),
+    symbol: text("symbol").notNull(),
+    timeframe: text("timeframe").notNull(),
+    /** The signal bar's time, exchange-local, as the engines print it. */
+    signalTime: text("signal_time").notNull(),
+    /** The same moment in UTC, for ordering and sessions across exchanges. */
+    signalAt: timestamp("signal_at", { withTimezone: true }).notNull(),
+    /** asia, london or newyork, from signalAt. */
+    session: text("session").notNull(),
+    side: text("side").notNull(),
+    label: text("label").notNull(),
+    entry: doublePrecision("entry").notNull(),
+    stopLoss: doublePrecision("stop_loss").notNull(),
+    takeProfit: doublePrecision("take_profit").notNull(),
+    status: text("status").$type<SignalStatus>().notNull().default("open"),
+    exitTime: text("exit_time"),
+    /** Result before costs, in R (risk = entry to stop). */
+    grossR: doublePrecision("gross_r"),
+    /** Spread and slippage of the simulated fill, in R. */
+    costR: doublePrecision("cost_r").notNull(),
+    /** binance (real time) or yahoo (delayed). */
+    dataSource: text("data_source").notNull(),
+    /** Seen within a few bars of firing; late ones (server down, data gap) are kept out of the stats. */
+    live: boolean("live").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ledger_signals_key_idx").on(t.source, t.symbol, t.timeframe, t.signalTime),
+    index("ledger_signals_at_idx").on(t.signalAt),
+  ],
+);
+
+/** Recaps already sent, one per kind and period, so a restart never sends one twice. */
+export const ledgerRecaps = pgTable(
+  "ledger_recaps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** daily or weekly. */
+    kind: text("kind").notNull(),
+    /** The period it covers: 2026-10-31 for a day, 2026-W44 for a week. */
+    period: text("period").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ledger_recaps_kind_period_idx").on(t.kind, t.period)],
+);
+
 export const analysisEvents = pgTable(
   "analysis_events",
   {

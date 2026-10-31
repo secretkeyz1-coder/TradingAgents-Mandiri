@@ -149,6 +149,8 @@ export type CandleSeries = {
   exchangeTimezone: string | null;
   interval: Interval;
   candles: Candle[];
+  /** binance = real time; yahoo = delayed. */
+  source?: 'binance' | 'yahoo';
 };
 
 export type Decision = {
@@ -250,6 +252,58 @@ export type Usage = {
   resetsAt: string;
 };
 
+/** Results of a group of ledger signals (server/src/ledger.ts), R after costs unless named gross. */
+export type LedgerStats = {
+  key: string;
+  count: number;
+  closed: number;
+  wins: number;
+  losses: number;
+  other: number;
+  open: number;
+  winRate: number | null;
+  expectancy: number | null;
+  grossExpectancy: number | null;
+  avgCostR: number | null;
+  profitFactor: number | null;
+  totalR: number;
+  maxDrawdownR: number;
+};
+
+export type LedgerItem = {
+  id: string;
+  source: string;
+  symbol: string;
+  timeframe: string;
+  signalTime: string;
+  signalAt: string;
+  session: string;
+  side: 'BUY' | 'SELL';
+  label: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  status: 'open' | 'win' | 'loss' | 'expired' | 'replaced';
+  exitTime: string | null;
+  grossR: number | null;
+  costR: number;
+  netR: number | null;
+  dataSource: 'binance' | 'yahoo';
+  live: boolean;
+  closedAt: string | null;
+};
+
+export type Ledger = {
+  config: { symbols: string[]; startBalance: number; riskPct: number; riskUsd: number; staleBars: number; days: number; history: boolean };
+  total: LedgerStats;
+  bySource: LedgerStats[];
+  bySymbol: LedgerStats[];
+  byTimeframe: LedgerStats[];
+  bySession: LedgerStats[];
+  equity: { time: string; equity: number }[];
+  items: LedgerItem[];
+};
+
 export type AgentTurn = {
   message: string;
   provider: string;
@@ -335,6 +389,13 @@ export const api = {
   translateScript: (body: { pine: string; provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string }) =>
     request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
+  ledgerRecapTest: () => request<{ ok: boolean; error?: string; text: string }>('/ledger/recap-test', { method: 'POST' }),
+  ledger: (q: { days: number; history: boolean; symbol?: string; source?: string; timeframe?: string; session?: string }) =>
+    request<Ledger>(
+      `/ledger?${new URLSearchParams(
+        Object.entries({ ...q, history: q.history ? '1' : '' }).filter(([, v]) => v !== undefined && v !== '') as [string, string][],
+      )}`,
+    ),
   addAlert: (body: Pick<SignalAlert, 'symbol' | 'tvSymbol' | 'indicator' | 'timeframe'>) =>
     request<{ ok: true; id: string | null }>('/alerts', { method: 'POST', body: JSON.stringify(body) }),
   removeAlert: (id: string) => request<{ ok: true }>(`/alerts/${id}`, { method: 'DELETE' }),

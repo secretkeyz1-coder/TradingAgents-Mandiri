@@ -8,6 +8,7 @@ import { runMigrations } from "./db";
 import { recover } from "./jobs";
 import { agentApi } from "./agent";
 import { alertsApi, startAlertScheduler } from "./alerts";
+import { ledgerApi, startLedgerRecaps } from "./ledger";
 import { scriptsApi } from "./scripts";
 import { authApi, ensureAccounts, meApi, requireAuth, usersApi, type AppEnv } from "./auth";
 import { api } from "./routes";
@@ -20,6 +21,7 @@ await ensureAccounts();
 await recover();
 startWatchScheduler();
 startAlertScheduler();
+startLedgerRecaps();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
@@ -39,6 +41,7 @@ app.route("/api", api);
 app.route("/api", agentApi);
 app.route("/api", watchApi);
 app.route("/api", alertsApi);
+app.route("/api", ledgerApi);
 app.route("/api", scriptsApi);
 app.onError((err, c) => {
   // Middleware answers (401 with its WWW-Authenticate challenge) go out as they are.

@@ -16,10 +16,11 @@ import chart_agent as ca
 from pob import pob
 
 # Bars a scalper signal is followed before it counts as expired, as PoB does.
+# Crypto bars come from Binance inside chart_agent._scalper_bars, for every engine here.
 EXPIRY_BARS = 96
 
 
-def _pob(m: ca.Market, timeframe: str) -> tuple[str | None, list[dict]]:
+def _pob(m: ca.Market, timeframe: str, recent: int = 10) -> tuple[str | None, list[dict]]:
     df = ca._scalper_bars(m, timeframe)
     bars = [{"time": r.Date, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)} for r in df.itertuples()]
     result = pob(bars, timeframe)
@@ -28,13 +29,14 @@ def _pob(m: ca.Market, timeframe: str) -> tuple[str | None, list[dict]]:
     out = [
         {"time": x["time"], "side": x["side"], "label": x["label"], "entry": x["entry"], "stop_loss": x["stop_loss"],
          "take_profit": x["take_profit"], "outcome": x["outcome"],
-         "exit_time": None if x["exit_index"] is None else bars[x["exit_index"]]["time"], "bars_ago": len(bars) - 1 - x["index"]}
-        for x in result["signals"][-10:]
+         "exit_time": None if x["exit_index"] is None else bars[x["exit_index"]]["time"], "bars_ago": len(bars) - 1 - x["index"],
+         "r": x["r"]}
+        for x in result["signals"][-recent:]
     ]
     return bars[-1]["time"], out
 
 
-def _fib(m: ca.Market, timeframe: str) -> tuple[str | None, list[dict]]:
+def _fib(m: ca.Market, timeframe: str, recent: int = 10) -> tuple[str | None, list[dict]]:
     from fib import fib
 
     df = ca._scalper_bars(m, timeframe)
@@ -45,19 +47,20 @@ def _fib(m: ca.Market, timeframe: str) -> tuple[str | None, list[dict]]:
     out = [
         {"time": x["time"], "side": x["side"], "label": x["label"], "entry": x["entry"], "stop_loss": x["stop_loss"],
          "take_profit": x["take_profit"], "outcome": x["outcome"],
-         "exit_time": None if x["exit_index"] is None else bars[x["exit_index"]]["time"], "bars_ago": len(bars) - 1 - x["index"]}
-        for x in result["signals"][-10:]
+         "exit_time": None if x["exit_index"] is None else bars[x["exit_index"]]["time"], "bars_ago": len(bars) - 1 - x["index"],
+         "r": x["r"]}
+        for x in result["signals"][-recent:]
     ]
     return bars[-1]["time"], out
 
 
-def _scalper(m: ca.Market, timeframe: str) -> tuple[str | None, list[dict]]:
-    result = ca.scalper_signal(m, timeframe, history_bars=EXPIRY_BARS)
+def _scalper(m: ca.Market, timeframe: str, recent: int = 10) -> tuple[str | None, list[dict]]:
+    result = ca.scalper_signal(m, timeframe, history_bars=EXPIRY_BARS, history_count=recent)
     out = [{**x, "label": f"{x['side']} · UT Bot"} for x in result.get("history") or []]
     return result.get("last_bar"), out
 
 
-ENGINES: dict[str, Callable[[ca.Market, str], tuple[str | None, list[dict]]]] = {"pob": _pob, "scalper": _scalper, "fib": _fib}
+ENGINES: dict[str, Callable[[ca.Market, str, int], tuple[str | None, list[dict]]]] = {"pob": _pob, "scalper": _scalper, "fib": _fib}
 
 
 def scan(job: dict, emit: Callable[..., None]) -> int:
@@ -78,7 +81,9 @@ def scan(job: dict, emit: Callable[..., None]) -> int:
             if not engine:
                 continue
             try:
-                last_bar, signals = engine(m, timeframe)
+                # The ledger asks a pair it has never seen for its history (up to 300 signals).
+                recent = max(1, min(int(pair.get("recent") or 10), 300))
+                last_bar, signals = engine(m, timeframe, recent)
                 emit("signals", symbol=symbol, timeframe=timeframe, indicator=indicator, last_bar=last_bar, signals=signals)
             except Exception as exc:  # one symbol failing must not stop the others
                 emit("signals_error", symbol=symbol, timeframe=timeframe, indicator=indicator, message=f"{type(exc).__name__}: {exc}"[:300])

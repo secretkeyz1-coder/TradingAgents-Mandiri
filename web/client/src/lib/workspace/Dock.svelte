@@ -1,6 +1,6 @@
 <script lang="ts">
   // The bottom dock: history, the open analysis's report and log, the open
-  // backtest, and the full screener. Each view is its own component.
+  // backtest, the signal ledger, and the full screener. Each view is its own component.
   import TradingViewWidget from '../TradingViewWidget.svelte';
   import { appUrl } from '../router.svelte';
   import { ws, type DockTab } from '../stores/workspace.svelte';
@@ -9,6 +9,7 @@
   import HistoryView from './dock/HistoryView.svelte';
   import LogView from './dock/LogView.svelte';
   import ReportView from './dock/ReportView.svelte';
+  import SignalsView from './dock/SignalsView.svelte';
   import WatchView from './dock/WatchView.svelte';
 
   /** On a phone the dock is a whole screen and has no size controls. */
@@ -20,6 +21,7 @@
     { key: 'log', label: 'Log' },
     { key: 'backtest', label: 'Backtest' },
     { key: 'watch', label: 'Pantau' },
+    { key: 'signals', label: 'Sinyal' },
     { key: 'screener', label: 'Screener' },
   ];
   const market = $derived(MARKET_TABS.find((t) => t.key === ws.market) ?? MARKET_TABS[0]);
@@ -70,6 +72,8 @@
         <BacktestView />
       {:else if ws.dock === 'watch'}
         <WatchView />
+      {:else if ws.dock === 'signals'}
+        <SignalsView />
       {:else}
         {#key market.key}
           <TradingViewWidget

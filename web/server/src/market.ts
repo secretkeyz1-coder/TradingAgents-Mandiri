@@ -2,6 +2,8 @@
 // markers sit on the prices the agents saw. Daily by default; intraday and
 // weekly/monthly are only for looking, the engine itself stays daily.
 // Unofficial endpoint: cached, and a failure is reported rather than retried in a loop.
+// Crypto comes from Binance instead (binance.ts): real time, the bars the BINANCE: chart shows.
+import { barsFor, binanceCandles, binancePair } from "./binance";
 
 /** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's own time zone for intraday. */
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
@@ -12,9 +14,14 @@ export type CandleSeries = {
   exchangeTimezone: string | null;
   interval: Interval;
   candles: Candle[];
+  /** binance = real time; yahoo = delayed (about 15 minutes for futures). */
+  source: "binance" | "yahoo";
 };
 
 const CACHE_TTL_MS = 15 * 60_000;
+/** Binance bars are fresh: a scan just after a bar closes must see it. */
+const BINANCE_TTL_MS = 20_000;
+const RANGE_DAYS: Record<(typeof RANGES)[number], number> = { "6mo": 182, "1y": 365, "2y": 730, "5y": 1826 };
 const cache = new Map<string, { at: number; value: CandleSeries }>();
 
 export const SYMBOL_PATTERN = /^[A-Za-z0-9.\-=^]{1,20}$/;
@@ -47,7 +54,28 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number],
   const yahooRange = interval === "15m" ? MINUTE_RANGE : range;
   const key = `${symbol}|${yahooRange}|${interval}`;
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+  const pair = binancePair(symbol);
+  if (hit && Date.now() - hit.at < (hit.value.source === "binance" ? BINANCE_TTL_MS : CACHE_TTL_MS)) return hit.value;
+
+  if (pair) {
+    try {
+      // The same windows Yahoo would give: a month of 15m bars, at most a year of intraday ones.
+      const days = interval === "15m" ? 30 : RANGE_DAYS[range];
+      const count = barsFor(interval, days);
+      // A refresh fetches only the newest page and stitches it onto the bars already held.
+      const held = hit?.value.source === "binance" ? hit.value.candles : [];
+      const page = held.length ? await binanceCandles(pair, interval, 1000) : [];
+      const candles =
+        page.length && held.length && held.at(-1)!.time >= page[0].time
+          ? [...held.filter((c) => c.time < page[0].time), ...page].slice(-count)
+          : await binanceCandles(pair, interval, count);
+      const value: CandleSeries = { symbol, currency: "USD", exchangeTimezone: "UTC", interval, candles, source: "binance" };
+      cache.set(key, { at: Date.now(), value });
+      return value;
+    } catch (e) {
+      console.error(`binance ${pair} ${interval}: ${(e as Error).message}; falling back to Yahoo`);
+    }
+  }
 
   // 4h is not a Yahoo interval; it is built from hourly bars below.
   const yahooInterval = interval === "4h" ? "1h" : interval;
@@ -87,6 +115,7 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number],
     exchangeTimezone: result.meta.exchangeTimezoneName ?? null,
     interval,
     candles,
+    source: "yahoo" as const,
   };
   cache.set(key, { at: Date.now(), value });
   return value;

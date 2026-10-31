@@ -99,6 +99,7 @@
   const intraday = $derived(timeframe === '15m' || timeframe === '1h' || timeframe === '4h');
   let candles = $state<Candle[]>([]);
   let currency = $state<string | null>(null);
+  let source = $state<'binance' | 'yahoo' | undefined>(undefined);
   let loadError = $state('');
   let loading = $state(true);
   let fetched = $state<Decision[]>([]);
@@ -662,6 +663,7 @@
       .then((series) => {
         candles = series.candles;
         currency = series.currency;
+        source = series.source;
       })
       .catch((e) => {
         candles = [];
@@ -746,6 +748,7 @@
     <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
       <span class="font-mono font-semibold text-base-content">{symbol}</span>
       {#if currency}<span>· {currency}</span>{/if}
+      {#if source === 'binance'}<span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari Binance">real-time</span>{/if}
       <span>· {decisions.length} keputusan AI</span>
       {#if hitRate != null}
         <span class="badge badge-sm {hitRate >= 0.5 ? 'badge-success' : 'badge-warning'} badge-soft">
