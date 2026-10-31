@@ -68,11 +68,17 @@ const COSTS: Record<string, Cost> = (() => {
   }
 })();
 
-/** Round-trip cost of one trade in price units: crypto 0.12% (fees and slippage), gold 0.40 USD, others 0.10%. */
-function costOf(symbol: string, price: number): number {
+/**
+ * Round-trip cost of one trade in price units. Taker (market orders): crypto 0.12% (fees and
+ * slippage), gold 0.40 USD, others 0.10%, or SIGNAL_COSTS. Maker (limit orders at the level, for the
+ * strategy lab): crypto and others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
+ */
+export function tradeCost(symbol: string, price: number, maker = false): number {
+  if (maker) return symbol === "GC=F" ? 0.4 : 0.0005 * price;
   const c = COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.0012 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
   return c.abs ?? (c.pct ?? 0) * price;
 }
+const costOf = (symbol: string, price: number) => tradeCost(symbol, price);
 
 /** UTC milliseconds of an exchange-local wall-clock time ("YYYY-MM-DD HH:MM" or a date) in time zone `tz`. */
 function toUtc(local: string, tz: string): number {

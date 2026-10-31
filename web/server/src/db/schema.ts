@@ -349,6 +349,21 @@ export const ledgerSignals = pgTable(
   ],
 );
 
+/** A strategy lab run (lab.ts): what was tested and its scored result, kept so runs can be compared. */
+export const labRuns = pgTable(
+  "lab_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
+    /** The strategy's name as shown: an engine's or the script's. */
+    name: text("name").notNull(),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+    result: jsonb("result").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("lab_runs_user_idx").on(t.userId, t.createdAt)],
+);
+
 /** Recaps already sent, one per kind and period, so a restart never sends one twice. */
 export const ledgerRecaps = pgTable(
   "ledger_recaps",

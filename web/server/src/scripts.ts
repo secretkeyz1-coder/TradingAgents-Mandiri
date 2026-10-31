@@ -105,7 +105,7 @@ scriptsApi.post("/scripts/translate", async (c) => {
 
   let code = "";
   let error = "";
-  const handle = runCommand("translate", { ...job, reference: SCRIPT_REFERENCE, example: SCRIPT_TEMPLATES[0].code }, async (e) => {
+  const handle = runCommand("translate", { ...job, reference: SCRIPT_REFERENCE, example: (SCRIPT_TEMPLATES.find((t) => t.name === "EMA cross + ATR") ?? SCRIPT_TEMPLATES[0]).code }, async (e) => {
     if (e.type === "code") code = String(e.code ?? "");
     else if (e.type === "error") error = String(e.message ?? "");
   });

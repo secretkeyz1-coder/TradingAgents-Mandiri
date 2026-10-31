@@ -141,3 +141,28 @@ function aggregate(hourly: Candle[], hours: number): Candle[] {
   }
   return out;
 }
+
+/** The longest window the lab may ask for, in days, per interval (Binance pages through it). */
+export const LAB_MAX_DAYS: Record<Interval, number> = { "15m": 365, "1h": 1095, "4h": 1825, "1d": 1825, "1wk": 1825, "1mo": 1825 };
+
+/**
+ * Long history for the strategy lab (lab.ts): Binance bars for as many days as asked where it has the
+ * pair (crypto; gold's intraday XAUUSDT since its listing), else Yahoo's own longest window for the
+ * interval (15m a month, intraday a year, daily five years). Fetched fresh, not cached.
+ */
+export async function getLabCandles(symbol: string, interval: Interval, days: number): Promise<CandleSeries> {
+  days = Math.min(Math.max(1, days), LAB_MAX_DAYS[interval]);
+  const crypto = binancePair(symbol);
+  const pair = crypto ?? binancePerpetual(symbol, interval);
+  if (pair) {
+    try {
+      const candles = await binanceCandles(pair, interval, barsFor(interval, days), !crypto);
+      return { symbol, currency: "USD", exchangeTimezone: "UTC", interval, candles, source: "binance" };
+    } catch (e) {
+      console.error(`lab: binance ${pair} ${interval}: ${(e as Error).message}; falling back to Yahoo`);
+    }
+  }
+  const series = await getCandles(symbol, days > 365 ? "5y" : "1y", interval);
+  const from = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  return { ...series, candles: series.candles.filter((c) => c.time.slice(0, 10) >= from) };
+}

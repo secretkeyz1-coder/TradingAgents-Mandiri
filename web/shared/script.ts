@@ -239,23 +239,25 @@ export function runScript(
   quickjs: QuickJSLike,
   code: string,
   bars: ScriptBar[],
-  opts: { inputs?: Record<string, number | boolean | string>; expiry?: number } = {},
+  opts: { inputs?: Record<string, number | boolean | string>; expiry?: number; limits?: Partial<typeof SCRIPT_LIMITS> } = {},
 ): ScriptRun {
   const started = Date.now();
-  if (code.length > SCRIPT_LIMITS.maxCode) return { ok: false, error: `Skrip terlalu panjang (maks ${SCRIPT_LIMITS.maxCode} karakter)`, ms: 0 };
-  const input = JSON.stringify({ bars, inputs: opts.inputs ?? {}, expiry: opts.expiry ?? 96, limits: SCRIPT_LIMITS });
+  // The strategy lab runs on years of bars: it may raise the time and signal limits for its own runs.
+  const limits = { ...SCRIPT_LIMITS, ...opts.limits };
+  if (code.length > limits.maxCode) return { ok: false, error: `Skrip terlalu panjang (maks ${limits.maxCode} karakter)`, ms: 0 };
+  const input = JSON.stringify({ bars, inputs: opts.inputs ?? {}, expiry: opts.expiry ?? 96, limits });
   // The user's code runs in its own block, so its names cannot replace the runtime's.
   // A function replacement: a "$" in the data must not be read as a replacement pattern.
   const source = `${PRELUDE.replace('__INPUT__', () => input)}\n{\n${code}\n}\n${EPILOGUE}`;
-  const deadline = started + SCRIPT_LIMITS.timeMs;
+  const deadline = started + limits.timeMs;
   try {
-    const result = quickjs.evalCode(source, { shouldInterrupt: () => Date.now() > deadline, memoryLimitBytes: SCRIPT_LIMITS.memoryBytes }) as ScriptResult;
+    const result = quickjs.evalCode(source, { shouldInterrupt: () => Date.now() > deadline, memoryLimitBytes: limits.memoryBytes }) as ScriptResult;
     return { ok: true, result, ms: Date.now() - started };
   } catch (e) {
     const err = e as { name?: string; message?: string; stack?: string } | string;
     const text = typeof err === 'string' ? err : `${err?.name ?? 'Error'}: ${err?.message ?? String(err)}`;
     const interrupted = Date.now() > deadline || /interrupted/i.test(text);
-    return { ok: false, error: interrupted ? `Skrip melewati batas waktu ${SCRIPT_LIMITS.timeMs / 1000} detik` : text.slice(0, 500), ms: Date.now() - started };
+    return { ok: false, error: interrupted ? `Skrip melewati batas waktu ${limits.timeMs / 1000} detik` : text.slice(0, 500), ms: Date.now() - started };
   }
 }
 
@@ -277,6 +279,42 @@ Aturan: sinyal di candle terakhir (masih berjalan) diabaikan; TP/SL/kedaluwarsa 
 file atau halaman; batas 3 detik dan 128 MB. Bahasa: JavaScript biasa (const, let, for, if, Math.*).`;
 
 export const SCRIPT_TEMPLATES: { name: string; code: string }[] = [
+  {
+    name: 'Donchian breakout (trend following)',
+    code: `// Trend following: BUY saat close menembus harga tertinggi N candle sebelumnya, SELL saat menembus
+// harga terendahnya. SL dan TP dalam ATR. Uji di Lab pada 4j dan harian, dengan kedaluwarsa panjang.
+const len = input("Periode Donchian", 20);
+const slAtr = input("SL (ATR)", 2);
+const tpAtr = input("TP (ATR)", 4);
+const hi = ta.highest(high, len);
+const lo = ta.lowest(low, len);
+const atr = ta.atr(14);
+plot(hi, "Donchian atas", "teal");
+plot(lo, "Donchian bawah", "teal");
+for (let i = len + 2; i < n; i++) {
+  if (close[i] > hi[i - 1] && close[i - 1] <= hi[i - 2]) signal(i, "BUY", { sl: close[i] - slAtr * atr[i], tp: close[i] + tpAtr * atr[i], label: "Breakout" });
+  if (close[i] < lo[i - 1] && close[i - 1] >= lo[i - 2]) signal(i, "SELL", { sl: close[i] + slAtr * atr[i], tp: close[i] - tpAtr * atr[i], label: "Breakdown" });
+}`,
+  },
+  {
+    name: 'Trend EMA 50/200 + pullback',
+    code: `// Ikut tren besar: saat EMA 50 di atas EMA 200, BUY ketika harga kembali naik melewati EMA 20
+// setelah koreksi; kebalikannya untuk SELL. SL 1,5 ATR, TP 3 ATR.
+const slAtr = input("SL (ATR)", 1.5);
+const tpAtr = input("TP (ATR)", 3);
+const fast = ta.ema(close, 20);
+const mid = ta.ema(close, 50);
+const slow = ta.ema(close, 200);
+const atr = ta.atr(14);
+plot(mid, "EMA 50", "orange");
+plot(slow, "EMA 200", "royalblue");
+const up = ta.crossover(close, fast);
+const down = ta.crossunder(close, fast);
+for (let i = 200; i < n; i++) {
+  if (mid[i] > slow[i] && up[i]) signal(i, "BUY", { sl: close[i] - slAtr * atr[i], tp: close[i] + tpAtr * atr[i], label: "Pullback" });
+  if (mid[i] < slow[i] && down[i]) signal(i, "SELL", { sl: close[i] + slAtr * atr[i], tp: close[i] - tpAtr * atr[i], label: "Pullback" });
+}`,
+  },
   {
     name: 'EMA cross + ATR',
     code: `// BUY saat EMA cepat memotong ke atas EMA lambat, SELL sebaliknya.

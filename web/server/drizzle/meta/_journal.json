@@ -78,6 +78,13 @@
       "when": 1793454267848,
       "tag": "0010_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793458053234,
+      "tag": "0011_lab_runs",
+      "breakpoints": true
     }
   ]
 }

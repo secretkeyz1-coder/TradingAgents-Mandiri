@@ -505,7 +505,14 @@ def translate(job: dict) -> int:
     return 0
 
 
-COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals, "translate": translate}
+def lab(job: dict) -> int:
+    """Run one built-in engine on the bars the strategy lab sends; see lab.py."""
+    from lab import run as run_lab
+
+    return run_lab(job, emit)
+
+
+COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals, "translate": translate, "lab": lab}
 
 
 def main(argv: list[str]) -> int:

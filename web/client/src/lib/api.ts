@@ -304,6 +304,33 @@ export type Ledger = {
   items: LedgerItem[];
 };
 
+/** Results of some lab trades (server/src/lab.ts), in R; net is after costs. */
+export type LabStats = { n: number; win: number | null; gross: number | null; cost: number | null; net: number | null; pf: number | null; total: number; maxDrawdown: number };
+export type LabConfig = {
+  strategy: { kind: 'engine'; name: string } | { kind: 'script'; id: string };
+  symbols: string[];
+  timeframe: '15m' | '1h' | '4h' | '1d';
+  days: number;
+  costs: 'taker' | 'maker';
+  split: number;
+  expiry: number;
+};
+export type LabSymbol =
+  | { symbol: string; source: 'binance' | 'yahoo'; bars: number; from: string; to: string; split: string | null; is: LabStats; oos: LabStats }
+  | { symbol: string; error: string };
+export type LabRun = {
+  id: string;
+  name: string;
+  createdAt: string;
+  config: LabConfig;
+  symbols: LabSymbol[];
+  total: { is: LabStats; oos: LabStats };
+  equity: { time: string; r: number; oos: boolean }[];
+  verdict: { pass: boolean; reason: string };
+  ms: number;
+};
+export type LabRunSummary = Pick<LabRun, 'id' | 'name' | 'createdAt' | 'config' | 'total' | 'verdict'>;
+
 export type AgentTurn = {
   message: string;
   provider: string;
@@ -389,6 +416,12 @@ export const api = {
   translateScript: (body: { pine: string; provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string }) =>
     request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
+  lab: () =>
+    request<{ engines: Record<string, { label: string; timeframes: string[] }>; scripts: { id: string; name: string }[]; maxDays: Record<string, number>; busy: boolean }>('/lab'),
+  labRun: (config: LabConfig) => request<LabRun>('/lab/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(config) }),
+  labRuns: () => request<LabRunSummary[]>('/lab/runs'),
+  labRunGet: (id: string) => request<LabRun>(`/lab/runs/${id}`),
+  labRunDelete: (id: string) => request<{ ok: true }>(`/lab/runs/${id}`, { method: 'DELETE' }),
   ledgerRecapTest: () => request<{ ok: boolean; error?: string; text: string }>('/ledger/recap-test', { method: 'POST' }),
   ledger: (q: { days: number; history: boolean; symbol?: string; source?: string; timeframe?: string; session?: string }) =>
     request<Ledger>(

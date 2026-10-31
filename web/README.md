@@ -108,6 +108,13 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
 - Saat notifikasi dinyalakan, sinyal yang sudah ada dicatat tanpa dikirim. Sinyal yang baru terlihat lebih dari `SIGNAL_STALE_BARS` candle (default 4) setelah muncul, misalnya karena server mati, dicatat tanpa dikirim.
 
+### Lab strategi (tab Lab)
+
+- Uji mesin bawaan (PoB, Scalper, Fib) atau skrip sendiri pada riwayat panjang: kripto dari Binance (15m s.d. 1 tahun, 1j s.d. 3 tahun, 4j/harian s.d. 5 tahun), emas intraday dari XAUUSDT, lainnya dari Yahoo.
+- Setiap trade dipotong biaya taker atau maker (`tradeCost` di `server/src/ledger.ts`). Riwayat dibagi: data awal untuk membentuk strategi, data uji (20/30/40% terakhir) untuk memeriksa. Strategi "lolos" hanya bila positif setelah biaya di keduanya dengan minimal 30 trade di data uji.
+- Mesin dijalankan worker (`worker/lab.py`, perintah `lab`), skrip di sandbox yang sama dengan chart dengan batas 30 detik. Satu uji berjalan pada satu waktu, maksimal 60 uji per pengguna per 24 jam, 30 hasil terakhir disimpan (`lab_runs`).
+- Template skrip "Donchian breakout" dan "Trend EMA 50/200 + pullback" disediakan untuk diuji di 4j dan harian.
+
 ### Buku catatan sinyal (tab Sinyal)
 
 - Setiap sinyal mesin bawaan (PoB 15m/1j, Scalper 15m, Fib 15m/1j/harian) pada `SIGNAL_LEDGER_SYMBOLS` (default BTC-USD, ETH-USD, GC=F) dicatat sekali saat lahir, beku, lalu dinilai saat candle berikutnya tutup, oleh pemindai yang sama dengan notifikasi.

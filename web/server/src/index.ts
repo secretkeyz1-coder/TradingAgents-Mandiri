@@ -8,6 +8,7 @@ import { runMigrations } from "./db";
 import { recover } from "./jobs";
 import { agentApi } from "./agent";
 import { alertsApi, startAlertScheduler } from "./alerts";
+import { labApi } from "./lab";
 import { ledgerApi, startLedgerRecaps } from "./ledger";
 import { scriptsApi } from "./scripts";
 import { authApi, ensureAccounts, meApi, requireAuth, usersApi, type AppEnv } from "./auth";
@@ -42,6 +43,7 @@ app.route("/api", agentApi);
 app.route("/api", watchApi);
 app.route("/api", alertsApi);
 app.route("/api", ledgerApi);
+app.route("/api", labApi);
 app.route("/api", scriptsApi);
 app.onError((err, c) => {
   // Middleware answers (401 with its WWW-Authenticate challenge) go out as they are.
