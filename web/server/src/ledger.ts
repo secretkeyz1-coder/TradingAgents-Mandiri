@@ -15,7 +15,7 @@
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { isAdmin, type AppEnv } from "./auth";
-import { binancePair } from "./binance";
+import { binancePair, binancePerpetual } from "./binance";
 import { db } from "./db";
 import { ledgerRecaps, ledgerSignals, signalAlerts, users, type SignalStatus } from "./db/schema";
 import { getCandles, SYMBOL_PATTERN } from "./market";
@@ -98,10 +98,13 @@ const sessionOf = (ms: number) => {
   return h >= 7 && h < 13 ? "london" : h >= 13 && h < 21 ? "newyork" : "asia";
 };
 
+/** Whether the engines read this symbol and timeframe from Binance (real time, UTC bar times). */
+const fromBinance = (symbol: string, timeframe: "15m" | "1h" | "1d") => !!(binancePair(symbol) ?? binancePerpetual(symbol, timeframe));
+
 const zones = new Map<string, string>();
-/** The exchange time zone the engines print a symbol's bar times in. */
-async function zoneOf(symbol: string): Promise<string> {
-  if (binancePair(symbol)) return "UTC";
+/** The time zone the engines print a symbol's bar times in: UTC for Binance bars, else the exchange's. */
+async function zoneOf(symbol: string, timeframe: "15m" | "1h" | "1d"): Promise<string> {
+  if (fromBinance(symbol, timeframe)) return "UTC";
   if (!zones.has(symbol)) {
     const series = await getCandles(symbol, "6mo", "1d").catch(() => null);
     zones.set(symbol, series?.exchangeTimezone ?? "UTC");
@@ -137,11 +140,11 @@ export async function ledgerPairs(withHourly: boolean): Promise<{ symbol: string
 /** Store what a scan found for the ledger's pairs: new signals once, finished ones scored. */
 export async function recordLedger(found: Map<string, LedgerSignal[]>) {
   for (const symbol of LEDGER_SYMBOLS) {
-    const tz = await zoneOf(symbol);
-    const dataSource = binancePair(symbol) ? "binance" : "yahoo";
     for (const c of LEDGER_COMBOS) {
       const signals = found.get(`${symbol}|${c.timeframe}|${c.source}`);
       if (!signals?.length) continue;
+      const tz = await zoneOf(symbol, c.timeframe);
+      const dataSource = fromBinance(symbol, c.timeframe) ? "binance" : "yahoo";
       const rows = await db
         .select()
         .from(ledgerSignals)

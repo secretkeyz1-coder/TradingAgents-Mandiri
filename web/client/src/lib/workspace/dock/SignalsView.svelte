@@ -122,7 +122,7 @@
         setelah biaya spread, fee, dan slippage.
       </p>
       <p class="text-xs text-base-content/70">
-        Kripto memakai harga real-time Binance. Emas masih dari Yahoo (tertunda), jadi hasilnya ditandai. Hasil riset dan simulasi, bukan nasihat keuangan.
+        Kripto dan emas 15m/1j memakai harga real-time Binance (emas dari kontrak XAUUSDT, tanpa jam saat pasar spot tutup). Emas harian masih dari Yahoo dan ditandai "tertunda". Hasil riset dan simulasi, bukan nasihat keuangan.
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">

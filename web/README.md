@@ -112,7 +112,7 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 
 - Setiap sinyal mesin bawaan (PoB 15m/1j, Scalper 15m, Fib 15m/1j/harian) pada `SIGNAL_LEDGER_SYMBOLS` (default BTC-USD, ETH-USD, GC=F) dicatat sekali saat lahir, beku, lalu dinilai saat candle berikutnya tutup, oleh pemindai yang sama dengan notifikasi.
 - Akun simulasi `SIGNAL_PAPER_BALANCE` (10.000 USD), risiko `SIGNAL_PAPER_RISK_PCT` (1%) per sinyal, dikurangi biaya pulang-pergi: kripto 0,12% (fee + slippage), emas 0,40 USD, lainnya 0,10%; ubah per simbol lewat `SIGNAL_COSTS`.
-- Kripto memakai candle real-time Binance (`server/src/binance.ts`, dan `chart_agent.py` dengan jendela yang sama), jadi chart, notifikasi, agent dan ledger membaca candle yang sama. Emas masih Yahoo (tertunda) dan ditandai.
+- Kripto memakai candle real-time Binance (`server/src/binance.ts`, dan `chart_agent.py` dengan jendela yang sama), jadi chart, notifikasi, agent dan ledger membaca candle yang sama. Emas 15m/1j/4j memakai kontrak perpetual XAUUSDT Binance (real-time; candle saat spot emas tutup, yaitu jeda harian 17:00-18:00 New York dan akhir pekan, dibuang). Selisihnya terhadap futures COMEX rata-rata sekitar 3-4 USD. Emas harian tetap dari Yahoo.
 - Saat pertama menyala, ledger mengisi riwayat dari candle lama (ditandai "riwayat", di luar statistik live). Sinyal yang terlihat lebih dari `SIGNAL_STALE_BARS` candle terlambat juga dianggap riwayat.
 - Rekap harian ke Telegram pukul `SIGNAL_RECAP_TIME` WIB (05:15, setelah New York tutup), mingguan tiap Sabtu; dikirim ke admin dan pengguna yang punya notifikasi. Admin bisa mengirim rekap tes dari tab Sinyal.
 - Data dari Yahoo dan bisa tertunda beberapa menit; emas memakai futures `GC=F`.

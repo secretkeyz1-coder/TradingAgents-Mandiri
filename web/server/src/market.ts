@@ -2,8 +2,9 @@
 // markers sit on the prices the agents saw. Daily by default; intraday and
 // weekly/monthly are only for looking, the engine itself stays daily.
 // Unofficial endpoint: cached, and a failure is reported rather than retried in a loop.
-// Crypto comes from Binance instead (binance.ts): real time, the bars the BINANCE: chart shows.
-import { barsFor, binanceCandles, binancePair } from "./binance";
+// Crypto comes from Binance instead (binance.ts): real time, the bars the BINANCE: chart shows;
+// so do gold's intraday bars (the XAUUSDT perpetual, outside spot gold's closed hours).
+import { barsFor, binanceCandles, binancePair, binancePerpetual } from "./binance";
 
 /** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's own time zone for intraday. */
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
@@ -54,7 +55,8 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number],
   const yahooRange = interval === "15m" ? MINUTE_RANGE : range;
   const key = `${symbol}|${yahooRange}|${interval}`;
   const hit = cache.get(key);
-  const pair = binancePair(symbol);
+  const futures = !binancePair(symbol) && !!binancePerpetual(symbol, interval);
+  const pair = binancePair(symbol) ?? binancePerpetual(symbol, interval);
   if (hit && Date.now() - hit.at < (hit.value.source === "binance" ? BINANCE_TTL_MS : CACHE_TTL_MS)) return hit.value;
 
   if (pair) {
@@ -64,11 +66,11 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number],
       const count = barsFor(interval, days);
       // A refresh fetches only the newest page and stitches it onto the bars already held.
       const held = hit?.value.source === "binance" ? hit.value.candles : [];
-      const page = held.length ? await binanceCandles(pair, interval, 1000) : [];
+      const page = held.length ? await binanceCandles(pair, interval, 1000, futures) : [];
       const candles =
         page.length && held.length && held.at(-1)!.time >= page[0].time
           ? [...held.filter((c) => c.time < page[0].time), ...page].slice(-count)
-          : await binanceCandles(pair, interval, count);
+          : await binanceCandles(pair, interval, count, futures);
       const value: CandleSeries = { symbol, currency: "USD", exchangeTimezone: "UTC", interval, candles, source: "binance" };
       cache.set(key, { at: Date.now(), value });
       return value;

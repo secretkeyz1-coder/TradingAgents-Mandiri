@@ -222,6 +222,26 @@ _BARS_CACHE: dict[tuple[str, str], pd.DataFrame] = {}
 # a month of 15m bars, a year of 1h bars; daily bars reach further back for the daily engines.
 BINANCE_BARS = {"15m": 2880, "1h": 8760, "1d": 1000}
 BINANCE_HOSTS = ("https://data-api.binance.vision", "https://api.binance.com")
+BINANCE_FUTURES_HOSTS = ("https://fapi.binance.com",)
+# Gold's 15m and 1h bars come from Binance's XAUUSDT perpetual, outside spot gold's closed
+# hours (web/server/src/binance.ts does the same); its daily bars stay on the engine's loader.
+BINANCE_PERPETUALS = {"GC=F": "XAUUSDT"}
+
+
+def metals_open(ms: int) -> bool:
+    """Whether spot gold trades at this bar's start: Sunday 18:00 to Friday 17:00 New York, less the 17:00 break."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    ny = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone(ZoneInfo("America/New_York"))
+    day, hour = ny.weekday(), ny.hour  # Monday = 0
+    if hour == 17 or day == 5:
+        return False
+    if day == 4:
+        return hour < 17
+    if day == 6:
+        return hour >= 18
+    return True
 
 
 def binance_pair(symbol: str) -> str | None:
@@ -232,14 +252,15 @@ def binance_pair(symbol: str) -> str | None:
     return re.sub(r"^([A-Z]+)\d{3,}$", r"\1", found.group(1)) + "USDT"
 
 
-def _binance_bars(pair: str, timeframe: str) -> pd.DataFrame:
+def _binance_bars(pair: str, timeframe: str, futures: bool = False) -> pd.DataFrame:
     import urllib.request
 
     count, rows, end = BINANCE_BARS[timeframe], [], None
+    path = "/fapi/v1/klines" if futures else "/api/v3/klines"
     while len(rows) < count:
-        query = f"/api/v3/klines?symbol={pair}&interval={timeframe}&limit=1000" + (f"&endTime={end}" if end else "")
+        query = f"{path}?symbol={pair}&interval={timeframe}&limit=1000" + (f"&endTime={end}" if end else "")
         page, last_error = None, None
-        for host in BINANCE_HOSTS:
+        for host in BINANCE_FUTURES_HOSTS if futures else BINANCE_HOSTS:
             try:
                 with urllib.request.urlopen(host + query, timeout=10) as res:
                     page = json.loads(res.read())
@@ -255,21 +276,25 @@ def _binance_bars(pair: str, timeframe: str) -> pd.DataFrame:
             break
         end = page[0][0] - 1
     fmt = "%Y-%m-%d" if timeframe == "1d" else "%Y-%m-%d %H:%M"
-    df = pd.DataFrame([[k[0], float(k[1]), float(k[2]), float(k[3]), float(k[4])] for k in rows[-count:]],
+    kept = [k for k in rows[-count:] if not futures or metals_open(k[0])]
+    df = pd.DataFrame([[k[0], float(k[1]), float(k[2]), float(k[3]), float(k[4])] for k in kept],
                       columns=["Date", "Open", "High", "Low", "Close"])
     df["Date"] = pd.to_datetime(df["Date"], unit="ms", utc=True).dt.strftime(fmt)
     return df
 
 
 def _scalper_bars(m: Market, timeframe: str) -> pd.DataFrame:
-    """Crypto bars from Binance; otherwise daily bars from the turn's market, or recent intraday bars from Yahoo."""
+    """Crypto bars and gold's intraday bars from Binance; otherwise daily bars from the turn's market, or recent intraday bars from Yahoo."""
     pair = binance_pair(m.symbol)
+    futures = not pair and timeframe in ("15m", "1h") and m.symbol.upper() in BINANCE_PERPETUALS
+    if futures:
+        pair = BINANCE_PERPETUALS[m.symbol.upper()]
     if pair and timeframe in BINANCE_BARS:
         cached = _BARS_CACHE.get((m.symbol, timeframe))
         if cached is not None:
             return cached.copy()
         try:
-            df = _binance_bars(pair, timeframe)
+            df = _binance_bars(pair, timeframe, futures)
             _BARS_CACHE[(m.symbol, timeframe)] = df
             return df.copy()
         except Exception:
