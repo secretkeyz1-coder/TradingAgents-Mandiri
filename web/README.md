@@ -107,12 +107,13 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
 - Saat notifikasi dinyalakan, sinyal yang sudah ada dicatat tanpa dikirim. Sinyal yang baru terlihat lebih dari `SIGNAL_STALE_BARS` candle (default 4) setelah muncul, misalnya karena server mati, dicatat tanpa dikirim.
+- Kripto dipantau di bursa yang sedang dipilih di chart (tombol Bursa): notifikasi pada `BYBIT:BTCUSDT` memakai candle Bybit dan pesannya menyebut sumber datanya. Indikator yang sama boleh dinyalakan di beberapa bursa.
 
 ### Kripto multi-bursa (tombol Bursa di chart)
 
 - Harga kripto dari 9 bursa lewat CCXT di server (`server/src/venues.ts`): Binance, Bybit, OKX, Coinbase, Kraken, Bitget, KuCoin, Gate, dan Indodax (rupiah). Server yang mengambil datanya, karena banyak bursa diblokir ISP di Indonesia.
 - Tombol "Bursa" di chart membuka harga semua bursa secara real-time (WebSocket tiap bursa, Indodax lewat REST tiap 3 detik), selisih terhadap median, spread bid-ask, dan umur data. Klik bursa untuk memakai candle-nya di chart, indikator, skrip, dan panel TradingView (simbol berganti, misalnya `BYBIT:BTCUSDT`).
-- Riwayat candle per bursa berbeda: Kraken hanya 720 candle terakhir, Indodax sekitar 9 hari candle 15m. Lab bisa memilih bursa untuk simbol kripto. Notifikasi dan buku catatan masih memakai Binance.
+- Riwayat candle per bursa berbeda: Kraken hanya 720 candle terakhir, Indodax sekitar 9 hari candle 15m. Lab bisa memilih bursa untuk simbol kripto; notifikasi dan buku catatan juga bisa per bursa (lihat bagian masing-masing).
 - Gambar agent (dalam dolar) disembunyikan pada bursa rupiah.
 
 ### Lab strategi (tab Lab)
@@ -134,10 +135,12 @@ Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbo
 - Akun simulasi `SIGNAL_PAPER_BALANCE` (10.000 USD), risiko `SIGNAL_PAPER_RISK_PCT` (1%) per sinyal, dikurangi biaya pulang-pergi: kripto 0,12% (fee + slippage), emas 0,40 USD, lainnya 0,10%; ubah per simbol lewat `SIGNAL_COSTS`.
 - Kripto memakai candle real-time Binance (`server/src/binance.ts`, dan `chart_agent.py` dengan jendela yang sama), jadi chart, notifikasi, agent dan ledger membaca candle yang sama. Emas 15m/1j/4j memakai kontrak perpetual XAUUSDT Binance (real-time; candle saat spot emas tutup, yaitu jeda harian 17:00-18:00 New York dan akhir pekan, dibuang). Selisihnya terhadap futures COMEX rata-rata sekitar 3-4 USD. Emas harian tetap dari Yahoo.
 - Saat pertama menyala, ledger mengisi riwayat dari candle lama (ditandai "riwayat", di luar statistik live). Sinyal yang terlihat lebih dari `SIGNAL_STALE_BARS` candle terlambat juga dianggap riwayat.
+- Kripto juga dicatat di bursa `SIGNAL_LEDGER_VENUES` (default `binance,bybit,okx,indodax`), masing-masing dari candle bursanya sendiri, sebagai pembanding. Akun simulasi, kurva ekuitas, dan total rekap tetap memakai Binance supaya satu sinyal tidak terhitung berkali-kali. Tab Sinyal punya pilihan bursa dan tab "Per bursa"; rekap Telegram menambahkan baris "Kripto per bursa".
+- Biaya default sama di semua bursa (0,12%) supaya yang dibandingkan hanya harganya. Biaya nyata satu bursa diatur lewat `SIGNAL_COSTS` dengan kunci `SIMBOL@bursa`, misalnya `{"BTC-USD@indodax": {"pct": 0.006}}` untuk taker Indodax 0,3% per sisi (angka bawaan CCXT; biaya `abs` dalam mata uang bursa itu).
 - Rekap harian ke Telegram pukul `SIGNAL_RECAP_TIME` WIB (05:15, setelah New York tutup), mingguan tiap Sabtu; dikirim ke admin dan pengguna yang punya notifikasi. Admin bisa mengirim rekap tes dari tab Sinyal.
-- Data dari Yahoo dan bisa tertunda beberapa menit; emas memakai futures `GC=F`.
+- Emas harian dari Yahoo (futures `GC=F`) bisa tertunda beberapa menit.
 
-API: `GET /api/alerts`, `POST /api/alerts {symbol, tvSymbol, indicator, timeframe}`, `DELETE /api/alerts/:id`, `POST /api/alerts/test`.
+API: `GET /api/alerts`, `POST /api/alerts {symbol, tvSymbol, indicator, timeframe}` (bursa diambil dari `tvSymbol`), `DELETE /api/alerts/:id`, `POST /api/alerts/test`, `GET /api/ledger?days=&history=&venue=&symbol=&source=`.
 
 ### Chart dan harga dari TradingView
 

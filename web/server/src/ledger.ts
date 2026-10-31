@@ -9,9 +9,15 @@
 // risks the same share of the starting balance, so the equity curve is the sum
 // of net R times that amount.
 //
+// Crypto is recorded on several venues, each from its own bars (venues.ts), to
+// compare them; the simulated account and the recaps' totals count the default
+// source only (Binance), so one signal is never taken four times.
+//
 // Settings (env): SIGNAL_LEDGER_SYMBOLS (default BTC-USD,ETH-USD,GC=F),
+// SIGNAL_LEDGER_VENUES (crypto, default binance,bybit,okx,indodax),
 // SIGNAL_PAPER_BALANCE (10000), SIGNAL_PAPER_RISK_PCT (1), SIGNAL_COSTS (JSON,
-// per symbol {"pct": 0.0012} or {"abs": 0.4}), SIGNAL_RECAP_TIME (HH:MM WIB, 05:15).
+// per symbol {"pct": 0.0012} or {"abs": 0.4}, per venue "BTC-USD@indodax"),
+// SIGNAL_RECAP_TIME (HH:MM WIB, 05:15).
 import { and, desc, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { isAdmin, type AppEnv } from "./auth";
@@ -21,6 +27,7 @@ import { ledgerRecaps, ledgerSignals, signalAlerts, users, type SignalStatus } f
 import { getCandles, SYMBOL_PATTERN } from "./market";
 import { quickjs } from "./script-run";
 import { runScript, SCRIPT_TEMPLATES, toScriptBars } from "../../shared/script";
+import { cryptoBase, isVenue, storedVenue, VENUES, type VenueId } from "./venues";
 import { escape, publicUrl, sendTelegram } from "./watch";
 
 export type LedgerSignal = {
@@ -59,6 +66,17 @@ export const LEDGER_SYMBOLS = (process.env.SIGNAL_LEDGER_SYMBOLS ?? "BTC-USD,ETH
   .split(",")
   .map((s) => s.trim().toUpperCase())
   .filter((s) => SYMBOL_PATTERN.test(s));
+/** Crypto venues the ledger follows; "" is the default source (Binance). Other symbols have only that one. */
+export const LEDGER_VENUES: ("" | VenueId)[] = (() => {
+  const list = (process.env.SIGNAL_LEDGER_VENUES ?? "binance,bybit,okx,indodax").split(",").map((v) => v.trim().toLowerCase());
+  const venues = [...new Set(list.filter(isVenue).map(storedVenue))];
+  return venues.length ? venues : [""];
+})();
+/** Every symbol and venue the ledger records. */
+const ledgerFeeds = (): { symbol: string; venue: "" | VenueId }[] =>
+  LEDGER_SYMBOLS.flatMap((symbol) => (cryptoBase(symbol) ? LEDGER_VENUES : [""] as const).map((venue) => ({ symbol, venue })));
+/** How a scan's results are keyed: symbol, timeframe, venue ("" = default source) and engine. */
+export const resultKey = (symbol: string, timeframe: string, venue: string, source: string) => `${symbol}|${timeframe}|${venue}|${source}`;
 const START_BALANCE = Number(process.env.SIGNAL_PAPER_BALANCE ?? 10_000);
 const RISK_PCT = Number(process.env.SIGNAL_PAPER_RISK_PCT ?? 1);
 const RISK_USD = (START_BALANCE * RISK_PCT) / 100;
@@ -80,15 +98,15 @@ const COSTS: Record<string, Cost> = (() => {
 
 /**
  * Round-trip cost of one trade in price units. Taker (market orders): crypto 0.12% (fees and
- * slippage), gold 0.40 USD, others 0.10%, or SIGNAL_COSTS. Maker (limit orders at the level, for the
- * strategy lab): crypto and others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
+ * slippage) on every venue, gold 0.40 USD, others 0.10%, or SIGNAL_COSTS ("BTC-USD@indodax" for one
+ * venue, an abs cost then in its quote currency). Maker (limit orders at the level, for the strategy
+ * lab): crypto and others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
  */
-export function tradeCost(symbol: string, price: number, maker = false): number {
+export function tradeCost(symbol: string, price: number, maker = false, venue = ""): number {
   if (maker) return symbol === "GC=F" ? 0.4 : 0.0005 * price;
-  const c = COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.0012 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
+  const c = COSTS[`${symbol}@${venue}`] ?? COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.0012 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
   return c.abs ?? (c.pct ?? 0) * price;
 }
-const costOf = (symbol: string, price: number) => tradeCost(symbol, price);
 
 /** UTC milliseconds of an exchange-local wall-clock time ("YYYY-MM-DD HH:MM" or a date) in time zone `tz`. */
 function toUtc(local: string, tz: string): number {
@@ -118,9 +136,9 @@ const sessionOf = (ms: number) => {
 const fromBinance = (symbol: string, timeframe: "15m" | "1h" | "1d") => !!(binancePair(symbol) ?? binancePerpetual(symbol, timeframe));
 
 const zones = new Map<string, string>();
-/** The time zone the engines print a symbol's bar times in: UTC for Binance bars, else the exchange's. */
-async function zoneOf(symbol: string, timeframe: "15m" | "1h" | "1d"): Promise<string> {
-  if (fromBinance(symbol, timeframe)) return "UTC";
+/** The time zone the engines print a symbol's bar times in: UTC for a venue's bars and Binance's, else the exchange's. */
+async function zoneOf(symbol: string, timeframe: "15m" | "1h" | "1d", venue: string): Promise<string> {
+  if (venue || fromBinance(symbol, timeframe)) return "UTC";
   if (!zones.has(symbol)) {
     const series = await getCandles(symbol, "6mo", "1d").catch(() => null);
     zones.set(symbol, series?.exchangeTimezone ?? "UTC");
@@ -129,25 +147,25 @@ async function zoneOf(symbol: string, timeframe: "15m" | "1h" | "1d"): Promise<s
 }
 
 /** Pairs the ledger asks the scan for; a pair it has never recorded asks for its history too. */
-export async function ledgerPairs(withHourly: boolean): Promise<{ symbol: string; timeframe: string; indicators: string[]; recent: number }[]> {
+export async function ledgerPairs(withHourly: boolean): Promise<{ symbol: string; timeframe: string; venue: string; indicators: string[]; recent: number }[]> {
   if (!LEDGER_SYMBOLS.length) return [];
   const seen = new Set(
     (
       await db
-        .selectDistinct({ source: ledgerSignals.source, symbol: ledgerSignals.symbol, timeframe: ledgerSignals.timeframe })
+        .selectDistinct({ source: ledgerSignals.source, symbol: ledgerSignals.symbol, timeframe: ledgerSignals.timeframe, venue: ledgerSignals.venue })
         .from(ledgerSignals)
         .where(inArray(ledgerSignals.symbol, LEDGER_SYMBOLS))
-    ).map((r) => `${r.symbol}|${r.timeframe}|${r.source}`),
+    ).map((r) => resultKey(r.symbol, r.timeframe, r.venue, r.source)),
   );
-  const pairs = new Map<string, { symbol: string; timeframe: string; indicators: string[]; recent: number }>();
-  for (const symbol of LEDGER_SYMBOLS) {
+  const pairs = new Map<string, { symbol: string; timeframe: string; venue: string; indicators: string[]; recent: number }>();
+  for (const { symbol, venue } of ledgerFeeds()) {
     for (const c of LEDGER_COMBOS) {
       if (!withHourly && c.timeframe !== "15m") continue;
-      const key = `${symbol}|${c.timeframe}`;
-      if (!pairs.has(key)) pairs.set(key, { symbol, timeframe: c.timeframe, indicators: [], recent: 10 });
+      const key = `${symbol}|${c.timeframe}|${venue}`;
+      if (!pairs.has(key)) pairs.set(key, { symbol, timeframe: c.timeframe, venue, indicators: [], recent: 10 });
       const pair = pairs.get(key)!;
       pair.indicators.push(c.source);
-      if (!seen.has(`${key}|${c.source}`)) pair.recent = BACKFILL_SIGNALS;
+      if (!seen.has(resultKey(symbol, c.timeframe, venue, c.source))) pair.recent = BACKFILL_SIGNALS;
     }
   }
   return [...pairs.values()];
@@ -159,14 +177,14 @@ export async function ledgerScriptSignals(): Promise<Map<string, LedgerSignal[]>
   for (const strategy of LEDGER_SCRIPTS) {
     const code = SCRIPT_TEMPLATES.find((t) => t.name === strategy.template)?.code;
     if (!code) continue;
-    for (const symbol of LEDGER_SYMBOLS) {
+    for (const { symbol, venue } of ledgerFeeds()) {
       try {
-        const bars = toScriptBars((await getCandles(symbol, "2y", strategy.timeframe)).candles);
+        const bars = toScriptBars((await getCandles(symbol, "2y", strategy.timeframe, venue || undefined)).candles);
         const run = runScript(await quickjs(), code, bars, { expiry: strategy.expiry });
         if (!run.ok) throw new Error(run.error);
         const last = bars.length - 1;
         found.set(
-          `${symbol}|${strategy.timeframe}|${strategy.source}`,
+          resultKey(symbol, strategy.timeframe, venue, strategy.source),
           run.result.signals.map((x) => ({
             time: x.time,
             side: x.side,
@@ -181,7 +199,7 @@ export async function ledgerScriptSignals(): Promise<Map<string, LedgerSignal[]>
           })),
         );
       } catch (e) {
-        console.error(`ledger ${strategy.source} ${symbol}: ${(e as Error).message}`);
+        console.error(`ledger ${strategy.source} ${symbol}${venue ? ` ${venue}` : ""}: ${(e as Error).message}`);
       }
     }
   }
@@ -190,12 +208,12 @@ export async function ledgerScriptSignals(): Promise<Map<string, LedgerSignal[]>
 
 /** Store what a scan found for the ledger's pairs: new signals once, finished ones scored. */
 export async function recordLedger(found: Map<string, LedgerSignal[]>) {
-  for (const symbol of LEDGER_SYMBOLS) {
+  for (const { symbol, venue } of ledgerFeeds()) {
     for (const c of [...LEDGER_COMBOS, ...LEDGER_SCRIPTS]) {
-      const signals = found.get(`${symbol}|${c.timeframe}|${c.source}`);
+      const signals = found.get(resultKey(symbol, c.timeframe, venue, c.source));
       if (!signals?.length) continue;
-      const tz = await zoneOf(symbol, c.timeframe);
-      const dataSource = fromBinance(symbol, c.timeframe) ? "binance" : "yahoo";
+      const tz = await zoneOf(symbol, c.timeframe, venue);
+      const dataSource = venue || (fromBinance(symbol, c.timeframe) ? "binance" : "yahoo");
       const rows = await db
         .select()
         .from(ledgerSignals)
@@ -204,6 +222,7 @@ export async function recordLedger(found: Map<string, LedgerSignal[]>) {
             eq(ledgerSignals.source, c.source),
             eq(ledgerSignals.symbol, symbol),
             eq(ledgerSignals.timeframe, c.timeframe),
+            eq(ledgerSignals.venue, venue),
             inArray(
               ledgerSignals.signalTime,
               signals.map((s) => s.time),
@@ -233,6 +252,7 @@ export async function recordLedger(found: Map<string, LedgerSignal[]>) {
           source: c.source,
           symbol,
           timeframe: c.timeframe,
+          venue,
           signalTime: s.time,
           signalAt: new Date(at),
           session: sessionOf(at),
@@ -244,7 +264,7 @@ export async function recordLedger(found: Map<string, LedgerSignal[]>) {
           status: s.outcome,
           exitTime: s.exit_time,
           grossR: closed ? (s.r ?? null) : null,
-          costR: costOf(symbol, s.entry) / risk,
+          costR: tradeCost(symbol, s.entry, false, venue) / risk,
           dataSource,
           live: s.bars_ago <= STALE_BARS,
           closedAt: closed ? closedAt(s) : null,
@@ -330,6 +350,8 @@ export const ledgerApi = new Hono<AppEnv>();
 ledgerApi.get("/ledger", async (c) => {
   const days = Math.min(Math.max(Number(c.req.query("days") ?? 30) || 30, 1), 365);
   const withHistory = c.req.query("history") === "1";
+  const asked = c.req.query("venue");
+  const venue = storedVenue(isVenue(asked) ? asked : null);
   const filters = [gte(ledgerSignals.signalAt, new Date(Date.now() - days * 86_400_000))];
   for (const [name, column] of [
     ["symbol", ledgerSignals.symbol],
@@ -344,9 +366,14 @@ ledgerApi.get("/ledger", async (c) => {
   const rows = await db
     .select()
     .from(ledgerSignals)
-    .where(and(...filters))
+    .where(and(...filters, eq(ledgerSignals.venue, venue)))
     .orderBy(desc(ledgerSignals.signalAt))
     .limit(5000);
+  // The venues side by side, on the crypto they all record (gold has only the default source).
+  const across =
+    LEDGER_VENUES.length > 1
+      ? (await db.select().from(ledgerSignals).where(and(...filters)).orderBy(desc(ledgerSignals.signalAt)).limit(20_000)).filter((r) => cryptoBase(r.symbol))
+      : [];
 
   let equity = START_BALANCE;
   const curve = rows
@@ -358,12 +385,23 @@ ledgerApi.get("/ledger", async (c) => {
     });
 
   return c.json({
-    config: { symbols: LEDGER_SYMBOLS, startBalance: START_BALANCE, riskPct: RISK_PCT, riskUsd: RISK_USD, staleBars: STALE_BARS, days, history: withHistory },
+    config: {
+      symbols: LEDGER_SYMBOLS,
+      venues: LEDGER_VENUES.map((v) => v || "binance"),
+      venue: venue || "binance",
+      startBalance: START_BALANCE,
+      riskPct: RISK_PCT,
+      riskUsd: RISK_USD,
+      staleBars: STALE_BARS,
+      days,
+      history: withHistory,
+    },
     total: stats("total", rows),
     bySource: groupStats(rows, (r) => r.source),
     bySymbol: groupStats(rows, (r) => r.symbol),
     byTimeframe: groupStats(rows, (r) => r.timeframe),
     bySession: groupStats(rows, (r) => r.session),
+    byVenue: groupStats(across, (r) => r.venue || "binance"),
     equity: curve,
     items: rows.slice(0, 150).map((r) => ({ ...r, netR: netR(r) })),
   });
@@ -373,16 +411,17 @@ ledgerApi.get("/ledger", async (c) => {
 
 const r1 = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toLocaleString("id-ID", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}R`;
 
-/** The recap text for signals closed in [from, to). */
+/** The recap text for signals closed in [from, to): the default source's, and the venues compared on crypto. */
 async function recapText(title: string, from: Date, to: Date): Promise<string> {
-  const closed = await db
+  const all = await db
     .select()
     .from(ledgerSignals)
     .where(and(eq(ledgerSignals.live, true), isNotNull(ledgerSignals.closedAt), gte(ledgerSignals.closedAt, from), lt(ledgerSignals.closedAt, to)));
+  const closed = all.filter((r) => r.venue === "");
   const open = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(ledgerSignals)
-    .where(and(eq(ledgerSignals.live, true), eq(ledgerSignals.status, "open")));
+    .where(and(eq(ledgerSignals.live, true), eq(ledgerSignals.status, "open"), eq(ledgerSignals.venue, "")));
   const s = stats("total", closed);
   const lines = [`<b>${escape(title)}</b>`];
   if (!s.closed) lines.push("Belum ada sinyal yang selesai pada periode ini.");
@@ -395,6 +434,11 @@ async function recapText(title: string, from: Date, to: Date): Promise<string> {
     lines.push(`Per mesin: ${parts.join(" · ")}`);
     const bySymbol = groupStats(closed, (r) => r.symbol).map((g) => `${escape(g.key)} ${r1(g.totalR)}`);
     lines.push(`Per simbol: ${bySymbol.join(" · ")}`);
+    const byVenue = groupStats(
+      all.filter((r) => cryptoBase(r.symbol)),
+      (r) => VENUES[(r.venue || "binance") as VenueId]?.label ?? r.venue,
+    );
+    if (byVenue.length > 1) lines.push(`Kripto per bursa (pembanding): ${byVenue.map((g) => `${escape(g.key)} ${r1(g.totalR)} (${g.closed})`).join(" · ")}`);
   }
   lines.push(`Masih berjalan: ${open[0]?.n ?? 0}`);
   const url = publicUrl();

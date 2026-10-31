@@ -33,6 +33,16 @@ export const VENUES: Record<VenueId, { label: string; tv: string; quote: string;
 };
 export const isVenue = (v: unknown): v is VenueId => typeof v === "string" && (VENUE_IDS as readonly string[]).includes(v);
 
+/** The venue of a TradingView crypto symbol (BYBIT:BTCUSDT → bybit), or null for anything else. */
+export function venueOfTv(tv: string): VenueId | null {
+  const [exchange, symbol] = tv.trim().toUpperCase().split(":");
+  const id = VENUE_IDS.find((v) => VENUES[v].tv === exchange);
+  return id && symbol?.endsWith(VENUES[id].quote) ? id : null;
+}
+
+/** How alerts and the ledger store a venue: the venue id, or empty for the default source (Binance, and anything not crypto). */
+export const storedVenue = (venue: VenueId | null | undefined): "" | VenueId => (venue && venue !== "binance" ? venue : "");
+
 /** The asset of a Yahoo crypto symbol: BTC-USD → BTC; Yahoo's id-suffixed coins (APT21794-USD) → APT. */
 export function cryptoBase(symbol: string): string | null {
   const m = symbol.toUpperCase().match(/^([A-Z0-9]+)-(USD|USDT|USDC)$/);
@@ -94,7 +104,10 @@ export async function venueCandles(venue: VenueId, base: string, interval: Inter
   const ms = ex.parseTimeframe(tf) * 1000;
   let rows: number[][];
   if (spec.paging === "latest" || count <= spec.page) {
-    rows = await patiently(() => ex.fetchOHLCV(pair, tf, spec.paging === "latest" ? undefined : Date.now() - count * ms, Math.min(count, spec.page)));
+    // One interval short of `count` back: Gate's request ends `limit - 1` intervals after `since`,
+    // which would leave out the bar still forming (the engines skip the newest bar as forming).
+    const since = spec.paging === "latest" ? undefined : Date.now() - (count - 1) * ms;
+    rows = await patiently(() => ex.fetchOHLCV(pair, tf, since, Math.min(count, spec.page)));
   } else if (spec.paging === "auto") {
     rows = await patiently(() =>
       ex.fetchOHLCV(pair, tf, Date.now() - count * ms, undefined, {

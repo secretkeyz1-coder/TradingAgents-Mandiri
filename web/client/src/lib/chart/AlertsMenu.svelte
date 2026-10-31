@@ -1,11 +1,17 @@
 <script lang="ts">
   // Telegram notifications for new signals: switch PoB BYSTRA (15m, 1h) and
   // Scalper Pro+ (15m) on or off for the symbol in focus, see every alert of
-  // the account, send a test message. The server does the scanning.
+  // the account, send a test message. The server does the scanning. Crypto is
+  // watched on the venue the chart shows (the Bursa menu): its own bars.
   import { api, type SignalAlert, type SignalAlerts } from '../api';
   import { ws } from '../stores/workspace.svelte';
+  import { CRYPTO_VENUES, type VenueId } from '../tv';
 
-  let { symbol }: { symbol: string } = $props();
+  let { symbol, venue = null }: { symbol: string; venue?: VenueId | null } = $props();
+
+  /** The venue as alerts store it: "" for the default source. */
+  const here = $derived(venue && venue !== 'binance' ? venue : '');
+  const venueLabel = $derived(venue ? (CRYPTO_VENUES.find((v) => v.id === venue)?.label ?? venue) : '');
 
   let open = $state(false);
   let data = $state<SignalAlerts | null>(null);
@@ -42,8 +48,8 @@
   });
 
   const mine = (indicator: string, timeframe: string) =>
-    data?.items.find((a) => a.symbol === symbol.toUpperCase() && a.indicator === indicator && a.timeframe === timeframe);
-  const activeHere = $derived(data ? data.items.filter((a) => a.symbol === symbol.toUpperCase()).length : 0);
+    data?.items.find((a) => a.symbol === symbol.toUpperCase() && (a.venue ?? '') === here && a.indicator === indicator && a.timeframe === timeframe);
+  const activeHere = $derived(data ? data.items.filter((a) => a.symbol === symbol.toUpperCase() && (a.venue ?? '') === here).length : 0);
 
   async function toggle(indicator: SignalAlert['indicator'], timeframe: SignalAlert['timeframe']) {
     busy = true;
@@ -87,7 +93,7 @@
   </button>
   {#if open}
     <div class="ta-pop absolute top-full right-0 z-40 mt-1 flex w-80 flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl" role="dialog" aria-label="Notifikasi sinyal">
-      <h3 class="font-semibold">Notifikasi Telegram · <span class="font-mono">{symbol}</span></h3>
+      <h3 class="font-semibold">Notifikasi Telegram · <span class="font-mono">{symbol}</span>{venueLabel ? ` · ${venueLabel}` : ''}</h3>
       {#if error}
         <p class="text-xs text-error" role="alert">{error}</p>
       {:else if !data}
@@ -114,7 +120,8 @@
         </div>
         <p class="text-xs text-base-content/70">
           Dicek tiap 5 menit (1j: tiap 15 menit), hanya dari candle yang sudah tutup, dengan mesin yang sama dengan chart. Sinyal yang sudah ada saat
-          notifikasi dinyalakan tidak dikirim. Harga Yahoo bisa tertunda beberapa menit.
+          notifikasi dinyalakan tidak dikirim.
+          {#if venueLabel}Memakai candle {venueLabel} (real-time); ganti bursa di menu Bursa untuk notifikasi dari bursa lain.{:else}Harga Yahoo bisa tertunda beberapa menit.{/if}
         </p>
         {#if data.items.length}
           <div class="flex flex-col gap-1 border-t border-base-300 pt-2">

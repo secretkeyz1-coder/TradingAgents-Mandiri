@@ -835,7 +835,7 @@
         >
         <ScriptsMenu />
         {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
-        <AlertsMenu {symbol} />
+        <AlertsMenu {symbol} {venue} />
       {/if}
     </div>
   </div>

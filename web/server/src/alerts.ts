@@ -14,8 +14,11 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
-import { ledgerPairs, ledgerScriptSignals, recordLedger } from "./ledger";
-import { SYMBOL_PATTERN } from "./market";
+import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
+import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
+import { toScriptBars } from "../../shared/script";
+import { binancePair, binancePerpetual } from "./binance";
+import { cryptoBase, storedVenue, VENUES, venueOfTv, type VenueId } from "./venues";
 import { runOnSymbol, type ScriptTimeframe } from "./script-run";
 import { escape, publicUrl, sendTelegram, telegramBot } from "./watch";
 import { runCommand } from "./worker";
@@ -74,15 +77,23 @@ function link(a: Alert) {
   return `<a href="${base}/#/?${q}">Buka chart</a>`;
 }
 
+/** Where an alert's bars come from: the venue it watches, else the default source the chart uses. */
+function dataNote(a: Alert) {
+  if (a.venue) return `Data ${VENUES[a.venue as VenueId]?.label ?? a.venue}, real-time`;
+  if (binancePair(a.symbol)) return "Data Binance, real-time";
+  const perpetual = binancePerpetual(a.symbol, a.timeframe as Interval);
+  if (perpetual) return `Data Binance ${perpetual} (perpetual), bisa beda beberapa poin dari spot`;
+  return a.symbol.endsWith("=F") ? `Data Yahoo, harga futures ${a.symbol}, bisa beda beberapa poin dari spot` : "Data Yahoo";
+}
+
 function openMessage(a: Alert, s: ScanSignal, scriptName?: string) {
-  const futures = a.symbol.endsWith("=F") ? `, harga futures ${escape(a.symbol)}, bisa beda beberapa poin dari spot` : "";
   return [
     `<b>🔔 ${escape(s.label)}</b>`,
     escape(head(a, scriptName)),
     s.time.length > 10 ? `Candle ${when(s.time)} (jam bursa), sudah tutup` : `Candle harian ${when(s.time)}, sudah tutup`,
     `Entry <b>${price(s.entry)}</b> · SL ${price(s.stop_loss)} · TP ${price(s.take_profit)}`,
     link(a),
-    `<i>Data Yahoo${futures}. Riset, bukan saran investasi.</i>`,
+    `<i>${escape(dataNote(a))}. Riset, bukan saran investasi.</i>`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -131,30 +142,45 @@ async function scan(only?: string[], withHourly = true) {
     const ledger = only ? [] : await ledgerPairs(withHourly);
     if (!wanted.length && !ledger.length) return;
 
-    const pairs = new Map<string, { symbol: string; timeframe: string; indicators: Set<string>; recent: number }>();
-    for (const p of ledger) {
-      const key = `${p.symbol}|${p.timeframe}`;
-      if (!pairs.has(key)) pairs.set(key, { symbol: p.symbol, timeframe: p.timeframe, indicators: new Set(), recent: 10 });
+    // One pair per symbol, timeframe and venue ("" = the default source), with every indicator asked of it.
+    const pairs = new Map<string, { symbol: string; timeframe: string; venue: string; indicators: Set<string>; recent: number }>();
+    const pairOf = (symbol: string, timeframe: string, venue: string, recent: number) => {
+      const key = `${symbol}|${timeframe}|${venue}`;
+      if (!pairs.has(key)) pairs.set(key, { symbol, timeframe, venue, indicators: new Set(), recent: 10 });
       const pair = pairs.get(key)!;
+      pair.recent = Math.max(pair.recent, recent);
+      return pair;
+    };
+    for (const p of ledger) {
+      const pair = pairOf(p.symbol, p.timeframe, p.venue, p.recent);
       for (const i of p.indicators) pair.indicators.add(i);
-      pair.recent = Math.max(pair.recent, p.recent);
     }
     for (const { alert } of wanted) {
       if (SCRIPT_ID.test(alert.indicator)) continue;
-      const key = `${alert.symbol}|${alert.timeframe}`;
-      if (!pairs.has(key)) pairs.set(key, { symbol: alert.symbol, timeframe: alert.timeframe, indicators: new Set(), recent: 10 });
-      pairs.get(key)!.indicators.add(alert.indicator);
+      pairOf(alert.symbol, alert.timeframe, alert.venue, 10).indicators.add(alert.indicator);
+    }
+    // A pair on another venue carries its bars, the same candles the chart shows (venues.ts); default pairs fetch their own.
+    const jobPairs = [];
+    for (const p of pairs.values()) {
+      const job = { symbol: p.symbol, timeframe: p.timeframe, venue: p.venue, indicators: [...p.indicators], recent: p.recent };
+      if (!p.venue) {
+        jobPairs.push(job);
+        continue;
+      }
+      try {
+        // As the default source holds them: a month of 15m bars, a year of hourly ones, two years of daily ones.
+        const series = await getCandles(p.symbol, p.timeframe === "1d" ? "2y" : "1y", p.timeframe as Interval, p.venue as VenueId);
+        jobPairs.push({ ...job, bars: toScriptBars(series.candles) });
+      } catch (err) {
+        console.error(`signals ${p.symbol} ${p.timeframe} ${p.venue}: ${(err as Error).message}`);
+      }
     }
     const found = new Map<string, ScanSignal[]>();
-    if (pairs.size) {
-      const handle = runCommand(
-        "signals",
-        { pairs: [...pairs.values()].map((p) => ({ ...p, indicators: [...p.indicators] })) },
-        async (e) => {
-          if (e.type === "signals") found.set(`${e.symbol}|${e.timeframe}|${e.indicator}`, e.signals as ScanSignal[]);
-          else if (e.type === "signals_error") console.error(`signals ${e.symbol} ${e.timeframe} ${e.indicator}: ${e.message}`);
-        },
-      );
+    if (jobPairs.length) {
+      const handle = runCommand("signals", { pairs: jobPairs }, async (e) => {
+        if (e.type === "signals") found.set(resultKey(String(e.symbol), String(e.timeframe), String(e.venue ?? ""), String(e.indicator)), e.signals as ScanSignal[]);
+        else if (e.type === "signals_error") console.error(`signals ${e.symbol} ${e.timeframe} ${e.venue ?? ""} ${e.indicator}: ${e.message}`);
+      });
       const timer = setTimeout(() => handle.kill(), SCAN_TIMEOUT_MS);
       const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
       if (exitCode !== 0) console.error(`signal scan exited ${exitCode}: ${stderrTail.trim().split("\n").slice(-2).join(" ")}`);
@@ -164,13 +190,13 @@ async function scan(only?: string[], withHourly = true) {
     const scriptNames = new Map<string, string>();
     for (const { alert } of wanted) {
       const id = alert.indicator.match(SCRIPT_ID)?.[1];
-      const key = `${alert.symbol}|${alert.timeframe}|${alert.indicator}`;
+      const key = resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator);
       if (!id || found.has(key)) continue;
       const [script] = await db.select().from(userScripts).where(and(eq(userScripts.id, id), eq(userScripts.userId, alert.userId!)));
       if (!script) continue;
       scriptNames.set(alert.indicator, script.name);
       try {
-        const run = await runOnSymbol(script.code, alert.symbol, alert.timeframe as ScriptTimeframe);
+        const run = await runOnSymbol(script.code, alert.symbol, alert.timeframe as ScriptTimeframe, undefined, (alert.venue || undefined) as VenueId | undefined);
         if (!run.ok) {
           console.error(`script ${script.name} on ${alert.symbol} ${alert.timeframe}: ${run.error}`);
           continue;
@@ -197,7 +223,7 @@ async function scan(only?: string[], withHourly = true) {
 
     for (const { alert, chat } of wanted) {
       const scriptName = scriptNames.get(alert.indicator);
-      const signals = found.get(`${alert.symbol}|${alert.timeframe}|${alert.indicator}`);
+      const signals = found.get(resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator));
       if (!signals) continue; // this pair failed; try again next slot
       const known = new Map(
         (await db.select().from(signalEvents).where(eq(signalEvents.alertId, alert.id))).map((e) => [e.signalTime, e]),
@@ -279,6 +305,7 @@ alertsApi.get("/alerts", async (c) => {
         tvSymbol: a.tvSymbol,
         indicator: a.indicator,
         timeframe: a.timeframe,
+        venue: a.venue,
         primed: a.primed,
         last: last ? { signalTime: last.signalTime, label: last.label, status: last.status } : null,
       };
@@ -313,11 +340,14 @@ alertsApi.post("/alerts", async (c) => {
   } else if (!COMBOS.some((x) => x.indicator === indicator && x.timeframe === timeframe)) {
     return c.json({ error: "Kombinasi indikator dan timeframe ini belum didukung" }, 400);
   }
+  // The venue comes from the chart's symbol: BYBIT:BTCUSDT watches Bybit's bars, BINANCE:… the default source.
+  const venue = storedVenue(venueOfTv(tvSymbol));
+  if (venue && !cryptoBase(symbol)) return c.json({ error: "Bursa hanya untuk simbol kripto" }, 400);
   const count = (await db.select({ id: signalAlerts.id }).from(signalAlerts).where(eq(signalAlerts.userId, user.id))).length;
   if (count >= MAX_ALERTS) return c.json({ error: `Maksimal ${MAX_ALERTS} notifikasi per akun` }, 409);
   const [row] = await db
     .insert(signalAlerts)
-    .values({ userId: user.id, symbol: symbol.toUpperCase(), tvSymbol: tvSymbol.toUpperCase(), indicator: indicator as SignalIndicator, timeframe })
+    .values({ userId: user.id, symbol: symbol.toUpperCase(), tvSymbol: tvSymbol.toUpperCase(), indicator: indicator as SignalIndicator, timeframe, venue })
     .onConflictDoNothing()
     .returning();
   // Record what already exists now, silently, so the first message is a truly new signal.

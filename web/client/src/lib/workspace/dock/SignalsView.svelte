@@ -2,14 +2,16 @@
   // The signal ledger (server/src/ledger.ts): every signal the built-in engines
   // fired on the tracked symbols, scored by the simulated account after costs.
   // Live signals are the forward test; history (filled once, from older bars)
-  // is shown only when asked, since it was scored after the fact.
+  // is shown only when asked, since it was scored after the fact. Crypto is
+  // also recorded on other venues, from their own bars, to compare them; the
+  // simulated account counts the default source (Binance).
   import { ColorType, createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
   import { api, type Ledger, type LedgerStats } from '../../api';
   import { auth } from '../../auth.svelte';
   import { formatDateTime } from '../../format';
   import { ws } from '../../stores/workspace.svelte';
   import { theme, tokenColor } from '../../theme.svelte';
-  import { toTradingView } from '../../tv';
+  import { cryptoBase, CRYPTO_VENUES, onVenue, toTradingView, type VenueId } from '../../tv';
 
   const NAMES: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone', donchian: 'Donchian breakout' };
   const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
@@ -20,12 +22,15 @@
     { key: 'bySymbol', label: 'Per simbol' },
     { key: 'byTimeframe', label: 'Per timeframe' },
     { key: 'bySession', label: 'Per sesi' },
+    { key: 'byVenue', label: 'Per bursa' },
   ] as const;
+  const venueName = (id: string) => CRYPTO_VENUES.find((v) => v.id === id)?.label ?? id;
 
   let days = $state(30);
   let history = $state(false);
   let source = $state('');
   let symbol = $state('');
+  let venue = $state('binance');
   let group = $state<(typeof GROUPS)[number]['key']>('bySource');
   let data = $state<Ledger | null>(null);
   let error = $state('');
@@ -45,7 +50,7 @@
   async function load() {
     loading = true;
     try {
-      data = await api.ledger({ days, history, source: source || undefined, symbol: symbol || undefined });
+      data = await api.ledger({ days, history, venue, source: source || undefined, symbol: symbol || undefined });
       error = '';
     } catch (e) {
       error = (e as Error).message;
@@ -54,8 +59,12 @@
     }
   }
   $effect(() => {
-    void [days, history, source, symbol];
+    void [days, history, venue, source, symbol];
     load();
+  });
+  // Other venues record crypto only: a non-crypto symbol filter would show nothing there.
+  $effect(() => {
+    if (venue !== 'binance' && symbol && !cryptoBase(symbol)) symbol = '';
   });
   // Scored as bars close: refresh every minute while the tab is open.
   $effect(() => {
@@ -65,7 +74,15 @@
 
   const t = $derived(data?.total);
   const label = (g: string, key: string) =>
-    g === 'bySource' ? (NAMES[key] ?? key) : g === 'byTimeframe' ? (TF[key] ?? key) : g === 'bySession' ? (SESSION[key] ?? key) : key;
+    g === 'bySource'
+      ? (NAMES[key] ?? key)
+      : g === 'byTimeframe'
+        ? (TF[key] ?? key)
+        : g === 'bySession'
+          ? (SESSION[key] ?? key)
+          : g === 'byVenue'
+            ? venueName(key)
+            : key;
   const r = (x: number | null | undefined, digits = 2) => (x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}R`);
   const pct = (x: number | null | undefined) => (x == null ? '–' : `${Math.round(x * 100)}%`);
   const num = (x: number | null | undefined, digits = 2) => (x == null ? '–' : x.toFixed(digits));
@@ -111,6 +128,14 @@
   });
 
   const groups = $derived<LedgerStats[]>(data ? data[group] : []);
+  const venues = $derived(data?.config.venues ?? []);
+  const otherVenues = $derived(venues.filter((v) => v !== 'binance').map(venueName));
+  const symbols = $derived((data?.config.symbols ?? []).filter((s) => venue === 'binance' || cryptoBase(s)));
+  /** The chart symbol of a ledger row: on its own venue when it has one. */
+  const chartSymbol = (s: { symbol: string; venue: string }) => {
+    const tv = toTradingView(s.symbol);
+    return s.venue ? (onVenue(tv, s.venue as VenueId) ?? tv) : tv;
+  };
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -122,7 +147,9 @@
         setelah biaya spread, fee, dan slippage.
       </p>
       <p class="text-xs text-base-content/70">
-        Kripto dan emas 15m/1j memakai harga real-time Binance (emas dari kontrak XAUUSDT, tanpa jam saat pasar spot tutup). Emas harian masih dari Yahoo dan ditandai "tertunda". Hasil riset dan simulasi, bukan nasihat keuangan.
+        Kripto dan emas 15m/1j memakai harga real-time Binance (emas dari kontrak XAUUSDT, tanpa jam saat pasar spot tutup). Emas harian masih dari Yahoo dan ditandai "tertunda".
+        {#if otherVenues.length}Kripto juga dicatat di {otherVenues.join(', ')} dari candle masing-masing sebagai pembanding (tab Per bursa); akun simulasi dan rekap Telegram tetap memakai Binance.{/if}
+        Hasil riset dan simulasi, bukan nasihat keuangan.
       </p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
@@ -138,8 +165,13 @@
       </select>
       <select class="select select-sm w-auto" bind:value={symbol} aria-label="Simbol">
         <option value="">Semua simbol</option>
-        {#each data?.config.symbols ?? [] as s (s)}<option value={s}>{s}</option>{/each}
+        {#each symbols as s (s)}<option value={s}>{s}</option>{/each}
       </select>
+      {#if venues.length > 1}
+        <select class="select select-sm w-auto" bind:value={venue} aria-label="Bursa">
+          {#each venues as v (v)}<option value={v}>{v === 'binance' ? 'Binance (akun utama)' : venueName(v)}</option>{/each}
+        </select>
+      {/if}
       <label class="label cursor-pointer gap-2 text-sm">
         <input type="checkbox" class="toggle toggle-sm" bind:checked={history} />
         Termasuk riwayat
@@ -151,6 +183,13 @@
   {#if note}<p role="status" class="text-sm">{note}</p>{/if}
 
   {#if error}<p role="alert" class="text-sm text-error">{error}</p>{/if}
+
+  {#if venue !== 'binance'}
+    <p class="rounded-box bg-info/10 px-3 py-2 text-xs">
+      Catatan {venueName(venue)}: mesin yang sama pada candle {venueName(venue)}, khusus kripto, dengan biaya yang sama dengan Binance supaya yang dibandingkan hanya harganya. Akun simulasi
+      utama dan rekap Telegram memakai Binance.
+    </p>
+  {/if}
 
   {#if history}
     <p class="rounded-box bg-warning/10 px-3 py-2 text-xs">
@@ -190,10 +229,15 @@
 
   <div class="flex flex-col gap-2">
     <div role="tablist" class="tabs tabs-border tabs-sm">
-      {#each GROUPS as g (g.key)}
+      {#each GROUPS.filter((g) => g.key !== 'byVenue' || venues.length > 1) as g (g.key)}
         <button role="tab" class="tab" class:tab-active={group === g.key} onclick={() => (group = g.key)}>{g.label}</button>
       {/each}
     </div>
+    {#if group === 'byVenue'}
+      <p class="text-xs text-base-content/70">
+        Kripto yang dicatat di semua bursa, dengan filter di atas. Sinyal bisa berbeda antarbursa karena harga dan sumbu candle tiap bursa sedikit berbeda.
+      </p>
+    {/if}
     <div class="overflow-x-auto">
       <table class="table table-sm">
         <thead>
@@ -256,7 +300,7 @@
                   {#if !s.live}<span class="badge badge-xs badge-ghost">riwayat</span>{/if}
                 </td>
                 <td>
-                  <button class="link link-hover font-mono" onclick={() => ws.setSymbol(toTradingView(s.symbol))}>{s.symbol}</button>
+                  <button class="link link-hover font-mono" onclick={() => ws.setSymbol(chartSymbol(s))}>{s.symbol}</button>
                   {#if s.dataSource === 'yahoo'}<span class="badge badge-xs badge-warning badge-soft" title="Data Yahoo, tertunda">tertunda</span>{/if}
                 </td>
                 <td class="whitespace-nowrap">{NAMES[s.source] ?? s.source} {TF[s.timeframe] ?? s.timeframe}</td>

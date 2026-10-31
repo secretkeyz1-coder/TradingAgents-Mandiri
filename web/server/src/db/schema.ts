@@ -278,9 +278,11 @@ export const signalAlerts = pgTable(
     timeframe: text("timeframe").notNull(),
     /** Set after the first scan, which records the signals that already existed without sending them. */
     primed: boolean("primed").notNull().default(false),
+    /** For crypto: the venue whose bars are scanned (bybit, okx, …, venues.ts); empty = the default source (Binance). */
+    venue: text("venue").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("signal_alerts_user_pair_idx").on(t.userId, t.symbol, t.indicator, t.timeframe)],
+  (t) => [uniqueIndex("signal_alerts_user_pair_idx").on(t.userId, t.symbol, t.indicator, t.timeframe, t.venue)],
 );
 
 /** Every signal an alert has seen, so each is sent once and its outcome once. */
@@ -341,11 +343,13 @@ export const ledgerSignals = pgTable(
     dataSource: text("data_source").notNull(),
     /** Seen within a few bars of firing; late ones (server down, data gap) are kept out of the stats. */
     live: boolean("live").notNull(),
+    /** For crypto: the venue whose bars fired it (venues.ts); empty = the default source (Binance). */
+    venue: text("venue").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("ledger_signals_key_idx").on(t.source, t.symbol, t.timeframe, t.signalTime),
+    uniqueIndex("ledger_signals_key_idx").on(t.source, t.symbol, t.timeframe, t.venue, t.signalTime),
     index("ledger_signals_at_idx").on(t.signalAt),
   ],
 );

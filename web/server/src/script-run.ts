@@ -5,6 +5,7 @@ import variant from "@jitl/quickjs-singlefile-mjs-release-sync";
 import { newQuickJSWASMModuleFromVariant } from "quickjs-emscripten-core";
 import { runScript, toScriptBars, type QuickJSLike, type ScriptRun } from "../../shared/script";
 import { getCandles, type Interval } from "./market";
+import type { VenueId } from "./venues";
 
 export const SCRIPT_TIMEFRAMES = ["15m", "1h", "4h", "1d"] as const;
 export type ScriptTimeframe = (typeof SCRIPT_TIMEFRAMES)[number];
@@ -21,8 +22,9 @@ export async function runOnSymbol(
   symbol: string,
   timeframe: ScriptTimeframe,
   inputs?: Record<string, number | boolean | string>,
+  venue?: VenueId,
 ): Promise<ScriptRun & { bars: { time: string }[] }> {
-  const series = await getCandles(symbol, "1y", timeframe as Interval);
+  const series = await getCandles(symbol, "1y", timeframe as Interval, venue);
   const bars = toScriptBars(series.candles);
   return { ...runScript(await quickjs(), code, bars, { inputs }), bars };
 }

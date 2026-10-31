@@ -127,6 +127,8 @@ export type SignalAlert = {
   /** A built-in engine, or `script:<id>` for a user's script. */
   indicator: string;
   timeframe: '15m' | '1h' | '4h' | '1d';
+  /** The crypto venue whose bars it watches; "" = the default source (Binance, or Yahoo). */
+  venue: string;
   primed: boolean;
   last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced' } | null;
 };
@@ -279,6 +281,8 @@ export type LedgerItem = {
   source: string;
   symbol: string;
   timeframe: string;
+  /** The crypto venue it was recorded on; "" = the default source. */
+  venue: string;
   signalTime: string;
   signalAt: string;
   session: string;
@@ -292,18 +296,32 @@ export type LedgerItem = {
   grossR: number | null;
   costR: number;
   netR: number | null;
-  dataSource: 'binance' | 'yahoo';
+  /** binance, yahoo or another venue's id. */
+  dataSource: string;
   live: boolean;
   closedAt: string | null;
 };
 
 export type Ledger = {
-  config: { symbols: string[]; startBalance: number; riskPct: number; riskUsd: number; staleBars: number; days: number; history: boolean };
+  config: {
+    symbols: string[];
+    /** Venues crypto is recorded on (binance = the default source, which the simulated account counts), and the one shown. */
+    venues: string[];
+    venue: string;
+    startBalance: number;
+    riskPct: number;
+    riskUsd: number;
+    staleBars: number;
+    days: number;
+    history: boolean;
+  };
   total: LedgerStats;
   bySource: LedgerStats[];
   bySymbol: LedgerStats[];
   byTimeframe: LedgerStats[];
   bySession: LedgerStats[];
+  /** The venues side by side on crypto, with the same filters. */
+  byVenue: LedgerStats[];
   equity: { time: string; equity: number }[];
   items: LedgerItem[];
 };
@@ -429,7 +447,7 @@ export const api = {
   labRunGet: (id: string) => request<LabRun>(`/lab/runs/${id}`),
   labRunDelete: (id: string) => request<{ ok: true }>(`/lab/runs/${id}`, { method: 'DELETE' }),
   ledgerRecapTest: () => request<{ ok: boolean; error?: string; text: string }>('/ledger/recap-test', { method: 'POST' }),
-  ledger: (q: { days: number; history: boolean; symbol?: string; source?: string; timeframe?: string; session?: string }) =>
+  ledger: (q: { days: number; history: boolean; venue?: string; symbol?: string; source?: string; timeframe?: string; session?: string }) =>
     request<Ledger>(
       `/ledger?${new URLSearchParams(
         Object.entries({ ...q, history: q.history ? '1' : '' }).filter(([, v]) => v !== undefined && v !== '') as [string, string][],

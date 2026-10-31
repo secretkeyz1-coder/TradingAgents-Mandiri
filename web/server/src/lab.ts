@@ -15,7 +15,7 @@ import { tradeCost } from "./ledger";
 import { getLabCandles, LAB_MAX_DAYS, SYMBOL_PATTERN, type Interval } from "./market";
 import { quickjs } from "./script-run";
 import { runScript, toScriptBars, type ScriptBar } from "../../shared/script";
-import { VENUE_IDS } from "./venues";
+import { storedVenue, VENUE_IDS } from "./venues";
 import { runCommand } from "./worker";
 
 export const LAB_ENGINES: Record<string, { label: string; timeframes: string[] }> = {
@@ -117,7 +117,7 @@ async function runLab(config: RunConfig, code: string | null) {
           : await scriptTrades(code!, bars, config.expiry);
       const cut = Math.floor(bars.length * config.split);
       const scored = trades.map((t) => {
-        const cost = tradeCost(symbol, t.entry, config.costs === "maker") / Math.abs(t.entry - t.stopLoss);
+        const cost = tradeCost(symbol, t.entry, config.costs === "maker", storedVenue(config.venue)) / Math.abs(t.entry - t.stopLoss);
         return { ...t, cost, net: t.r - cost, oos: t.index >= cut };
       });
       all.push(...scored);
