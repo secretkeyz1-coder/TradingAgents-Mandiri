@@ -12,7 +12,7 @@ export type WorkerHandle = {
 
 const STDERR_TAIL_CHARS = 4000;
 
-type WorkerCommand = "run" | "backtest" | "agent" | "signals" | "translate" | "lab" | "catalog";
+type WorkerCommand = "run" | "backtest" | "agent" | "signals" | "translate" | "lab" | "brief" | "catalog";
 
 function spawnWorker(command: WorkerCommand) {
   return Bun.spawn([config.pythonBin, "-u", config.workerScript, command], {

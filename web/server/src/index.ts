@@ -13,6 +13,7 @@ import { labApi } from "./lab";
 import { venuesApi } from "./venues";
 import { ledgerApi, startLedgerRecaps } from "./ledger";
 import { scriptsApi } from "./scripts";
+import { siteApi, startBriefs } from "./site";
 import { authApi, ensureAccounts, meApi, requireAuth, usersApi, type AppEnv } from "./auth";
 import { api } from "./routes";
 import { startWatchScheduler, watchApi } from "./watch";
@@ -25,6 +26,7 @@ await recover();
 startWatchScheduler();
 startAlertScheduler();
 startLedgerRecaps();
+startBriefs();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
@@ -37,6 +39,8 @@ app.use("/api/*", logger());
 // the login form until /api/session says yes. Cookies ride on same-origin
 // fetch and EventSource, so the SSE streams need nothing extra.
 app.route("/api", authApi);
+// The public site's prices, signals and AI brief: no sign-in, all cached.
+app.route("/api", siteApi);
 app.use("/api/*", requireAuth);
 app.route("/api", meApi);
 app.route("/api", usersApi);

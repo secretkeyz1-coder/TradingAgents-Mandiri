@@ -238,7 +238,9 @@ API: `GET /api/billing`, `POST /api/billing/orders`, `POST /api/billing/orders/:
 ### Situs publik
 
 - Landing page (`/`), Harga (`/harga`), Syarat & Ketentuan (`/syarat`), Kebijakan Privasi (`/privasi`), dan Disclaimer risiko (`/disclaimer`) adalah halaman statis dari build klien (`client/index.html`, `client/harga/` dan seterusnya). Harga dan kapasitas diisi saat build dari `shared/plans.ts`; nama merek dan kontak dari `shared/brand.ts`.
-- Aplikasi ada di `/app`. Tanpa `PUBLIC_SITE=on`, alamat root langsung membuka aplikasi; tautan lama `/#/...` tetap diarahkan ke `/app`.
+- Landing page memuat data live tanpa login dari `GET /api/public/market` (pita harga dan meja riset: BTC, ETH, SOL, emas, IHSG, S&P 500, USD/IDR), `/api/public/crypto-map` (peta 24 koin Binance), `/api/public/signals` (8 sinyal live terbaru dan rekor 90 hari), dan `/api/public/brief`; semuanya di-cache (`server/src/site.ts`).
+- Ringkasan pasar AI ditulis tiap 6 jam oleh model quick tier server (perintah worker `brief`, `worker/brief.py`) hanya dari angka yang dihitung server: harga, perubahan 1/7/30 hari, rata-rata 20/50 hari, RSI 14, rentang 30 hari, dan sinyal terbaru. Hasilnya (judul, ringkasan, arah per aset dengan argumen bull dan bear, yang dipantau, risiko) disimpan di tabel `market_briefs` bersama angka yang dibacanya, dan angka itu ditampilkan di landing. `SITE_BRIEF=off` mematikannya.
+- Aplikasi ada di `/app`. Tanpa `PUBLIC_SITE=on`, alamat root langsung membuka aplikasi (landing tetap bisa dilihat di `/index.html`); tautan lama `/#/...` tetap diarahkan ke `/app`.
 - Isi Syarat & Ketentuan, Kebijakan Privasi, dan Disclaimer adalah draf awal: tinjau dengan ahli hukum, dan isi nama usaha serta kontak di `shared/brand.ts`, sebelum situs dibuka.
 - **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim.
 - **Data**: volume `tradingagents_db` (Postgres) dan `tradingagents_data` (laporan, cache, dan memori keputusan engine).
@@ -290,6 +292,7 @@ Semua opsional, lewat environment variable:
 | `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` | `200` / `1000` | Batas harian semua akun bersama |
 | `SIGNUP` | `closed` | `open` membuka pendaftaran mandiri (email dan Google) |
 | `PUBLIC_SITE` | `off` | `on` menampilkan landing page di root; aplikasi tetap di `/app` |
+| `SITE_BRIEF` | `on` | `off` menghentikan ringkasan pasar AI untuk landing page (satu panggilan model tiap 6 jam) |
 | `PUBLIC_URL` | kosong | Alamat publik untuk tautan di email dan Telegram, dan redirect Google |
 | `SMTP_URL` / `MAIL_FROM` | kosong | Pengirim email, misalnya `smtps://user:pass@smtp.resend.com:465` dan `Nama <noreply@domainmu>` |
 | `MAIL_LOG` | kosong | `1` menulis isi email (termasuk tautannya) ke log selama SMTP belum diatur; untuk pengembangan saja |

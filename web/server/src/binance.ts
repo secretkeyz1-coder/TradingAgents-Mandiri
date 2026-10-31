@@ -11,6 +11,7 @@
 import type { Candle, Interval } from "./market";
 
 const HOSTS = ["https://data-api.binance.vision", "https://api.binance.com"];
+export { HOSTS as BINANCE_HOSTS };
 const FUTURES_HOSTS = ["https://fapi.binance.com"];
 /** Yahoo futures symbols served intraday by a Binance perpetual. */
 const PERPETUALS: Record<string, string> = { "GC=F": "XAUUSDT" };

@@ -367,6 +367,38 @@ function groupStats(rows: Row[], by: (r: Row) => string): LedgerStats[] {
 
 export const ledgerApi = new Hono<AppEnv>();
 
+/**
+ * The public site's proof: the default source's latest live signals, and the
+ * live record over 90 days, the lab-passed strategies apart from the built-in engines.
+ */
+export async function publicLedger() {
+  const days = 90;
+  const rows = await db
+    .select()
+    .from(ledgerSignals)
+    .where(and(eq(ledgerSignals.live, true), eq(ledgerSignals.venue, ""), gte(ledgerSignals.signalAt, new Date(Date.now() - days * 86_400_000))))
+    .orderBy(desc(ledgerSignals.signalAt))
+    .limit(5000);
+  const passed = new Set(LEDGER_SCRIPTS.map((s) => s.source));
+  return {
+    days,
+    latest: rows.slice(0, 8).map((r) => ({
+      time: r.signalAt,
+      symbol: r.symbol,
+      source: NAMES[r.source] ?? r.source,
+      timeframe: r.timeframe,
+      side: r.side,
+      entry: r.entry,
+      status: r.status,
+      netR: netR(r),
+    })),
+    record: {
+      lab: stats("lab", rows.filter((r) => passed.has(r.source))),
+      engines: stats("engines", rows.filter((r) => !passed.has(r.source))),
+    },
+  };
+}
+
 ledgerApi.get("/ledger", async (c) => {
   const days = Math.min(Math.max(Number(c.req.query("days") ?? 30) || 30, 1), 365);
   const withHistory = c.req.query("history") === "1";

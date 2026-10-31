@@ -453,6 +453,19 @@ export const ledgerRecaps = pgTable(
   (t) => [uniqueIndex("ledger_recaps_kind_period_idx").on(t.kind, t.period)],
 );
 
+/** The public site's AI market brief (server/src/site.ts): what the model wrote, and the numbers it was given. */
+export const marketBriefs = pgTable(
+  "market_briefs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    model: text("model").notNull(),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("market_briefs_created_idx").on(t.createdAt)],
+);
+
 export const analysisEvents = pgTable(
   "analysis_events",
   {

@@ -512,7 +512,29 @@ def lab(job: dict) -> int:
     return run_lab(job, emit)
 
 
-COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals, "translate": translate, "lab": lab}
+def market_brief(job: dict) -> int:
+    """The public site's market brief, on the quick model tier (brief.py)."""
+    from brief import write_brief
+
+    from tradingagents.dataflows.config import run_config
+    from tradingagents.llm_clients import create_tier_client
+
+    config = _build_config({**job, "depth": 1})
+    config["llm_timeout"] = float(os.environ.get("TA_AGENT_LLM_TIMEOUT", "120"))
+    config["llm_max_retries"] = 1
+    with run_config(config):
+        llm = create_tier_client(config, "quick").get_llm()
+        try:
+            content = write_brief(llm, job["data"])
+        except Exception as exc:
+            emit("error", message=_provider_error(exc, job["quickModel"], config["backend_url"], config["llm_timeout"]))
+            return 1
+    emit("brief", content=content)
+    emit("done")
+    return 0
+
+
+COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals, "translate": translate, "lab": lab, "brief": market_brief}
 
 
 def main(argv: list[str]) -> int:
