@@ -46,9 +46,9 @@ Actions, Deploy, Run workflow, pilih cabang, ketik `deploy`. Urutannya:
 
 Baris terakhir log job "deploy to production" berbunyi `deploy: ok: <commit> runs on port ...` atau `deploy: FAILED: <sebab>; bringing the previous release back`.
 
-Tanpa Actions, dari laptop dengan akses SSH biasa:
+Tanpa Actions, dari laptop dengan akses SSH biasa. `core.autocrlf=false` perlu di Windows: tanpa itu Git menulis CRLF ke Dockerfile, compose, dan kode di arsip.
 ```bash
-git archive --format=tar.gz HEAD | ssh <user>@<host> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"
+git -c core.autocrlf=false archive --format=tar.gz HEAD | ssh <user>@<host> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"
 ```
 
 ## Setelah deploy

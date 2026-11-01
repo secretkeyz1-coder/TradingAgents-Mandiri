@@ -271,7 +271,7 @@ docker compose up -d --build
   - build, lalu `docker compose up -d` (migrasi dulu, baru app dan worker diganti);
   - menunggu `/healthz` dan memastikan worker berjalan.
 
-  Kalau satu langkah gagal, image dan rilis sebelumnya otomatis dipulihkan. Kalau berhasil, `~/tradingagents/src` menjadi symlink ke rilis baru, tiga rilis terakhir disimpan, dan image lama proyek ini dibersihkan. Menyiapkan kunci deploy dan secret-nya dijelaskan di `docs/runbooks/deploy.md`. Tanpa Actions: `git archive --format=tar.gz HEAD | ssh <user>@<host> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"`.
+  Kalau satu langkah gagal, image dan rilis sebelumnya otomatis dipulihkan. Kalau berhasil, `~/tradingagents/src` menjadi symlink ke rilis baru, tiga rilis terakhir disimpan, dan image lama proyek ini dibersihkan. Menyiapkan kunci deploy dan secret-nya dijelaskan di `docs/runbooks/deploy.md`. Tanpa Actions: `git -c core.autocrlf=false archive --format=tar.gz HEAD | ssh <user>@<host> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"`.
 - **Migrasi** berjalan sebagai langkah sendiri: service `migrate` menjalankan `bun src/migrate.ts` dengan image baru, lalu selesai. Container app baru diganti setelah langkah itu sukses (app sendiri start dengan `MIGRATE_ON_START=0`). Kalau migrasi gagal, `docker compose up` berhenti dengan error dan app yang lama tetap melayani. Lognya: `docker compose logs migrate`.
 
 - **Login**: halaman login sendiri per akun (lihat "Akun" di bawah), sesi berupa cookie HttpOnly bertanda tangan HMAC selama 30 hari. Maksimal 10 percobaan gagal per IP per 15 menit. Semua `/api/*` butuh sesi; skrip boleh mengirim header HTTP Basic (nama pengguna + kata sandi akun) sebagai gantinya, kecuali untuk akun dengan verifikasi dua langkah. Server menolak start di alamat non-loopback tanpa `APP_PASSWORD`. `/healthz` terbuka untuk health check.
@@ -323,15 +323,13 @@ API: `GET /api/billing`, `GET /api/billing/coupon?code=&period=`, `POST /api/bil
 - **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.
 - File `.env` harus berakhiran baris LF; nilai dengan `\r` dari editor Windows membuat password tidak cocok.
 
-Pola deploy yang dipakai: source di `~/tradingagents/src` pada VPS, compose di `~/tradingagents/src/web/deploy`, nginx sebagai reverse proxy dengan vhost per domain dan sertifikat Let's Encrypt dari certbot. Untuk memperbarui dari repo lokal (ganti `<user>@<vps>`):
+Pola deploy yang dipakai: setiap rilis diekstrak ke `~/tradingagents/releases/<waktu>-<commit>` pada VPS, `~/tradingagents/src` menunjuk ke rilis yang berjalan (compose di `~/tradingagents/src/web/deploy`), dan nginx menjadi reverse proxy dengan vhost per domain dan sertifikat Let's Encrypt dari certbot. Deploy lewat GitHub Actions (Deploy, Run workflow), atau dari repo lokal dengan akses SSH biasa (ganti `<user>@<vps>`):
 
 ```bash
-git -c core.autocrlf=false archive --format=tar.gz -o /tmp/ta.tar.gz HEAD
-scp /tmp/ta.tar.gz <user>@<vps>:tradingagents/
-ssh <user>@<vps> "cd ~/tradingagents && tar -xzf ta.tar.gz -C src && rm ta.tar.gz && cd src/web/deploy && sudo docker compose up -d --build"
+git -c core.autocrlf=false archive --format=tar.gz HEAD | ssh <user>@<vps> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"
 ```
 
-`.env` di VPS tidak tersentuh oleh pembaruan karena tidak ada di arsip git. `core.autocrlf=false` mencegah Git di Windows mengubah akhiran baris jadi CRLF di arsip (skrip shell gagal jalan dengan CRLF).
+Jangan mengekstrak arsip ke `src`: itu rilis yang sedang berjalan, jadi isinya tertimpa tanpa rilis sebelumnya untuk kembali. `.env` tidak ada di arsip git; `deploy.sh` menyalinnya dari rilis yang berjalan ke rilis baru. `core.autocrlf=false` perlu karena tanpa itu Git di Windows menulis CRLF ke Dockerfile, compose, dan kode di arsip; hanya skrip shell yang dijaga LF oleh `web/.gitattributes`. Pemasangan sekali, urutan deploy, dan rollback ada di [docs/runbooks/deploy.md](../docs/runbooks/deploy.md).
 
 ### Backup
 
