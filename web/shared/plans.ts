@@ -40,7 +40,7 @@ export const PLANS: Record<PlanId, Plan> = {
     blurb: "Untuk pengoprek indikator dan trader sistematis.",
     price: { month: 149_000, year: 1_490_000 },
     limits: { analyses: 30, chat: 300, labRuns: 60, alerts: 15, watchlist: 10, scripts: 20 },
-    highlights: ["Uji Lab 60 kali sehari", "30 analisa AI sehari", "15 notifikasi sinyal", "Watchlist terjadwal 10 simbol", "20 skrip tersimpan"],
+    highlights: ["Uji Lab 60 kali sehari", "30 analisa AI sehari", "15 notifikasi sinyal", "Analisa terjadwal 10 simbol", "20 skrip tersimpan"],
   },
   creator: {
     id: "creator",

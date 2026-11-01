@@ -125,7 +125,7 @@ const LIMIT_ROWS: [keyof PlanLimits, string][] = [
   ['chat', 'Pesan agent chart per hari'],
   ['labRuns', 'Uji Lab per hari'],
   ['alerts', 'Notifikasi sinyal aktif'],
-  ['watchlist', 'Simbol di watchlist terjadwal'],
+  ['watchlist', 'Simbol di analisa terjadwal'],
   ['scripts', 'Skrip tersimpan'],
 ];
 

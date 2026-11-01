@@ -1,16 +1,21 @@
 <script lang="ts">
-  // The AI side of the symbol in focus: the open analysis or backtest at a
-  // glance, the latest decision on record, and the form to start a new one.
-  import { formatPercent, ratingBadge, ratingTone, renderMarkdown } from '../format';
+  // Riset AI for the symbol in focus: ask the agent (Tanya), or run a full analysis and
+  // follow it (Jalankan: the open analysis at a glance, the latest decision on record, the
+  // form). The history, report and log of the same work sit in the bottom panel under this
+  // destination; backtests have their own, Uji strategi.
+  import { ratingBadge, ratingTone, renderMarkdown } from '../format';
   import { jobs } from '../stores/jobs.svelte';
-  import { ws } from '../stores/workspace.svelte';
+  import { AI_MODES, ws } from '../stores/workspace.svelte';
   import StatusBadge from '../StatusBadge.svelte';
   import { toTradingView } from '../tv';
   import AnalysisForm from './AnalysisForm.svelte';
   import ChatPanel from './ChatPanel.svelte';
+  import PanelClose from './PanelClose.svelte';
+
+  /** `bare`: on a phone the screen's tab row stands in for the header (PhoneScreen). */
+  let { bare = false, onclose }: { bare?: boolean; onclose?: () => void } = $props();
 
   const run = $derived(ws.run);
-  const bt = $derived(ws.backtest);
   const latest = $derived(
     ws.yahoo
       ? jobs.analyses.find((a) => a.ticker === ws.yahoo!.toUpperCase() && a.status === 'completed' && a.rating && a.id !== run?.id)
@@ -31,15 +36,20 @@
   }
 </script>
 
-<section class="flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Analisa AI">
-  <header class="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-3">
-    <h2 class="text-sm font-semibold">AI</h2>
-    <div role="tablist" class="tabs tabs-box tabs-xs ml-auto">
-      <button role="tab" class="tab" class:tab-active={ws.aiMode === 'chat'} onclick={() => ws.setAiMode('chat')}>Tanya</button>
-      <button role="tab" class="tab" class:tab-active={ws.aiMode === 'analysis'} onclick={() => ws.setAiMode('analysis')}>Analisa</button>
-      <button role="tab" class="tab" class:tab-active={ws.aiMode === 'backtest'} onclick={() => ws.setAiMode('backtest')}>Backtest</button>
-    </div>
-  </header>
+<section class="flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Riset AI">
+  {#if !bare}
+    <header class="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-3">
+      <h2 class="text-sm font-semibold whitespace-nowrap">Riset AI</h2>
+      <div role="tablist" class="tabs tabs-box tabs-xs ml-auto" aria-label="Riset AI">
+        {#each AI_MODES as m (m.key)}
+          <button role="tab" class="tab" class:tab-active={ws.aiMode === m.key} aria-selected={ws.aiMode === m.key} onclick={() => ws.setAiMode(m.key)}>
+            {m.label}
+          </button>
+        {/each}
+      </div>
+      {#if onclose}<PanelClose label="Tutup panel Riset AI" onclick={onclose} />{/if}
+    </header>
+  {/if}
 
   {#if ws.aiMode === 'chat'}
     <div class="flex min-h-0 flex-1 flex-col p-3">
@@ -50,8 +60,7 @@
       {/if}
     </div>
   {:else}
-  <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
-    {#if ws.aiMode === 'analysis'}
+    <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-3">
       {#if run}
         <article class="flex flex-col gap-2 rounded-box border border-base-300 p-3" aria-label="Analisa terbuka">
           <div class="flex flex-wrap items-center gap-2">
@@ -123,40 +132,8 @@
           <p class="text-sm text-base-content/70">{ws.symbol} belum bisa dipetakan ke data engine (Yahoo Finance).</p>
         {/if}
       </div>
-    {:else}
-      {#if bt}
-        <article class="flex flex-col gap-2 rounded-box border border-base-300 p-3" aria-label="Backtest terbuka">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="font-mono text-sm font-semibold">{bt.tickers.join(', ') || '…'}</span>
-            {#if bt.backtest}<StatusBadge status={bt.backtest.status} />{/if}
-            <span class="ml-auto font-mono text-xs tabular-nums text-base-content/70">{bt.elapsed}</span>
-          </div>
-          {#if bt.live && bt.progress}
-            <p class="text-xs tabular-nums">Sel {Math.min(bt.progress.done + 1, bt.progress.total)} dari {bt.progress.total}{bt.progress.ticker ? ` · ${bt.progress.ticker}` : ''}</p>
-            <progress class="progress progress-accent w-full" value={bt.progress.done} max={bt.progress.total}></progress>
-          {:else if bt.result?.summary}
-            <p class="text-xs text-base-content/70">Arah benar</p>
-            <p class="text-2xl font-semibold tabular-nums">{bt.hitRate == null ? '—' : `${Math.round(bt.hitRate * 100)}%`}</p>
-            <p class="text-xs text-base-content/70">
-              {bt.result.summary.resolved} dinilai · {bt.result.summary.pending} pending
-              {#each Object.entries(bt.result.summary.byRating).slice(0, 1) as [rating, score] (rating)}· {rating} α {formatPercent(score.meanAlpha)}{/each}
-            </p>
-          {/if}
-          {#if bt.error}<p class="line-clamp-3 text-xs text-error">{bt.error}</p>{/if}
-          <div class="flex flex-wrap gap-1.5">
-            {#if bt.live}<button class="btn btn-xs" onclick={() => bt.cancel()} disabled={bt.busy}>Batalkan</button>{/if}
-            <button class="btn btn-ghost btn-xs" onclick={() => ws.setDock('backtest')}>Detail</button>
-            <button class="btn btn-ghost btn-xs ml-auto" onclick={() => ws.closeBacktest()}>Tutup</button>
-          </div>
-        </article>
-      {/if}
-      <div>
-        <h3 class="mb-2 text-sm font-semibold">Backtest baru</h3>
-        <AnalysisForm mode="backtest" />
-      </div>
-    {/if}
 
-    <p class="mt-auto text-xs text-base-content/70">Hasil analisa dibuat model AI dan bukan saran investasi.</p>
-  </div>
+      <p class="mt-auto text-xs text-base-content/70">Hasil analisa dibuat model AI dan bukan saran investasi.</p>
+    </div>
   {/if}
 </section>

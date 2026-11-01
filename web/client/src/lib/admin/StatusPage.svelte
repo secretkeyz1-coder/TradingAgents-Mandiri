@@ -23,7 +23,7 @@
     prices: 'Notifikasi harga',
     scan: 'Pemindaian sinyal',
     analysis: 'Analisa',
-    watchlist: 'Watchlist',
+    watchlist: 'Analisa terjadwal',
     brief: 'Ringkasan AI',
     ledger: 'Buku sinyal',
     creator: 'Rekam jejak Creator',

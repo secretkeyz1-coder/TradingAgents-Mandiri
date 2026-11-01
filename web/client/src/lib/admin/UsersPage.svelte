@@ -89,7 +89,7 @@
       <div>
         <h1 id="users-title" class="text-2xl font-semibold">Pengguna</h1>
         <p class="text-sm text-base-content/70">
-          Tiap akun punya riwayat, chat agent, skill, dan watchlist sendiri. Kuota kosong = kuota paketnya (admin: default server).
+          Tiap akun punya riwayat, chat agent, skill, dan analisa terjadwal sendiri. Kuota kosong = kuota paketnya (admin: default server).
         </p>
       </div>
     </div>

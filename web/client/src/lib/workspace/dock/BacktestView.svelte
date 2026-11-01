@@ -1,12 +1,15 @@
 <script lang="ts">
-  // The open backtest: progress, the per-rating score, and each ticker's
-  // decisions on its chart.
+  // Uji strategi → Backtest: start a backtest, pick one from the list, or follow the open one
+  // (progress, the per-rating score, each ticker's decisions on its chart). Opening one shows
+  // its result in place; "Semua backtest" goes back to the form and the list.
+  import { auth } from '../../auth.svelte';
   import DecisionChart from '../../DecisionChart.svelte';
   import { formatDateTime, formatPercent, ratingBadge } from '../../format';
   import { jobs } from '../../stores/jobs.svelte';
   import { ws } from '../../stores/workspace.svelte';
   import StatusBadge from '../../StatusBadge.svelte';
   import { toTradingView } from '../../tv';
+  import AnalysisForm from '../AnalysisForm.svelte';
 
   const bt = $derived(ws.backtest);
   let activeTicker = $state('');
@@ -28,36 +31,111 @@
   }
 </script>
 
+{#snippet back()}
+  <button class="btn btn-ghost btn-xs -ml-2 w-fit gap-1" onclick={() => ws.closeBacktest()}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+    Semua backtest
+  </button>
+{/snippet}
+
 {#if !bt}
-  <p class="p-6 text-sm text-base-content/70">Buka backtest dari Riwayat, atau jalankan dari panel AI, tab Backtest.</p>
+  <div class="@container p-4">
+    <div class="grid gap-6 @2xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+      <section class="min-w-0" aria-labelledby="backtest-new">
+        <h3 id="backtest-new" class="text-sm font-semibold">Backtest baru</h3>
+        <p class="mt-0.5 mb-3 text-xs text-base-content/70">Jalankan analisa AI di tanggal-tanggal lampau, lalu lihat seberapa sering arahnya benar.</p>
+        <AnalysisForm mode="backtest" />
+      </section>
+
+      <section class="min-w-0" aria-labelledby="backtest-list">
+        <div class="mb-1 flex flex-wrap items-center gap-2">
+          <h3 id="backtest-list" class="text-sm font-semibold">Semua backtest</h3>
+          {#if auth.isAdmin}
+            <label class="ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
+              <input type="checkbox" class="toggle toggle-xs" checked={jobs.everyone} onchange={(e) => jobs.setEveryone(e.currentTarget.checked)} />
+              Semua pengguna
+            </label>
+          {/if}
+          <button class="btn btn-ghost btn-xs" class:ml-auto={!auth.isAdmin} onclick={() => jobs.refresh()}>Muat ulang</button>
+        </div>
+        {#if jobs.error}<p class="text-sm text-error">{jobs.error}</p>{/if}
+        {#if jobs.backtests.length === 0}
+          <p class="py-6 text-sm text-base-content/70">{jobs.loaded ? 'Belum ada backtest. Isi formulir Backtest baru untuk memulai.' : 'Memuat…'}</p>
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  {#if jobs.everyone}<th>Pemilik</th>{/if}
+                  <th>Rentang</th>
+                  <th>Status</th>
+                  <th class="hidden md:table-cell">Dibuat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each jobs.backtests as b (b.id)}
+                  <tr>
+                    <td>
+                      <button
+                        class="link link-hover font-mono font-semibold"
+                        onclick={() => ws.openBacktest(b.id, { symbol: toTradingView(b.ticker.split(',')[0]) })}
+                      >
+                        {b.ticker.split(',').join(', ')}
+                      </button>
+                    </td>
+                    {#if jobs.everyone}<td class="font-mono text-xs">{b.owner ?? '–'}</td>{/if}
+                    <td class="whitespace-nowrap text-xs tabular-nums">{b.request.start} – {b.request.end} · {b.request.everyNDays} hr</td>
+                    <td>
+                      <StatusBadge
+                        status={b.status}
+                        detail={b.progress && (b.status === 'running' || b.status === 'queued') ? `${b.progress.done}/${b.progress.total}` : ''}
+                      />
+                    </td>
+                    <td class="hidden text-xs text-base-content/70 md:table-cell">{formatDateTime(b.createdAt)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </section>
+    </div>
+  </div>
 {:else if bt.loadError}
-  <p class="p-6 text-sm text-error">Backtest tidak bisa dimuat: {bt.loadError}</p>
+  <div class="flex flex-col gap-2 p-4">
+    {@render back()}
+    <p class="text-sm text-error">Backtest tidak bisa dimuat: {bt.loadError}</p>
+  </div>
 {:else if bt.backtest}
   {@const b = bt.backtest}
   {@const s = bt.result?.summary}
   <div class="flex flex-col gap-5 p-4">
-    <header class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-2">
-          <h3 class="font-mono text-lg font-semibold">{bt.tickers.join(', ')}</h3>
-          <StatusBadge status={b.status} />
+    <header class="flex flex-col gap-1">
+      {@render back()}
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="font-mono text-lg font-semibold">{bt.tickers.join(', ')}</h3>
+            <StatusBadge status={b.status} />
+          </div>
+          <p class="text-sm text-base-content/70">
+            {b.request.start} – {b.request.end} · tiap {b.request.everyNDays} hari · {b.request.provider} · {b.request.deepModel} · dibuat
+            {formatDateTime(b.createdAt)}
+          </p>
         </div>
-        <p class="text-sm text-base-content/70">
-          {b.request.start} – {b.request.end} · tiap {b.request.everyNDays} hari · {b.request.provider} · {b.request.deepModel} · dibuat
-          {formatDateTime(b.createdAt)}
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-1.5">
-        {#if bt.live}
-          <button class="btn btn-sm" onclick={() => bt.cancel()} disabled={bt.busy}>Batalkan</button>
-        {:else}
-          {#if bt.result && (s?.pending || bt.result.failures.length)}
-            <button class="btn btn-sm" onclick={resume} disabled={bt.busy} title="Lewati sel yang sudah jadi, nilai ulang yang pending">
-              Lanjutkan dan nilai ulang
-            </button>
+        <div class="flex flex-wrap gap-1.5">
+          {#if bt.live}
+            <button class="btn btn-sm" onclick={() => bt.cancel()} disabled={bt.busy}>Batalkan</button>
+          {:else}
+            {#if bt.result && (s?.pending || bt.result.failures.length)}
+              <button class="btn btn-sm" onclick={resume} disabled={bt.busy} title="Lewati sel yang sudah jadi, nilai ulang yang pending">
+                Lanjutkan dan nilai ulang
+              </button>
+            {/if}
+            <button class="btn btn-ghost btn-sm" onclick={remove} disabled={bt.busy}>Hapus</button>
           {/if}
-          <button class="btn btn-ghost btn-sm" onclick={remove} disabled={bt.busy}>Hapus</button>
-        {/if}
+        </div>
       </div>
     </header>
 
@@ -127,7 +205,7 @@
             {#if bt.tickers.length > 1}
               <div role="tablist" class="tabs tabs-box tabs-xs">
                 {#each bt.tickers as t (t)}
-                  <button role="tab" class="tab font-mono" class:tab-active={t === shown} onclick={() => (activeTicker = t)}>{t}</button>
+                  <button role="tab" class="tab font-mono" class:tab-active={t === shown} aria-selected={t === shown} onclick={() => (activeTicker = t)}>{t}</button>
                 {/each}
               </div>
             {/if}

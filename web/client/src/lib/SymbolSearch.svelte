@@ -54,7 +54,6 @@
     value = '';
     input.blur();
     ws.setSymbol(tv);
-    if (ws.mobileTab !== 'ai') ws.mobileTab = 'chart';
   }
 
   /** A pick from the suggestions (no keystroke behind it) opens at once. */

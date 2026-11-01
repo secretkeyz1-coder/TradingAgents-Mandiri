@@ -1,5 +1,5 @@
 // How the workspace panels are arranged on a desktop-sized screen. Each panel
-// (market list, AI, bottom dock) is docked to its edge, floating as a window
+// (Pasar, Riset AI, the bottom panel) is docked to its edge, floating as a window
 // over the chart, or minimised to the tray; focus mode gives the chart the
 // whole screen and leaves only the floating panels. Remembered per browser at
 // once, and per account on the server so another browser opens the same way.
@@ -21,7 +21,7 @@ type Arrangement = {
 
 export const PANELS: { id: PanelId; label: string; edge: 'left' | 'right' | 'bottom' }[] = [
   { id: 'market', label: 'Pasar', edge: 'left' },
-  { id: 'ai', label: 'AI', edge: 'right' },
+  { id: 'ai', label: 'Riset AI', edge: 'right' },
   { id: 'dock', label: 'Panel bawah', edge: 'bottom' },
 ];
 
@@ -29,13 +29,13 @@ export const PRESETS: { id: PresetId; label: string; hint: string; arrangement: 
   {
     id: 'classic',
     label: 'Klasik',
-    hint: 'Pasar · chart · AI · panel bawah',
+    hint: 'Pasar · chart · Riset AI · panel bawah',
     arrangement: { focus: false, modes: { market: 'dock', ai: 'dock', dock: 'dock' }, rects: { market: null, ai: null, dock: null } },
   },
   {
     id: 'focus',
     label: 'Fokus chart',
-    hint: 'Chart penuh, AI melayang',
+    hint: 'Chart penuh, Riset AI melayang',
     arrangement: { focus: true, modes: { market: 'min', ai: 'float', dock: 'min' }, rects: { market: null, ai: null, dock: null } },
   },
   {

@@ -817,8 +817,14 @@
   <!-- The workspace chart fills its panel; elsewhere it has a fixed height. -->
   <div class="relative w-full" class:min-h-48={tools} class:flex-1={tools} style={tools ? '' : `height: ${height}px`}>
     <div bind:this={container} class="h-full w-full"></div>
-    {#if tools && ind && indicators.scalper.showDashboard}
-      <table class="pointer-events-none absolute top-2 right-16 z-10 w-52 rounded-box border border-warning/50 bg-base-100/90 text-xs shadow-sm">
+    {#if tools && ((ind && indicators.scalper.showDashboard) || pobRes || fibRes || scriptCards.length)}
+    <!-- One overlay for the readouts, clear of the price scale and the time axis: the Scalper table top right,
+         the indicator cards bottom left in the width the table leaves. Too narrow for the two side by side (a
+         phone), the cards get the height under the table instead, so neither ever covers the other. -->
+    <div class="@container pointer-events-none absolute top-2 right-16 bottom-8 left-2 z-10">
+    <div class="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-2 @min-[26rem]:grid-cols-[minmax(0,18rem)_auto] @min-[26rem]:grid-rows-1">
+    {#if ind && indicators.scalper.showDashboard}
+      <table class="col-start-1 row-start-1 w-52 self-start justify-self-end rounded-box border border-warning/50 bg-base-100/90 text-xs shadow-sm @min-[26rem]:col-start-2">
         <caption class="rounded-t-box bg-base-200 px-2 py-1 text-left font-semibold text-warning">Scalper Pro+ · {timeframe}</caption>
         <tbody class="font-mono tabular-nums">
           <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Trend</td><td class="px-2 text-right" class:text-success={ind.trend === 'BULLISH'} class:text-error={ind.trend === 'BEARISH'}>{ind.trend}</td></tr>
@@ -831,10 +837,10 @@
         </tbody>
       </table>
     {/if}
-    {#if tools && (pobRes || fibRes || scriptCards.length)}
-      <div class="absolute bottom-8 left-2 z-10 flex max-h-[70%] w-72 flex-col gap-2 overflow-y-auto">
+    {#if pobRes || fibRes || scriptCards.length}
+      <div class="pointer-events-auto col-start-1 row-start-2 flex max-h-full w-72 max-w-full flex-col gap-2 self-end justify-self-start overflow-x-hidden overflow-y-auto @min-[26rem]:row-start-1 @min-[26rem]:max-h-[75%]">
       {#each scriptCards as card (card.id)}
-        <section class="flex w-72 flex-col gap-1 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Skrip {card.name}">
+        <section class="flex w-full shrink-0 flex-col gap-1 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Skrip {card.name}">
           <div class="flex items-center gap-2">
             <span class="truncate font-semibold">Skrip · {card.name}</span>
             <button class="btn btn-ghost btn-xs ml-auto" onclick={() => scripts.open(card.id)}>Edit</button>
@@ -859,7 +865,7 @@
         </section>
       {/each}
       {#if pobRes}
-      <section class="flex w-72 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="PoB BYSTRA">
+      <section class="flex w-full shrink-0 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="PoB BYSTRA">
         <div class="flex items-center gap-2">
           <span class="font-semibold">PoB BYSTRA · HTF {pobRes.htf}</span>
           <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={pobTally} onclick={() => (pobTally = !pobTally)}>{pobTally ? 'Tutup' : 'Tally'}</button>
@@ -902,7 +908,7 @@
       </section>
       {/if}
       {#if fibRes}
-        <section class="flex w-72 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Fib Golden Zone">
+        <section class="flex w-full shrink-0 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Fib Golden Zone">
           <div class="flex items-center gap-2">
             <span class="font-semibold">Fib Golden Zone · {timeframe}</span>
             <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={fibTally} onclick={() => (fibTally = !fibTally)}>{fibTally ? 'Tutup' : 'Tally'}</button>
@@ -937,6 +943,9 @@
         </section>
       {/if}
       </div>
+    {/if}
+    </div>
+    </div>
     {/if}
     {#if tools && indicators.scalperOn && indicators.settingsOpen}
       <div class="absolute top-2 left-2 z-20"><IndicatorPanel onclose={() => (indicators.settingsOpen = false)} /></div>

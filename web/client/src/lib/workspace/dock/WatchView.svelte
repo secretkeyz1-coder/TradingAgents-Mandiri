@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The watchlist: what the server analyses on its own each trading day, the
-  // latest decision for each symbol, and whether Telegram gets the summary.
+  // Pantau & alert → Analisa terjadwal (the server's watchlist, server/src/watch.ts): what
+  // the server analyses on its own each trading day, the latest decision for each symbol, and
+  // whether Telegram gets the summary. A symbol joins from the chart's Analisa harian button.
   import { auth } from '../../auth.svelte';
   import { formatDateTime, ratingBadge } from '../../format';
   import { usage } from '../../stores/usage.svelte';
@@ -68,7 +69,7 @@
 
     {#if !w.items.length}
       <p class="text-sm text-base-content/70">
-        Belum ada simbol. Buka chart sebuah saham, kripto, atau forex, lalu klik <strong>☆ Pantau</strong> di atas chart (maksimal {w.max}).
+        Belum ada simbol. Buka chart sebuah saham, kripto, atau forex, lalu klik <strong>Analisa harian</strong> di atas chart (maksimal {w.max}).
       </p>
     {:else}
       <div class="overflow-x-auto">

@@ -148,7 +148,7 @@
           </p>
         {/if}
         <p class="text-xs text-base-content/70">
-          Uji Lab {auth.user.limits.labRuns}/hari · notifikasi {auth.user.limits.alerts} · watchlist {auth.user.limits.watchlist} simbol · skrip {auth.user.limits.scripts}. Kuota harian
+          Uji Lab {auth.user.limits.labRuns}/hari · notifikasi {auth.user.limits.alerts} · analisa terjadwal {auth.user.limits.watchlist} simbol · skrip {auth.user.limits.scripts}. Kuota harian
           reset pukul 00.00 WIB.
         </p>
       </section>

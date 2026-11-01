@@ -1,11 +1,12 @@
 <script lang="ts">
   // Arranges the panels and nothing else. On a desktop-sized screen each panel
-  // (market list, AI, bottom dock) is docked to its edge, floats as a window
+  // (Pasar, Riset AI, the bottom panel) is docked to its edge, floats as a window
   // over the chart, or waits in the tray, as the layout store says; focus mode
-  // hides the frame and gives the chart the whole window. The dock sits under
-  // the chart only, so the AI panel keeps the full height. On a medium screen a
-  // docked market list is a drawer; on a phone one panel shows at a time with a
-  // bottom tab bar. Panels talk only through the workspace store.
+  // hides the frame and gives the chart the whole window. The bottom panel sits
+  // under the chart only, so Riset AI keeps the full height. On a medium screen a
+  // docked market list is a drawer; on a phone the chart and each destination are
+  // one screen apiece behind a bottom tab bar. Panels talk only through the
+  // workspace store.
   import { onMount } from 'svelte';
   import { agent } from '../stores/agent.svelte';
   import { catalog } from '../stores/catalog.svelte';
@@ -14,12 +15,14 @@
   import { layout, PANELS, type PanelId, type Rect } from '../stores/layout.svelte';
   import { PANE_LIMITS, panes } from '../stores/panes.svelte';
   import { layoutOf, viewport } from '../stores/viewport.svelte';
-  import { ws, type MobileTab } from '../stores/workspace.svelte';
+  import { DESTINATIONS, ws, type MobileTab } from '../stores/workspace.svelte';
   import AiPanel from './AiPanel.svelte';
   import ChartPanel from './ChartPanel.svelte';
   import Dock from './Dock.svelte';
   import FloatingWindow from './FloatingWindow.svelte';
+  import { DESTINATION_ICONS } from './icons';
   import MarketPanel from './MarketPanel.svelte';
+  import PhoneScreen from './PhoneScreen.svelte';
   import Rail from './Rail.svelte';
   import Splitter from './Splitter.svelte';
 
@@ -87,25 +90,21 @@
           : `minmax(0, 1fr) ${SPLIT}px ${dockH}px`,
   );
 
-  // Where a floating panel goes until the user moves it.
+  // Where a floating panel goes until the user moves it: clear of the 64px rail.
   function defaultRect(id: PanelId): Rect {
-    const left = layout.focus ? 12 : 68;
+    const left = layout.focus ? 12 : 76;
     if (id === 'market') return { x: left, y: 12, w: 340, h: Math.min(560, outerH - 24) };
     if (id === 'ai') return { x: outerW - 400, y: 12, w: 384, h: Math.min(640, outerH - 24) };
     const h = Math.min(360, outerH - 24);
     return { x: left, y: outerH - h - 12, w: Math.min(820, outerW - left - 420), h };
   }
-  const TITLES: Record<PanelId, string> = { market: 'Pasar', ai: 'AI', dock: 'Analisa, Pantau, Strategi' };
   const floating = $derived(PANELS.filter((p) => layout.effective(p.id) === 'float'));
   const tray = $derived(PANELS.filter((p) => layout.effective(p.id) === 'min'));
+  /** A tray button pulses while its panel's job runs: an analysis for Riset AI, a backtest for the bottom panel. */
+  const trayBusy = (id: PanelId) => (id === 'ai' && !!ws.run?.live) || (id === 'dock' && !!ws.backtest?.live);
 
-  const MOBILE_TABS: { key: MobileTab; label: string }[] = [
-    { key: 'market', label: 'Pasar' },
-    { key: 'chart', label: 'Chart' },
-    { key: 'ai', label: 'AI' },
-    { key: 'dock', label: 'Lainnya' },
-  ];
-  const busy = $derived(!!(ws.run?.live || ws.backtest?.live));
+  const PHONE_TABS: { key: MobileTab; label: string }[] = [{ key: 'chart', label: 'Chart' }, ...DESTINATIONS.map((d) => ({ key: d.key, label: d.label }))];
+  const phoneBusy = (key: MobileTab) => DESTINATIONS.some((d) => d.key === key && d.tabs.some((t) => ws.live(t.key)));
 </script>
 
 <svelte:window onkeydown={keys} />
@@ -113,27 +112,18 @@
 {#if screen === 'narrow'}
   <div class="flex min-h-0 flex-1 flex-col">
     <div class="min-h-0 flex-1">
-      {#if ws.mobileTab === 'market'}
-        <MarketPanel />
-      {:else if ws.mobileTab === 'chart'}
+      {#if ws.mobileTab === 'chart'}
         <ChartPanel />
-      {:else if ws.mobileTab === 'ai'}
-        <AiPanel />
       {:else}
-        <Dock collapsible={false} />
+        <PhoneScreen destination={ws.mobileTab} />
       {/if}
     </div>
-    <nav class="grid shrink-0 grid-cols-4 border-t border-base-300 bg-base-100" aria-label="Panel">
-      {#each MOBILE_TABS as t (t.key)}
-        <button
-          class="flex min-h-14 items-center justify-center gap-1.5 text-sm font-medium"
-          class:text-accent={ws.mobileTab === t.key}
-          class:text-base-content={ws.mobileTab !== t.key}
-          aria-current={ws.mobileTab === t.key ? 'page' : undefined}
-          onclick={() => (ws.mobileTab = t.key)}
-        >
+    <nav class="grid shrink-0 grid-cols-5 border-t border-base-300 bg-base-100" aria-label="Menu ruang kerja">
+      {#each PHONE_TABS as t (t.key)}
+        <button class="ta-tab" aria-current={ws.mobileTab === t.key ? 'page' : undefined} onclick={() => ws.goPhone(t.key)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={DESTINATION_ICONS[t.key]} /></svg>
           {t.label}
-          {#if t.key === 'ai' && busy}<span class="status status-xs status-info motion-safe:animate-pulse" aria-label="berjalan"></span>{/if}
+          {#if phoneBusy(t.key)}<span class="status status-xs status-info absolute top-1.5 left-[calc(50%+0.75rem)] motion-safe:animate-pulse" aria-label="berjalan"></span>{/if}
         </button>
       {/each}
     </nav>
@@ -179,7 +169,7 @@
           {:else}
             <div class="bg-base-300"></div>
           {/if}
-          <div class="min-h-0 min-w-0 overflow-hidden"><Dock /></div>
+          <div class="min-h-0 min-w-0 overflow-hidden"><Dock onclose={() => layout.setMode('dock', 'min')} /></div>
         {/if}
       </div>
 
@@ -188,7 +178,7 @@
           <Splitter
             axis="x"
             invert
-            label="Lebar panel AI"
+            label="Lebar panel Riset AI"
             value={aiW}
             min={L.ai.min}
             max={Math.max(L.ai.min, aiMax)}
@@ -197,19 +187,19 @@
             onreset={() => (panes.set('ai', null), panes.save())}
           />
         </div>
-        <div class="min-h-0 min-w-0 overflow-hidden border-l border-base-300"><AiPanel /></div>
+        <div class="min-h-0 min-w-0 overflow-hidden border-l border-base-300"><AiPanel onclose={() => layout.setMode('ai', 'min')} /></div>
       {/if}
     </div>
 
     {#if screen === 'medium' && layout.modes.market === 'dock' && !layout.focus && ws.marketDrawer}
-      <div class="absolute inset-y-0 left-14 z-20 w-80 border-r border-base-300 shadow-xl">
+      <div class="absolute inset-y-0 left-16 z-20 w-80 border-r border-base-300 shadow-xl">
         <MarketPanel onclose={() => (ws.marketDrawer = false)} />
       </div>
     {/if}
 
     {#each floating as p (p.id)}
       <FloatingWindow
-        title={TITLES[p.id]}
+        title={p.label}
         rect={layout.rects[p.id] ?? defaultRect(p.id)}
         bounds={{ w: outerW, h: outerH }}
         z={layout.order.indexOf(p.id)}
@@ -236,7 +226,7 @@
         {#each tray as p (p.id)}
           <button class="btn btn-sm border-base-300 bg-base-100 shadow-md" onclick={() => layout.restore(p.id)}>
             {p.label}
-            {#if p.id === 'ai' && busy}<span class="status status-xs status-info motion-safe:animate-pulse" aria-label="berjalan"></span>{/if}
+            {#if trayBusy(p.id)}<span class="status status-xs status-info motion-safe:animate-pulse" aria-label="berjalan"></span>{/if}
           </button>
         {/each}
       </nav>

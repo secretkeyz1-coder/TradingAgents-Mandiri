@@ -1,8 +1,9 @@
 <script lang="ts">
   // The symbol in focus: TradingView's full chart, or the engine's daily
   // candles with every AI decision marked, plus the chart's own tools (zoom,
-  // jump to a date, navigator, Scalper Pro+). On a desktop screen the header
-  // also holds focus mode and the layout menu.
+  // jump to a date, navigator, Scalper Pro+). Analisa harian puts the symbol on
+  // the scheduled analyses (Pantau & alert). On a desktop screen the header also
+  // holds focus mode and the layout menu.
   import DecisionChart from '../DecisionChart.svelte';
   import { agent, LAYERS } from '../stores/agent.svelte';
   import { layout } from '../stores/layout.svelte';
@@ -63,12 +64,15 @@
     {#if ws.yahoo}
       <button
         class="btn btn-ghost btn-xs shrink-0 gap-1"
+        class:btn-active={watched}
         aria-pressed={watched}
-        title={watched ? 'Hapus dari watchlist' : 'Analisa otomatis tiap hari bursa, hasilnya ke Telegram'}
+        title={watched
+          ? 'Analisa harian aktif: AI menganalisa simbol ini tiap hari bursa, memakai 1 kuota analisa per hari. Klik untuk berhenti.'
+          : 'AI menganalisa simbol ini otomatis tiap hari bursa; hasilnya di Pantau & alert dan Telegram. Memakai 1 kuota analisa per hari.'}
         onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={watched ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" class:text-warning={watched} aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>
-        {watched ? 'Dipantau' : 'Pantau'}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class:text-accent={watched} aria-hidden="true"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14" /><circle cx="16" cy="16" r="6" /></svg>
+        Analisa harian
       </button>
       <button class="btn btn-ghost btn-xs shrink-0 gap-1" title="Buka chart Keputusan AI di tanggal tertentu" onclick={jumpToDate}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>

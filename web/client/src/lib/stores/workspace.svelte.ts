@@ -13,21 +13,34 @@ import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
 import { RunStream } from './run.svelte';
 
-export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'watch' | 'signals' | 'lab' | 'screener';
+export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'watch' | 'signals' | 'alerts' | 'lab' | 'screener';
 export type DockSize = 'min' | 'normal' | 'max';
-export type AiMode = 'chat' | 'analysis' | 'backtest';
+export type AiMode = 'chat' | 'analysis';
 export type ChartView = 'tv' | 'ai';
-export type MobileTab = 'market' | 'chart' | 'ai' | 'dock';
+export type Destination = 'pasar' | 'riset' | 'pantau' | 'uji';
+/** A phone shows one screen at a time: the chart, or one destination. */
+export type MobileTab = 'chart' | Destination;
 
-const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'watch', 'signals', 'lab', 'screener'];
+const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'watch', 'signals', 'alerts', 'lab', 'screener'];
 
-export type DockGroup = 'analisa' | 'pantau' | 'strategi';
+/** The AI panel's two tabs: ask the agent, or run a full analysis. */
+export const AI_MODES: { key: AiMode; label: string }[] = [
+  { key: 'chat', label: 'Tanya' },
+  { key: 'analysis', label: 'Jalankan' },
+];
+/** What the market panel shows, named as a tab where Pasar is one screen (a phone). */
+export const MARKET_LIST_LABEL = 'Daftar harga';
 
-/** The dock's tabs in three groups: one analysis's work, what is being watched, and strategy testing. */
-export const DOCK_GROUPS: { key: DockGroup; label: string; tabs: { key: DockTab; label: string }[] }[] = [
+/**
+ * Where the rail goes, named for the work done there. A destination opens its side panel, if
+ * it has one, and the bottom panel on its tabs; on a phone it is one screen holding both.
+ */
+export const DESTINATIONS: { key: Destination; label: string; panel: 'market' | 'ai' | null; tabs: { key: DockTab; label: string }[] }[] = [
+  { key: 'pasar', label: 'Pasar', panel: 'market', tabs: [{ key: 'screener', label: 'Screener' }] },
   {
-    key: 'analisa',
-    label: 'Analisa',
+    key: 'riset',
+    label: 'Riset AI',
+    panel: 'ai',
     tabs: [
       { key: 'history', label: 'Riwayat' },
       { key: 'report', label: 'Laporan' },
@@ -36,16 +49,18 @@ export const DOCK_GROUPS: { key: DockGroup; label: string; tabs: { key: DockTab;
   },
   {
     key: 'pantau',
-    label: 'Pantau',
+    label: 'Pantau & alert',
+    panel: null,
     tabs: [
-      { key: 'watch', label: 'Watchlist' },
+      { key: 'watch', label: 'Analisa terjadwal' },
       { key: 'signals', label: 'Sinyal' },
-      { key: 'screener', label: 'Screener' },
+      { key: 'alerts', label: 'Alert' },
     ],
   },
   {
-    key: 'strategi',
-    label: 'Strategi',
+    key: 'uji',
+    label: 'Uji strategi',
+    panel: null,
     tabs: [
       { key: 'backtest', label: 'Backtest' },
       { key: 'lab', label: 'Lab' },
@@ -53,7 +68,8 @@ export const DOCK_GROUPS: { key: DockGroup; label: string; tabs: { key: DockTab;
   },
 ];
 
-export const groupOf = (tab: DockTab) => DOCK_GROUPS.find((g) => g.tabs.some((t) => t.key === tab)) ?? DOCK_GROUPS[0];
+/** The destination a bottom-panel tab belongs to. */
+export const destinationOf = (tab: DockTab) => DESTINATIONS.find((d) => d.tabs.some((t) => t.key === tab)) ?? DESTINATIONS[1];
 const DEFAULT_SYMBOL = 'IDX:COMPOSITE';
 const ID = /^[0-9a-f-]{36}$/;
 
@@ -70,13 +86,15 @@ class Workspace {
   dock = $state<DockTab>('history');
   dockSize = $state<DockSize>('normal');
   mobileTab = $state<MobileTab>('chart');
+  /** On a phone, whether a destination's screen shows its side panel (the market list, the AI) or a bottom-panel tab. */
+  phonePane = $state<Record<Destination, 'side' | 'dock'>>({ pasar: 'side', riset: 'side', pantau: 'dock', uji: 'dock' });
   marketDrawer = $state(false);
   run = $state<RunStream | null>(null);
   backtest = $state<BacktestStream | null>(null);
   /** Bumped when a run or backtest finishes, so decision markers reload. */
   decisionsVersion = $state(0);
-  /** The tab each dock group showed last, so going back to a group finds it as it was left. */
-  #lastTab: Record<DockGroup, DockTab> = { analisa: 'history', pantau: 'watch', strategi: 'backtest' };
+  /** The tab each destination showed last, so going back to one finds it as it was left. */
+  #lastTab: Record<Destination, DockTab> = { pasar: 'screener', riset: 'history', pantau: 'watch', uji: 'backtest' };
 
   constructor() {
     this.#read(location.hash);
@@ -91,7 +109,8 @@ class Workspace {
   setSymbol(tv: string) {
     const next = tv.trim().toUpperCase();
     this.marketDrawer = false;
-    if (this.mobileTab === 'market') this.mobileTab = 'chart';
+    // On a phone a symbol picked from any list opens its chart; Riset AI stays, to ask about it.
+    if (this.mobileTab !== 'riset') this.mobileTab = 'chart';
     if (!next || next === this.symbol) return;
     this.symbol = next;
     this.#write('push');
@@ -102,8 +121,7 @@ class Workspace {
     if (symbol) this.symbol = symbol.toUpperCase();
     if (this.run?.id !== id) this.#replaceRun(id, false);
     this.aiMode = 'analysis';
-    if (show && this.dock !== 'log') this.dock = 'report';
-    if (show && this.dockSize === 'min') this.dockSize = 'normal';
+    if (show) this.#show(this.dock === 'log' ? 'log' : 'report');
     this.#write('push');
   }
 
@@ -120,31 +138,48 @@ class Workspace {
       this.backtest?.destroy();
       this.backtest = new BacktestStream(id, () => this.#finished());
     }
-    this.aiMode = 'backtest';
-    if (show) {
-      this.dock = 'backtest';
-      if (this.dockSize === 'min') this.dockSize = 'normal';
-    }
+    if (show) this.#show('backtest');
     this.#write('push');
   }
 
+  /** Back to the Backtest tab's list and form. */
   closeBacktest() {
     this.backtest?.destroy();
     this.backtest = null;
-    if (this.dock === 'backtest') this.dock = 'history';
     this.#write('push');
   }
 
   setDock(tab: DockTab) {
-    this.dock = tab;
-    if (this.dockSize === 'min') this.dockSize = 'normal';
+    this.#show(tab);
     this.#write('replace');
   }
 
-  /** Open a dock group on the tab it showed last. */
-  openGroup(key: DockGroup) {
-    this.#lastTab[groupOf(this.dock).key] = this.dock;
-    this.setDock(this.#lastTab[key]);
+  /** Open a destination's tabs in the bottom panel, on the tab it showed last. */
+  openDestination(key: Destination) {
+    this.#lastTab[destinationOf(this.dock).key] = this.dock;
+    this.setDock(this.#resume(key));
+  }
+
+  /** A phone's tab bar: the chart, or a destination's screen as it was left. */
+  goPhone(tab: MobileTab) {
+    const from = destinationOf(this.dock).key;
+    if (tab !== 'chart' && tab !== from) {
+      this.#lastTab[from] = this.dock;
+      this.dock = this.#resume(tab);
+      this.#write('replace');
+    }
+    this.mobileTab = tab;
+  }
+
+  /** Where a destination was left, except a report or log whose analysis has since closed: that would be empty. */
+  #resume(key: Destination): DockTab {
+    const tab = this.#lastTab[key];
+    return (tab === 'report' || tab === 'log') && !this.run ? 'history' : tab;
+  }
+
+  /** A bottom-panel tab whose job is still running. */
+  live(tab: DockTab) {
+    return (tab === 'report' && !!this.run?.live) || (tab === 'backtest' && !!this.backtest?.live);
   }
 
   setMarket(key: string) {
@@ -164,7 +199,18 @@ class Workspace {
 
   setAiMode(mode: AiMode) {
     this.aiMode = mode;
+    this.phonePane.riset = 'side';
     this.#write('replace');
+  }
+
+  /** Bring a bottom-panel tab into view; a phone moves to the screen that holds it. */
+  #show(tab: DockTab) {
+    this.dock = tab;
+    if (this.dockSize === 'min') this.dockSize = 'normal';
+    if (this.mobileTab === 'chart') return;
+    const key = destinationOf(tab).key;
+    this.mobileTab = key;
+    this.phonePane[key] = 'dock';
   }
 
   #finished() {
@@ -198,7 +244,7 @@ class Workspace {
     let m: RegExpMatchArray | null;
     if ((m = path.match(/^\/analyses\/([0-9a-f-]{36})$/))) q.set('run', m[1]);
     else if ((m = path.match(/^\/backtests\/([0-9a-f-]{36})$/))) q.set('bt', m[1]);
-    else if (path === '/backtests') q.set('dock', 'history');
+    else if (path === '/backtests') q.set('dock', 'backtest');
     else if (path === '/markets' && q.get('tab')) q.set('m', q.get('tab')!);
 
     // A canonical URL (one this class wrote) states the whole state; anything
@@ -211,7 +257,7 @@ class Workspace {
     if (q.has('tvwidgetsymbol')) {
       // Picked in a widget: show the chart, as setSymbol() does for our own lists.
       this.marketDrawer = false;
-      if (this.mobileTab === 'market') this.mobileTab = 'chart';
+      if (this.mobileTab !== 'riset') this.mobileTab = 'chart';
     }
 
     const market = q.get('m');
@@ -223,15 +269,13 @@ class Workspace {
     const tf = q.get('tf') as Interval | null;
     if (tf && INTERVALS.includes(tf)) this.timeframe = tf;
     else if (canonical) this.timeframe = '1d';
-    // An old link to one analysis or backtest also shows it in the AI panel.
-    const ai =
-      q.get('ai') ??
-      (q.get('mode') === 'backtest' || path.startsWith('/backtests/')
-        ? 'backtest'
-        : path.startsWith('/analyses/')
-          ? 'analysis'
-          : null);
-    if (ai === 'chat' || ai === 'analysis' || ai === 'backtest') this.aiMode = ai;
+    // Backtests used to open in the AI panel; their tab is under Uji strategi now.
+    if (q.get('ai') === 'backtest' || q.get('mode') === 'backtest') {
+      legacy = true;
+      if (!q.has('dock')) q.set('dock', 'backtest');
+    }
+    const ai = q.get('ai') ?? (path.startsWith('/analyses/') ? 'analysis' : null);
+    if (ai === 'chat' || ai === 'analysis') this.aiMode = ai;
     else if (canonical) this.aiMode = 'analysis';
 
     const run = q.get('run');
