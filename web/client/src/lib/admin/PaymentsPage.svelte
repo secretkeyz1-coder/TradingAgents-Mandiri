@@ -6,8 +6,6 @@
   import { PERIOD_LABEL, PLANS, rupiah } from '../../../../shared/plans';
   import { api, type AdminOverview, type AdminPayment } from '../api';
 
-  let { onclose }: { onclose: () => void } = $props();
-
   let tab = $state<'open' | 'paid' | 'all'>('open');
   let rows = $state<AdminPayment[]>([]);
   let overview = $state<AdminOverview | null>(null);
@@ -56,14 +54,12 @@
   }
 </script>
 
-<div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="payments-title">
-  <div class="modal-box flex max-w-5xl flex-col gap-5">
+<section class="flex flex-col gap-5" aria-labelledby="payments-title">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h2 id="payments-title" class="text-lg font-semibold">Pembayaran</h2>
+        <h1 id="payments-title" class="text-2xl font-semibold">Pembayaran</h1>
         <p class="text-sm text-base-content/70">Cocokkan jumlah transfer (tiga digit terakhir = kode unik) dengan mutasi rekening, lalu konfirmasi.</p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
     </div>
 
     {#if overview}
@@ -149,6 +145,4 @@
         </tbody>
       </table>
     </div>
-  </div>
-  <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
-</div>
+</section>

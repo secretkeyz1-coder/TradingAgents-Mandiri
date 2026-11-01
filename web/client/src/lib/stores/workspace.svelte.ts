@@ -148,6 +148,8 @@ class Workspace {
     const raw = hash.replace(/^#/, '') || '/';
     const at = raw.indexOf('?');
     const path = at < 0 ? raw : raw.slice(0, at) || '/';
+    // The admin console (App.svelte) owns #/admin; the workspace leaves that address alone.
+    if (path === '/admin' || path.startsWith('/admin/')) return;
     const q = new URLSearchParams(at < 0 ? '' : raw.slice(at + 1));
 
     let legacy = path !== '/';

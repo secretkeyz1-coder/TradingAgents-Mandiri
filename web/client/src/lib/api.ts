@@ -235,6 +235,31 @@ export type UserScripts = {
   limits: { timeMs: number; maxCode: number };
 };
 
+/** GET /api/admin/config: what is switched on and set up, for the console's settings page. */
+export type AdminConfig = {
+  signup: boolean;
+  publicSite: boolean;
+  publicUrl: string | null;
+  google: boolean;
+  telegram: boolean;
+  mail: boolean;
+  reminders: boolean;
+  payments: boolean;
+  siteBrief: boolean;
+  tokenCost: boolean;
+  /** How many backend URLs the server's API key may go to; 0 = any. */
+  backendLimit: number;
+  models: { provider: string; quick: string; deep: string } | null;
+};
+
+export type ServiceState = 'ok' | 'degraded' | 'down' | 'off';
+export type ServiceStatus = {
+  checkedAt: string;
+  overall: Exclude<ServiceState, 'off'>;
+  days: number;
+  parts: { key: string; name: string; state: ServiceState; detail: string; history: Record<string, number> }[];
+};
+
 /** A Telegram notification for new signals of one indicator on one symbol and timeframe. */
 export type SignalAlert = {
   id: string;
@@ -535,6 +560,10 @@ export const api = {
   createCoupon: (body: NewCoupon) => request<Coupon>('/admin/coupons', { method: 'POST', body: JSON.stringify(body) }),
   setCouponActive: (id: string, active: boolean) => request<Coupon>(`/admin/coupons/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   adminBusiness: () => request<BusinessReport>('/admin/business'),
+  /** How the server is set up (switches and states, never secrets), for the admin console. */
+  adminConfig: () => request<AdminConfig>('/admin/config'),
+  /** The public status page's data (server/src/status.ts). */
+  serviceStatus: () => request<ServiceStatus>('/public/status'),
   claimOrder: (id: string, note: string) => request<Payment>(`/billing/orders/${id}/claim`, { method: 'POST', body: JSON.stringify({ note }) }),
   cancelOrder: (id: string) => request<Payment>(`/billing/orders/${id}/cancel`, { method: 'POST' }),
   adminPayments: (status: 'open' | 'paid' | 'all') => request<AdminPayment[]>(`/admin/payments?status=${status}`),

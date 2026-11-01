@@ -4,7 +4,9 @@
   // because its stores call the API the moment they load. Links sent by e-mail
   // land here too: #/reset?token=… opens the new-password form whatever the
   // session, #/signup the sign-up form, #/2fa?ticket=… the code step after a
-  // Google sign-in, and ?notice=… shows its message once.
+  // Google sign-in, and ?notice=… shows its message once. #/admin and its pages
+  // open the admin console instead of the workspace, for admins only; that hash
+  // is followed as it changes, since the console is reached from the app's menu.
   import { onMount } from 'svelte';
   import { auth } from './lib/auth.svelte';
   import LoginPage from './lib/LoginPage.svelte';
@@ -14,9 +16,27 @@
   const token = route === 'reset' ? (query.get('token') ?? '') : '';
   if (route === '2fa') auth.challenge = query.get('ticket');
 
+  const onAdminHash = () => /^#\/admin(\/|\?|$)/.test(location.hash);
+  let adminRoute = $state(onAdminHash());
+
   onMount(() => {
     auth.takeNotice();
     auth.check();
+    const follow = () => (adminRoute = onAdminHash());
+    window.addEventListener('hashchange', follow);
+    window.addEventListener('popstate', follow);
+    return () => {
+      window.removeEventListener('hashchange', follow);
+      window.removeEventListener('popstate', follow);
+    };
+  });
+
+  // A member who opens #/admin lands in the app.
+  $effect(() => {
+    if (auth.state === 'in' && adminRoute && !auth.isAdmin) {
+      history.replaceState(null, '', '#/');
+      adminRoute = false;
+    }
   });
 </script>
 
@@ -24,6 +44,10 @@
   <LoginPage mode="reset" {token} />
 {:else if route === '2fa' && auth.challenge}
   <LoginPage mode="2fa" />
+{:else if auth.state === 'in' && adminRoute && auth.isAdmin}
+  {#await import('./lib/admin/AdminConsole.svelte') then adminConsole}
+    <adminConsole.default />
+  {/await}
 {:else if auth.state === 'in'}
   {#await import('./lib/AppShell.svelte') then shell}
     <shell.default />

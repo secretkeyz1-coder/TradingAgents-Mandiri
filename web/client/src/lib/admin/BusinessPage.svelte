@@ -6,8 +6,7 @@
   // table beside it.
   import { PLANS, rupiah } from '../../../../shared/plans';
   import { api, type BusinessReport } from '../api';
-
-  let { onclose }: { onclose: () => void } = $props();
+  import Attention from './Attention.svelte';
 
   let report = $state<BusinessReport | null>(null);
   let error = $state('');
@@ -43,16 +42,16 @@
   const tokenPeak = $derived(Math.max(1, ...tokenDays.map((d) => d.total)));
 </script>
 
-<div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="business-title">
-  <!-- A grid, not a flex column: a column would squeeze the scrolling stats strip to nothing in a full modal. -->
-  <div class="modal-box grid max-w-5xl grid-cols-[minmax(0,1fr)] gap-6">
+<!-- A grid, not a flex column: a column would squeeze the scrolling stats strip to nothing. -->
+<section class="grid grid-cols-[minmax(0,1fr)] gap-6" aria-labelledby="business-title">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h2 id="business-title" class="text-lg font-semibold">Dashboard bisnis</h2>
+        <h1 id="business-title" class="text-2xl font-semibold">Ringkasan</h1>
         <p class="text-sm text-base-content/70">Rupiah tanpa kode unik transfer. Akun admin tidak dihitung.</p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
     </div>
+
+    <Attention />
 
     {#if error}
       <p role="alert" class="text-sm text-error">{error}</p>
@@ -251,6 +250,4 @@
         {/if}
       </section>
     {/if}
-  </div>
-  <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
-</div>
+</section>

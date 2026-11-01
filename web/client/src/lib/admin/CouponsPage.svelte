@@ -5,8 +5,6 @@
   import { PERIOD_LABEL, PLANS, rupiah } from '../../../../shared/plans';
   import { api, type Coupon, type NewCoupon } from '../api';
 
-  let { onclose }: { onclose: () => void } = $props();
-
   const PLAN_CHOICES = ['pro', 'creator'] as const;
   const PERIOD_CHOICES = ['month', 'year'] as const;
   const blank = (): NewCoupon => ({ code: '', kind: 'percent', value: 20, plans: [], periods: [], maxUses: null, lastDay: null, note: null });
@@ -58,15 +56,13 @@
   }
 </script>
 
-<div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="coupons-title">
-  <!-- A grid, not a flex column: a column would squeeze the scrolling table to nothing in a full modal. -->
-  <div class="modal-box grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-5">
+<!-- A grid, not a flex column: a column would squeeze the scrolling table to nothing. -->
+<section class="grid grid-cols-[minmax(0,1fr)] gap-5" aria-labelledby="coupons-title">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h2 id="coupons-title" class="text-lg font-semibold">Kupon</h2>
+        <h1 id="coupons-title" class="text-2xl font-semibold">Kupon</h1>
         <p class="text-sm text-base-content/70">Anggota mengetik kode saat memesan. Satu akun memakai satu kode sekali; harga founding tidak bisa digabung dengan kupon.</p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
     </div>
 
     {#if error}<p role="alert" class="text-sm text-error">{error}</p>{/if}
@@ -171,6 +167,4 @@
         </table>
       </div>
     {/if}
-  </div>
-  <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
-</div>
+</section>

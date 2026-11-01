@@ -4,10 +4,14 @@
 // model work costs in tokens (tokens.ts). Amounts leave out the unique codes.
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { requireAdmin, type AppEnv } from "./auth";
+import { googleEnabled, requireAdmin, signupOpen, type AppEnv } from "./auth";
+import { config } from "./config";
 import { db } from "./db";
 import { payments, users } from "./db/schema";
+import { mailEnabled } from "./mail";
 import { tokenSummary } from "./tokens";
+import { telegramBot } from "./watch";
+import { getCatalog } from "./worker";
 import { TRIAL_DAYS } from "../../shared/plans";
 
 const DAY_MS = 86_400_000;
@@ -113,5 +117,28 @@ businessApi.get("/admin/business", async (c) => {
     lapsed: lapsed.n,
     coupons,
     tokens: await tokenSummary(),
+  });
+});
+
+/**
+ * How the server is set up, for the admin console's settings page: switches and
+ * states only, never a key, a password or a backend address. They are changed in
+ * web/deploy/.env and take effect when the container restarts.
+ */
+businessApi.get("/admin/config", async (c) => {
+  const catalog = await getCatalog().catch(() => null);
+  return c.json({
+    signup: signupOpen(),
+    publicSite: process.env.PUBLIC_SITE === "on",
+    publicUrl: process.env.PUBLIC_URL || null,
+    google: googleEnabled(),
+    telegram: telegramBot(),
+    mail: mailEnabled(),
+    reminders: process.env.REMINDERS !== "off",
+    payments: Boolean(process.env.PAYMENT_INSTRUCTIONS?.trim()),
+    siteBrief: process.env.SITE_BRIEF !== "off",
+    tokenCost: Boolean(process.env.LLM_COST_IDR_PER_MTOK?.trim()),
+    backendLimit: config.allowedBackendUrls.length,
+    models: catalog ? { provider: catalog.defaults.provider, quick: catalog.defaults.quickModel, deep: catalog.defaults.deepModel } : null,
   });
 });

@@ -6,11 +6,7 @@
   import { PLANS } from '../../../shared/plans';
   import { api } from './api';
   import BillingDialog from './account/BillingDialog.svelte';
-  import BusinessDialog from './account/BusinessDialog.svelte';
-  import CouponsDialog from './account/CouponsDialog.svelte';
-  import PaymentsDialog from './account/PaymentsDialog.svelte';
   import ProfileDialog from './account/ProfileDialog.svelte';
-  import UsersDialog from './account/UsersDialog.svelte';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
   import { layout } from './stores/layout.svelte';
@@ -23,7 +19,7 @@
   const framed = $derived(!layout.focus || layoutOf(viewport) === 'narrow');
 
   let menu: HTMLDetailsElement | undefined = $state();
-  type Dialog = 'profile' | 'billing' | 'users' | 'payments' | 'coupons' | 'business';
+  type Dialog = 'profile' | 'billing';
   let dialog = $state<Dialog | null>(null);
 
   function open(which: Dialog) {
@@ -74,10 +70,7 @@
         <ul class="menu dropdown-content z-30 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-sm">
           <li><button onclick={() => open('profile')}>Profil</button></li>
           {#if !auth.isAdmin}<li><button onclick={() => open('billing')}>Paket & tagihan</button></li>{/if}
-          {#if auth.isAdmin}<li><button onclick={() => open('users')}>Pengguna</button></li>{/if}
-          {#if auth.isAdmin}<li><button onclick={() => open('payments')}>Pembayaran</button></li>{/if}
-          {#if auth.isAdmin}<li><button onclick={() => open('coupons')}>Kupon</button></li>{/if}
-          {#if auth.isAdmin}<li><button onclick={() => open('business')}>Dashboard bisnis</button></li>{/if}
+          {#if auth.isAdmin}<li><a href="#/admin" onclick={() => menu && (menu.open = false)}>Konsol admin</a></li>{/if}
           {#if auth.enabled}<li><button onclick={() => auth.logout()}>Keluar</button></li>{/if}
         </ul>
       </details>
@@ -108,12 +101,4 @@
   <ProfileDialog onclose={() => (dialog = null)} />
 {:else if dialog === 'billing'}
   <BillingDialog onclose={() => (dialog = null)} />
-{:else if dialog === 'users'}
-  <UsersDialog onclose={() => (dialog = null)} />
-{:else if dialog === 'payments'}
-  <PaymentsDialog onclose={() => (dialog = null)} />
-{:else if dialog === 'coupons'}
-  <CouponsDialog onclose={() => (dialog = null)} />
-{:else if dialog === 'business'}
-  <BusinessDialog onclose={() => (dialog = null)} />
 {/if}

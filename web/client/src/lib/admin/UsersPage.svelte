@@ -7,8 +7,6 @@
   import { api, type Account } from '../api';
   import { auth } from '../auth.svelte';
 
-  let { onclose }: { onclose: () => void } = $props();
-
   let accounts = $state<Account[]>([]);
   let error = $state('');
   let notice = $state('');
@@ -86,16 +84,14 @@
   }
 </script>
 
-<div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="users-title">
-  <div class="modal-box flex max-w-4xl flex-col gap-5">
+<section class="flex flex-col gap-5" aria-labelledby="users-title">
     <div class="flex items-start justify-between gap-3">
       <div>
-        <h2 id="users-title" class="text-lg font-semibold">Pengguna</h2>
+        <h1 id="users-title" class="text-2xl font-semibold">Pengguna</h1>
         <p class="text-sm text-base-content/70">
           Tiap akun punya riwayat, chat agent, skill, dan watchlist sendiri. Kuota kosong = kuota paketnya (admin: default server).
         </p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
     </div>
 
     {#if error}<p role="alert" class="text-sm text-error">{error}</p>{/if}
@@ -251,6 +247,4 @@
       </fieldset>
       <button class="btn btn-primary btn-sm" type="submit">Buat akun</button>
     </form>
-  </div>
-  <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
-</div>
+</section>

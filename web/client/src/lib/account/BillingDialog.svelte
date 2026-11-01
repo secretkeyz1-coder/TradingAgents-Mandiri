@@ -2,7 +2,7 @@
   // A member's plan and payments: pick a plan and period, and a coupon if they
   // have one, get the amount to transfer (the price plus a unique code) and the
   // bank details, say it is paid, and see past orders with their invoices. An
-  // admin confirms the payment (PaymentsDialog); a coupon that covers the whole
+  // admin confirms the payment (admin/PaymentsPage); a coupon that covers the whole
   // price activates the plan at once.
   import { FOUNDING, PERIOD_LABEL, PLANS, rupiah, type Period } from '../../../../shared/plans';
   import { api, type Billing, type CouponQuote, type Payment } from '../api';
