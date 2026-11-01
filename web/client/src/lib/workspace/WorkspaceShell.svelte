@@ -83,19 +83,19 @@
       : ws.dockSize === 'max'
         ? '0 1px minmax(0, 1fr)'
         : ws.dockSize === 'min'
-          ? 'minmax(0, 1fr) 1px 2.5rem'
+          ? 'minmax(0, 1fr) 1px auto'
           : `minmax(0, 1fr) ${SPLIT}px ${dockH}px`,
   );
 
   // Where a floating panel goes until the user moves it.
   function defaultRect(id: PanelId): Rect {
     const left = layout.focus ? 12 : 68;
-    if (id === 'market') return { x: left, y: 12, w: 300, h: Math.min(560, outerH - 24) };
+    if (id === 'market') return { x: left, y: 12, w: 340, h: Math.min(560, outerH - 24) };
     if (id === 'ai') return { x: outerW - 400, y: 12, w: 384, h: Math.min(640, outerH - 24) };
     const h = Math.min(360, outerH - 24);
     return { x: left, y: outerH - h - 12, w: Math.min(820, outerW - left - 420), h };
   }
-  const TITLES: Record<PanelId, string> = { market: 'Pasar', ai: 'AI', dock: 'Riwayat · Laporan · Log' };
+  const TITLES: Record<PanelId, string> = { market: 'Pasar', ai: 'AI', dock: 'Analisa, Pantau, Strategi' };
   const floating = $derived(PANELS.filter((p) => layout.effective(p.id) === 'float'));
   const tray = $derived(PANELS.filter((p) => layout.effective(p.id) === 'min'));
 
@@ -103,7 +103,7 @@
     { key: 'market', label: 'Pasar' },
     { key: 'chart', label: 'Chart' },
     { key: 'ai', label: 'AI' },
-    { key: 'dock', label: 'Riwayat' },
+    { key: 'dock', label: 'Lainnya' },
   ];
   const busy = $derived(!!(ws.run?.live || ws.backtest?.live));
 </script>
@@ -202,7 +202,7 @@
     </div>
 
     {#if screen === 'medium' && layout.modes.market === 'dock' && !layout.focus && ws.marketDrawer}
-      <div class="absolute inset-y-0 left-14 z-20 w-72 border-r border-base-300 shadow-xl">
+      <div class="absolute inset-y-0 left-14 z-20 w-80 border-r border-base-300 shadow-xl">
         <MarketPanel onclose={() => (ws.marketDrawer = false)} />
       </div>
     {/if}

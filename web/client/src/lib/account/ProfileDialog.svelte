@@ -1,7 +1,8 @@
 <script lang="ts">
-  // The signed-in user's own settings: plan and today's quota, e-mail and
-  // WhatsApp, the Telegram chat that gets their messages, the public track
-  // record (Creator), their password, and two-step sign-in.
+  // The signed-in user's own settings, in four tabs: Akun (plan and today's quota,
+  // e-mail, WhatsApp), Notifikasi (the Telegram chat that gets their messages),
+  // Halaman publik (the public track record, Creator) and Keamanan (password,
+  // two-step sign-in). `start` opens it on one of them.
   import { PLANS } from '../../../../shared/plans';
   import { api } from '../api';
   import { auth } from '../auth.svelte';
@@ -10,7 +11,17 @@
   import PublicProfileSection from './PublicProfileSection.svelte';
   import TwoFactorSection from './TwoFactorSection.svelte';
 
-  let { onclose }: { onclose: () => void } = $props();
+  type Tab = 'akun' | 'notifikasi' | 'publik' | 'keamanan';
+  let { onclose, start = 'akun' }: { onclose: () => void; start?: Tab } = $props();
+
+  const TABS: { key: Tab; label: string }[] = [
+    { key: 'akun', label: 'Akun' },
+    { key: 'notifikasi', label: 'Notifikasi' },
+    { key: 'publik', label: 'Halaman publik' },
+    { key: 'keamanan', label: 'Keamanan' },
+  ];
+  // svelte-ignore state_referenced_locally
+  let tab = $state<Tab>(start);
 
   usage.refresh();
   watch.load();
@@ -119,7 +130,13 @@
       <button class="btn btn-ghost btn-sm" onclick={onclose}>Tutup</button>
     </div>
 
-    {#if auth.user}
+    <div role="tablist" class="tabs tabs-border tabs-sm -mt-2 flex-nowrap overflow-x-auto" aria-label="Bagian profil">
+      {#each TABS as t (t.key)}
+        <button role="tab" class="tab whitespace-nowrap" class:tab-active={tab === t.key} aria-selected={tab === t.key} onclick={() => (tab = t.key)}>{t.label}</button>
+      {/each}
+    </div>
+
+    {#if auth.user && tab === 'akun'}
       <section class="flex flex-col gap-1">
         <h3 class="text-sm font-semibold">Paket</h3>
         <p class="text-sm">
@@ -169,49 +186,53 @@
       </form>
     {/if}
 
-    <form class="flex flex-col gap-2" onsubmit={saveChat}>
-      <h3 class="text-sm font-semibold">Telegram</h3>
-      {#if watch.value && !watch.value.telegram.bot}
-        <p class="text-xs text-warning">
-          {auth.isAdmin ? 'Bot Telegram belum diatur di server (TELEGRAM_BOT_TOKEN), jadi pesan belum bisa dikirim.' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}
-        </p>
-      {/if}
-      <fieldset class="fieldset py-0">
-        <legend class="fieldset-legend pt-0">Chat ID</legend>
-        <div class="join w-full">
-          <input class="input join-item input-sm w-full" inputmode="numeric" placeholder="mis. 123456789" bind:value={chatId} />
-          <button class="btn btn-sm join-item" type="submit">Simpan</button>
+    {#if tab === 'notifikasi'}
+      <form class="flex flex-col gap-2" onsubmit={saveChat}>
+        <h3 class="text-sm font-semibold">Telegram</h3>
+        {#if watch.value && !watch.value.telegram.bot}
+          <p class="text-xs text-warning">
+            {auth.isAdmin ? 'Bot Telegram belum diatur di server (TELEGRAM_BOT_TOKEN), jadi pesan belum bisa dikirim.' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}
+          </p>
+        {/if}
+        <fieldset class="fieldset py-0">
+          <legend class="fieldset-legend pt-0">Chat ID</legend>
+          <div class="join w-full">
+            <input class="input join-item input-sm w-full" inputmode="numeric" placeholder="mis. 123456789" bind:value={chatId} />
+            <button class="btn btn-sm join-item" type="submit">Simpan</button>
+          </div>
+          <p class="label whitespace-normal">
+            Kirim satu pesan ke bot app ini di Telegram, lalu cari ID-mu dengan @userinfobot (atau minta admin melihatnya).
+          </p>
+        </fieldset>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn btn-ghost btn-sm" type="button" onclick={() => watch.test()} disabled={!watch.value?.telegram.configured || watch.busy}>Kirim tes</button>
+          {#if chatSaved}<span class="text-xs text-success">{chatSaved}</span>{/if}
+          {#if chatError}<span role="alert" class="text-xs text-error">{chatError}</span>{/if}
+          {#if watch.notice}<span class="text-xs text-success">{watch.notice}</span>{/if}
+          {#if watch.error}<span role="alert" class="text-xs text-error">{watch.error}</span>{/if}
         </div>
-        <p class="label whitespace-normal">
-          Kirim satu pesan ke bot app ini di Telegram, lalu cari ID-mu dengan @userinfobot (atau minta admin melihatnya).
-        </p>
-      </fieldset>
-      <div class="flex flex-wrap items-center gap-2">
-        <button class="btn btn-ghost btn-sm" type="button" onclick={() => watch.test()} disabled={!watch.value?.telegram.configured || watch.busy}>Kirim tes</button>
-        {#if chatSaved}<span class="text-xs text-success">{chatSaved}</span>{/if}
-        {#if chatError}<span role="alert" class="text-xs text-error">{chatError}</span>{/if}
-        {#if watch.notice}<span class="text-xs text-success">{watch.notice}</span>{/if}
-        {#if watch.error}<span role="alert" class="text-xs text-error">{watch.error}</span>{/if}
-      </div>
-    </form>
+      </form>
+    {/if}
 
-    {#if auth.user}<PublicProfileSection />{/if}
+    {#if auth.user && tab === 'publik'}<PublicProfileSection />{/if}
 
-    <form class="flex flex-col gap-2" onsubmit={changePassword}>
-      <h3 class="text-sm font-semibold">{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</h3>
-      {#if auth.user?.hasPassword}
-        <input class="input input-sm w-full" type="password" autocomplete="current-password" placeholder="Kata sandi sekarang" required bind:value={current} />
-      {:else}
-        <p class="text-xs text-base-content/70">Akunmu masuk dengan Google. Buat kata sandi kalau ingin bisa masuk dengan email juga.</p>
-      {/if}
-      <input class="input input-sm w-full" type="password" autocomplete="new-password" placeholder="Kata sandi baru (min. 8 karakter)" minlength="8" required bind:value={next} />
-      <input class="input input-sm w-full" type="password" autocomplete="new-password" placeholder="Ulangi kata sandi baru" minlength="8" required bind:value={repeat} />
-      {#if pwError}<p role="alert" class="text-sm text-error">{pwError}</p>{/if}
-      {#if pwMessage}<p role="status" class="text-sm text-success">{pwMessage}</p>{/if}
-      <button class="btn btn-primary btn-sm self-start" type="submit" disabled={busy}>{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</button>
-    </form>
+    {#if tab === 'keamanan'}
+      <form class="flex flex-col gap-2" onsubmit={changePassword}>
+        <h3 class="text-sm font-semibold">{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</h3>
+        {#if auth.user?.hasPassword}
+          <input class="input input-sm w-full" type="password" autocomplete="current-password" placeholder="Kata sandi sekarang" required bind:value={current} />
+        {:else}
+          <p class="text-xs text-base-content/70">Akunmu masuk dengan Google. Buat kata sandi kalau ingin bisa masuk dengan email juga.</p>
+        {/if}
+        <input class="input input-sm w-full" type="password" autocomplete="new-password" placeholder="Kata sandi baru (min. 8 karakter)" minlength="8" required bind:value={next} />
+        <input class="input input-sm w-full" type="password" autocomplete="new-password" placeholder="Ulangi kata sandi baru" minlength="8" required bind:value={repeat} />
+        {#if pwError}<p role="alert" class="text-sm text-error">{pwError}</p>{/if}
+        {#if pwMessage}<p role="status" class="text-sm text-success">{pwMessage}</p>{/if}
+        <button class="btn btn-primary btn-sm self-start" type="submit" disabled={busy}>{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</button>
+      </form>
 
-    {#if auth.enabled}<TwoFactorSection />{/if}
+      {#if auth.enabled}<TwoFactorSection />{/if}
+    {/if}
   </div>
   <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
 </div>

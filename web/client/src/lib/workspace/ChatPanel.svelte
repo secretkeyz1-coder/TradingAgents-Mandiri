@@ -113,7 +113,8 @@
       aria-label="Pesan untuk agent"
       maxlength="4000"
     ></textarea>
-    <div class="flex items-center gap-2">
+    <!-- Wraps in a narrow (floating) panel, so Kirim never slides out of view. -->
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
       {#if !simple}
         <button class="btn btn-ghost btn-xs" type="button" onclick={() => (showMemory = !showMemory)}>
           Memori · {agent.memories.length}

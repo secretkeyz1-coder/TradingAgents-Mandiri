@@ -204,9 +204,11 @@
       role === 'support' || role === 'demand' ? p.up : role === 'resistance' || role === 'supply' ? p.down : ROLE_TOKEN[role] ? tokenColor(ROLE_TOKEN[role]) : p.accent;
     const roleFill = (role: string) =>
       tokenColor(role === 'support' || role === 'demand' ? '--color-success' : role === 'resistance' || role === 'supply' ? '--color-error' : (ROLE_TOKEN[role] ?? '--color-accent'), 0.13);
-    // Boxes keep their edges on the price axis, without a line across the chart.
-    const edge = (price: number, color: string) =>
-      priceLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineVisible: false, axisLabelVisible: true, title: '' }));
+    // A box carries its price range on its own tag: edges on the price axis piled up once there were a few zones.
+    const range = (bottom: number, top: number) => {
+      const short = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: v >= 1000 ? 0 : v >= 10 ? 2 : 4 });
+      return `${short(bottom)}–${short(top)}`;
+    };
     const drawn: Shape[] = [];
     // Agent drawings are priced in USD: on a rupiah venue they would land nowhere near the candles.
     for (const d of currency === 'IDR' ? [] : drawings) {
@@ -219,9 +221,8 @@
         // An end past the last bar keeps the box open to the right edge.
         const to = end && candles.length && end !== candles.at(-1)!.time ? end : null;
         const color = roleColor(x.role);
-        drawn.push({ type: 'box', from: toTime(from), to: to ? toTime(to) : null, top: x.top, bottom: x.bottom, color, fill: roleFill(x.role), text: d.label });
-        edge(x.top, color);
-        edge(x.bottom, color);
+        const text = d.label ? `${d.label} · ${range(x.bottom, x.top)}` : range(x.bottom, x.top);
+        drawn.push({ type: 'box', from: toTime(from), to: to ? toTime(to) : null, top: x.top, bottom: x.bottom, color, fill: roleFill(x.role), text });
       } else if (d.kind === 'label') {
         const at = atBar(x.time);
         if (at) drawn.push({ type: 'label', time: toTime(at), price: x.price, color: roleColor(x.role), text: x.text || d.label });

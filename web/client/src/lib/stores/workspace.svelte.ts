@@ -20,6 +20,40 @@ export type ChartView = 'tv' | 'ai';
 export type MobileTab = 'market' | 'chart' | 'ai' | 'dock';
 
 const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'watch', 'signals', 'lab', 'screener'];
+
+export type DockGroup = 'analisa' | 'pantau' | 'strategi';
+
+/** The dock's tabs in three groups: one analysis's work, what is being watched, and strategy testing. */
+export const DOCK_GROUPS: { key: DockGroup; label: string; tabs: { key: DockTab; label: string }[] }[] = [
+  {
+    key: 'analisa',
+    label: 'Analisa',
+    tabs: [
+      { key: 'history', label: 'Riwayat' },
+      { key: 'report', label: 'Laporan' },
+      { key: 'log', label: 'Log' },
+    ],
+  },
+  {
+    key: 'pantau',
+    label: 'Pantau',
+    tabs: [
+      { key: 'watch', label: 'Watchlist' },
+      { key: 'signals', label: 'Sinyal' },
+      { key: 'screener', label: 'Screener' },
+    ],
+  },
+  {
+    key: 'strategi',
+    label: 'Strategi',
+    tabs: [
+      { key: 'backtest', label: 'Backtest' },
+      { key: 'lab', label: 'Lab' },
+    ],
+  },
+];
+
+export const groupOf = (tab: DockTab) => DOCK_GROUPS.find((g) => g.tabs.some((t) => t.key === tab)) ?? DOCK_GROUPS[0];
 const DEFAULT_SYMBOL = 'IDX:COMPOSITE';
 const ID = /^[0-9a-f-]{36}$/;
 
@@ -41,6 +75,8 @@ class Workspace {
   backtest = $state<BacktestStream | null>(null);
   /** Bumped when a run or backtest finishes, so decision markers reload. */
   decisionsVersion = $state(0);
+  /** The tab each dock group showed last, so going back to a group finds it as it was left. */
+  #lastTab: Record<DockGroup, DockTab> = { analisa: 'history', pantau: 'watch', strategi: 'backtest' };
 
   constructor() {
     this.#read(location.hash);
@@ -103,6 +139,12 @@ class Workspace {
     this.dock = tab;
     if (this.dockSize === 'min') this.dockSize = 'normal';
     this.#write('replace');
+  }
+
+  /** Open a dock group on the tab it showed last. */
+  openGroup(key: DockGroup) {
+    this.#lastTab[groupOf(this.dock).key] = this.dock;
+    this.setDock(this.#lastTab[key]);
   }
 
   setMarket(key: string) {

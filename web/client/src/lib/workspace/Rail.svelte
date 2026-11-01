@@ -1,9 +1,9 @@
 <script lang="ts">
-  // The left rail: shows or hides each panel, and opens the dock's watchlist
-  // and screener. Riwayat, Laporan, Log and Backtest live as tabs in the dock
-  // itself, so they are not repeated here.
+  // The left rail: shows or hides the market list and the AI panel, and opens the
+  // dock on one of its groups (Analisa, Pantau, Strategi). The active group pressed
+  // again hides the dock, as the panel buttons do.
   import { layout, type PanelId } from '../stores/layout.svelte';
-  import { ws, type DockTab } from '../stores/workspace.svelte';
+  import { DOCK_GROUPS, groupOf, ws, type DockGroup } from '../stores/workspace.svelte';
 
   let { medium = false }: { medium?: boolean } = $props();
 
@@ -16,9 +16,19 @@
     else layout.toggle(id);
   }
 
-  function tab(t: DockTab) {
+  const ICONS: Record<DockGroup, string> = {
+    analisa: 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5',
+    pantau: 'm12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z',
+    strategi: 'M9 3h6M10 3v6.5L4.5 19a1.5 1.5 0 0 0 1.3 2.3h12.4a1.5 1.5 0 0 0 1.3-2.3L14 9.5V3M7.5 15h9',
+  };
+  // A docked dock folded down to its tab row counts as closed; a floating one never folds.
+  const dockOpen = () => shown('dock') && (layout.effective('dock') !== 'dock' || ws.dockSize !== 'min');
+  const onGroup = (key: DockGroup) => dockOpen() && groupOf(ws.dock).key === key;
+
+  function group(key: DockGroup) {
+    if (onGroup(key)) return layout.toggle('dock');
     if (layout.effective('dock') === 'min') layout.restore('dock');
-    ws.setDock(t);
+    ws.openGroup(key);
   }
 
   const busy = $derived(!!(ws.run?.live || ws.backtest?.live));
@@ -34,17 +44,11 @@
     AI
     {#if busy}<span class="status status-xs status-info absolute top-1.5 right-2 motion-safe:animate-pulse" aria-label="berjalan"></span>{/if}
   </button>
-  <button class="ta-rail" aria-pressed={shown('dock')} onclick={() => panel('dock')}>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 14h18" /></svg>
-    Bawah
-  </button>
   <div class="my-1 h-px w-8 bg-base-300"></div>
-  <button class="ta-rail" aria-pressed={ws.dock === 'watch' && shown('dock')} onclick={() => tab('watch')}>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>
-    Pantau
-  </button>
-  <button class="ta-rail" aria-pressed={ws.dock === 'screener' && shown('dock')} onclick={() => tab('screener')}>
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z" /></svg>
-    Screener
-  </button>
+  {#each DOCK_GROUPS as g (g.key)}
+    <button class="ta-rail" aria-pressed={onGroup(g.key)} title="{g.label}: {g.tabs.map((t) => t.label).join(', ')}" onclick={() => group(g.key)}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ICONS[g.key]} /></svg>
+      {g.label}
+    </button>
+  {/each}
 </nav>

@@ -23,10 +23,14 @@
 
   let menu: HTMLDetailsElement | undefined = $state();
   type Dialog = 'profile' | 'billing';
+  type ProfileTab = 'akun' | 'notifikasi' | 'publik' | 'keamanan';
   let dialog = $state<Dialog | null>(null);
+  let profileTab = $state<ProfileTab>('akun');
 
-  function open(which: Dialog) {
+  /** Open a dialog; the profile can open on one of its tabs. */
+  function open(which: Dialog, tab: ProfileTab = 'akun') {
     if (menu) menu.open = false;
+    profileTab = tab;
     dialog = which;
   }
 
@@ -101,7 +105,7 @@
   {/if}
 
   {#if mode.value === 'pemula'}
-    <BeginnerShell onprofile={() => open('profile')} />
+    <BeginnerShell onprofile={() => open('profile', 'notifikasi')} />
   {:else}
     <WorkspaceShell />
   {/if}
@@ -109,7 +113,7 @@
 </div>
 
 {#if dialog === 'profile'}
-  <ProfileDialog onclose={() => (dialog = null)} />
+  <ProfileDialog start={profileTab} onclose={() => (dialog = null)} />
 {:else if dialog === 'billing'}
   <BillingDialog onclose={() => (dialog = null)} />
 {/if}
