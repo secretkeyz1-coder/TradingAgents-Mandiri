@@ -340,7 +340,35 @@ Memulihkan database (hentikan app dulu: `docker compose stop app`):
 docker exec -i tradingagents-db-1 pg_restore -U tradingagents -d tradingagents --clean --if-exists < db-<waktu>.dump
 ```
 
-Backup ini masih di disk VPS yang sama; kalau disk atau VPS-nya hilang, backup ikut hilang. Salin berkala ke tempat lain (laptop, object storage) untuk perlindungan penuh.
+**Uji restore.** `web/deploy/restore-check.sh` membuktikan backup terbaru bisa dipulihkan, tanpa menyentuh database live:
+- Dump terbaru dipulihkan ke Postgres sementara (image yang sama dengan database live, tanpa port dan tanpa volume).
+- Jumlah baris setiap tabel dibandingkan dengan database live, yang hanya dibaca. Tabel yang dibuat setelah backup itu tampil dengan "-" di kolom backup.
+- Arsip data terbaru dibaca sampai habis, lalu container sementaranya dihapus.
+- Status keluar 0 hanya kalau restore berhasil dan ada akun admin.
+
+```bash
+sudo BACKUP_DIR=/home/<user>/tradingagents/backups sh web/deploy/restore-check.sh
+```
+
+Jalankan setidaknya seminggu sekali, misalnya lewat cron setiap Minggu pukul 03.00 WIB:
+
+```
+# /etc/cron.d/tradingagents-restore-check
+0 20 * * 6 root BACKUP_DIR=/home/<user>/tradingagents/backups sh /home/<user>/tradingagents/src/web/deploy/restore-check.sh >> /var/log/tradingagents-backup.log 2>&1
+```
+
+**Salinan di luar VPS.** Backup di atas masih ada di disk VPS yang sama: kalau disk atau VPS-nya hilang, backup ikut hilang. Dengan `BACKUP_REMOTE`, `backup.sh` juga menyalin setiap backup ke penyimpanan lain lewat [rclone](https://rclone.org), lalu menghapus salinan di sana yang lebih tua dari `REMOTE_KEEP_DAYS` (default 60 hari). Kalau unggahan gagal, skrip keluar dengan error yang tercatat di log, dan backup lokal tetap ada.
+
+Disiapkan sekali di VPS, sebagai root (cron berjalan sebagai root):
+1. Pasang rclone: `sudo apt-get install -y rclone`.
+2. Jalankan `sudo rclone config`. Buat remote untuk penyimpanannya (Cloudflare R2, Backblaze B2, atau S3 lain), sebaiknya di penyedia yang berbeda dari VPS. Lalu buat remote `crypt` di atasnya, supaya penyedia hanya menyimpan data terenkripsi.
+3. Simpan kata sandi crypt di luar VPS juga, misalnya di password manager. Tanpa kata sandi itu, salinannya tidak bisa dibuka setelah VPS hilang.
+4. Coba dulu dengan `sudo BACKUP_REMOTE=<remote-crypt>:tradingagents sh .../backup.sh`, lalu `sudo rclone ls <remote-crypt>:tradingagents`.
+5. Tambahkan `BACKUP_REMOTE=<remote-crypt>:tradingagents` ke baris cron di atas.
+
+Memulihkan dari salinan luar: `rclone copy <remote-crypt>:tradingagents/db-<waktu>.dump .`, lalu `pg_restore` seperti di atas.
+
+`BACKUP_PING_URL`, misalnya sebuah cek di healthchecks.io, dipanggil setelah semua salinan selesai. Kalau backup berhenti berjalan atau gagal mengunggah, layanan itu mengirim peringatan.
 
 ### Keamanan, log, dan error
 
