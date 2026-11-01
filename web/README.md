@@ -378,6 +378,16 @@ Memulihkan dari salinan luar: `rclone copy <remote-crypt>:tradingagents/db-<wakt
 - **Kode error:** setiap respons membawa `X-Request-Id`. Error 500 hanya menampilkan pesan umum dengan kode itu; pesan aslinya dan stack masuk log serta tabel `server_errors` (disimpan 30 hari).
 - **Konsol admin → Status layanan** menampilkan error itu, termasuk kegagalan kerja latar (pemindaian sinyal, cek harga, analisa, watchlist, ringkasan AI, rekap, pengingat). Jumlah 24 jam terakhir muncul di "Perlu tindakan" (`GET /api/admin/errors`).
 
+### Lebih dari satu instance
+
+Beberapa instance server boleh berjalan di atas satu database. Yang harus sama di semua instance disimpan di Postgres:
+- **Scheduler hanya jalan di satu instance:** pemindaian sinyal, cek harga, watchlist, rekap, pengingat, ringkasan AI, cek status, dan pembersihan. Instance itu memegang advisory lock Postgres (`locks.ts`). Kalau instance itu mati, instance lain mengambil alih dalam sekitar 15 detik; `docker stop` menyerahkannya saat itu juga. Log `scheduler_leader` menandai instance yang memegangnya.
+- **Batas percobaan** (kata sandi, kode dua langkah, pendaftaran, email) dihitung di tabel `rate_limits`, jadi berlaku untuk semua instance dan tidak hilang saat restart.
+- **Satu jawaban per sesi chat, dan satu uji Lab sekaligus,** di instance mana pun, lewat lease di tabel `leases`. Lease diperbarui selama kerja berjalan, dan lepas sendiri dalam 2 menit kalau instance-nya mati.
+- **Halaman status** membaca hasil cek terakhir dari `shared_values`, yang ditulis instance pemegang scheduler.
+
+Cache (candle, katalog model, halaman Creator, jawaban halaman status) tetap per instance. Isinya boleh sedikit berbeda antar-instance karena tidak pernah memberi jawaban salah; paling buruk satu instance mengambil ulang datanya. Analisa masih berjalan sebagai subprocess di instance yang menerimanya.
+
 ## Konfigurasi server
 
 Semua opsional, lewat environment variable:

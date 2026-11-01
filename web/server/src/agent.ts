@@ -11,6 +11,7 @@ import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
 import { modelsFor } from "./models";
 import { db } from "./db";
+import { holdLease, leaseHeld } from "./locks";
 import {
   agentMemories,
   agentMessages,
@@ -46,8 +47,12 @@ const turnSchema = z.object({
   timeframe: z.enum(["15m", "1h", "4h", "1d", "1wk", "1mo"]).optional(),
 });
 
-/** One turn per session at a time: a second send while the agent works is refused. */
-const busy = new Set<string>();
+/**
+ * One turn per session at a time, on any instance: a second send while the agent works is refused.
+ * A lease (locks.ts), renewed while the answer streams; one left by a crashed process frees itself.
+ */
+const ANSWER_LEASE_MS = 2 * 60_000;
+const answering = (id: string) => `agent:${id}`;
 
 export const agentApi = new Hono<AppEnv>();
 
@@ -78,13 +83,13 @@ agentApi.get("/agent/sessions/:id", async (c) => {
     .where(and(eq(agentSessions.id, id), eq(agentSessions.userId, c.get("user").id)));
   if (!session) return c.json({ error: "Not found" }, 404);
   const messages = await db.select().from(agentMessages).where(eq(agentMessages.sessionId, id)).orderBy(asc(agentMessages.id));
-  return c.json({ ...session, messages, busy: busy.has(id) });
+  return c.json({ ...session, messages, busy: await leaseHeld(answering(id)) });
 });
 
 agentApi.delete("/agent/sessions/:id", async (c) => {
   const id = c.req.param("id");
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
-  if (busy.has(id)) return c.json({ error: "Agent sedang menjawab di sesi ini" }, 409);
+  if (await leaseHeld(answering(id))) return c.json({ error: "Agent sedang menjawab di sesi ini" }, 409);
   await db.delete(agentSessions).where(and(eq(agentSessions.id, id), eq(agentSessions.userId, c.get("user").id)));
   return c.json({ ok: true });
 });
@@ -259,10 +264,13 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
     .from(agentSessions)
     .where(and(eq(agentSessions.id, id), eq(agentSessions.userId, user.id)));
   if (!session) return c.json({ error: "Not found" }, 404);
-  if (busy.has(id)) return c.json({ error: "Agent masih menjawab pesan sebelumnya" }, 409);
+  const lease = await holdLease(answering(id), ANSWER_LEASE_MS);
+  if (!lease) return c.json({ error: "Agent masih menjawab pesan sebelumnya" }, 409);
   const quota = await overLimit(user, "chat");
-  if (quota) return c.json({ error: quota }, 429);
-  busy.add(id);
+  if (quota) {
+    await lease.release();
+    return c.json({ error: quota }, 429);
+  }
 
   try {
     // The context the worker needs: recent turns, what to fold into the summary, memories, drawings.
@@ -389,11 +397,11 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
         }
         if (!stream.aborted) await send("end", {});
       } finally {
-        busy.delete(id);
+        await lease.release();
       }
     });
   } catch (e) {
-    busy.delete(id);
+    await lease.release();
     throw e;
   }
 });

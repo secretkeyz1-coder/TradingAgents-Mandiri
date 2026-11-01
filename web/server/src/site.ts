@@ -12,6 +12,7 @@ import { db } from "./db";
 import { marketBriefs } from "./db/schema";
 import { recordError } from "./errors";
 import { publicLedger } from "./ledger";
+import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { getCandles } from "./market";
 import { getCatalog, runCommand } from "./worker";
@@ -208,8 +209,9 @@ async function writeBrief() {
 
 export function startBriefs() {
   if (process.env.SITE_BRIEF === "off") return;
-  writeBrief();
-  setInterval(writeBrief, 3_600_000);
+  const tick = leaderOnly(writeBrief);
+  tick();
+  setInterval(tick, 3_600_000);
 }
 
 async function latestBrief() {

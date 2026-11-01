@@ -76,6 +76,8 @@ app.use(
 app.get("/healthz", (c) => c.text("ok"));
 
 // What the content policy would have blocked, as browsers report it: logged, at most 30 a minute.
+// Counted per instance on purpose (unlike limits.ts): the route takes anyone's request, and a
+// database write per report would let a flood of reports load the database it protects.
 let cspWindow = { minute: 0, count: 0 };
 app.post("/api/csp-report", async (c) => {
   const minute = Math.floor(Date.now() / 60_000);

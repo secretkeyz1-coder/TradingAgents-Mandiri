@@ -15,9 +15,11 @@ import { db } from "./db";
 import { analyses, users, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
 import { recordError } from "./errors";
 import { enqueue, subscribe } from "./jobs";
+import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { SYMBOL_PATTERN } from "./market";
 import { capMessage, limitsOf, needsVerification } from "./plans";
+import { readShared, writeShared } from "./shared";
 import { overLimit, room } from "./usage";
 import { getCatalog } from "./worker";
 
@@ -74,9 +76,9 @@ function nextRun(after = Date.now()): string {
 export const telegramBot = () => Boolean(settings.telegramToken);
 export const publicUrl = () => settings.publicUrl;
 
-/** The last message the bot tried to send, for the status page (status.ts). */
-let lastSend: { at: number; ok: boolean } | null = null;
-export const telegramHealth = () => ({ configured: telegramBot(), last: lastSend });
+/** The last message the bot tried to send, from any instance, for the status page (status.ts). */
+const markSend = (ok: boolean) => writeShared("telegram:last", { at: Date.now(), ok }).catch((err) => log.warn("telegram_mark_failed", { error: err }));
+export const telegramHealth = async () => ({ configured: telegramBot(), last: await readShared<{ at: number; ok: boolean }>("telegram:last") });
 
 export async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: boolean; error?: string }> {
   if (!settings.telegramToken) return { ok: false, error: "Bot Telegram belum diatur di server ini. Hubungi admin." };
@@ -90,10 +92,10 @@ export async function sendTelegram(chatId: string | null, html: string): Promise
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
     // A refusal for one chat (blocked bot, wrong ID) says nothing about the service; a server error does.
-    lastSend = { at: Date.now(), ok: Boolean(body.ok) || res.status < 500 };
+    await markSend(Boolean(body.ok) || res.status < 500);
     return body.ok ? { ok: true } : { ok: false, error: `Telegram: ${body.description ?? `HTTP ${res.status}`}` };
   } catch (e) {
-    lastSend = { at: Date.now(), ok: false };
+    await markSend(false);
     return { ok: false, error: `Telegram tidak bisa dihubungi: ${(e as Error).message}` };
   }
 }
@@ -223,7 +225,7 @@ async function tick() {
 }
 
 export function startWatchScheduler() {
-  const run = () => tick().catch((err) => recordError("watchlist", err));
+  const run = leaderOnly(() => tick().catch((err) => recordError("watchlist", err)));
   run();
   setInterval(run, 60_000);
 }

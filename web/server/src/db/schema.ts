@@ -661,3 +661,32 @@ export const serverErrors = pgTable(
   },
   (t) => [index("server_errors_created_at_idx").on(t.createdAt)],
 );
+
+/**
+ * Small values every server instance must agree on (shared.ts): what the schedulers last did
+ * and the latest status checks, written by the instance that runs the schedulers, read by all.
+ */
+export const sharedValues = pgTable("shared_values", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Work one instance does at a time (locks.ts): held until `expiresAt`, renewed while the work runs. */
+export const leases = pgTable("leases", {
+  key: text("key").primaryKey(),
+  /** The lease's own token (locks.ts holdLease): only the handle that took it renews or releases it. */
+  holder: text("holder").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/** Attempt counters for sign-in, two-step codes, sign-ups and mails (limits.ts): one fixed window per key. */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull(),
+    resetAt: timestamp("reset_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("rate_limits_reset_at_idx").on(t.resetAt)],
+);

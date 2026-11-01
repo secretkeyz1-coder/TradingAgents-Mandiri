@@ -1,8 +1,8 @@
-// The status page's checks (client/status). Every five minutes the server looks
-// at what members rely on: the database, the two price feeds, the analysis
-// engine, the signal scanner, the AI brief, Telegram and e-mail. It keeps the
-// latest result and counts each day's checks and failures per part for the
-// 90-day bars. A part that is not set up ("off") counts neither way. A server
+// The status page's checks (client/status). Every five minutes the instance that
+// runs the schedulers (locks.ts) looks at what members rely on: the database, the
+// two price feeds, the analysis engine, the signal scanner, the AI brief, Telegram
+// and e-mail. It keeps the latest result where every instance reads it (shared.ts)
+// and counts each day's checks and failures per part for the 90-day bars. A part that is not set up ("off") counts neither way. A server
 // that is down cannot report itself, so the page says when it last checked.
 import { desc, gte, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -11,7 +11,9 @@ import { BINANCE_HOSTS } from "./binance";
 import { db } from "./db";
 import { marketBriefs, statusDays } from "./db/schema";
 import { recordError } from "./errors";
+import { leaderOnly } from "./locks";
 import { mailEnabled } from "./mail";
+import { readShared, writeShared } from "./shared";
 import { telegramHealth } from "./watch";
 import { catalogHealth } from "./worker";
 
@@ -71,7 +73,7 @@ async function check(): Promise<Part[]> {
     detail: !engine ? "Belum dimuat sejak server menyala" : engine.ok ? "Siap menerima analisa" : "Gagal dimuat; analisa dan agent chart tidak bisa berjalan",
   });
 
-  const scan = scanHealth();
+  const scan = await scanHealth();
   const sinceScan = Date.now() - (scan?.at ?? STARTED);
   const stuck = sinceScan > 20 * MINUTE;
   parts.push({
@@ -100,7 +102,7 @@ async function check(): Promise<Part[]> {
     });
   }
 
-  const telegram = telegramHealth();
+  const telegram = await telegramHealth();
   const failedLately = telegram.last && !telegram.last.ok && Date.now() - telegram.last.at < HOUR;
   parts.push({
     key: "telegram",
@@ -113,12 +115,12 @@ async function check(): Promise<Part[]> {
   return parts;
 }
 
-let latest: { at: number; parts: Part[] } | null = null;
+type Latest = { at: number; parts: Part[] };
 
-/** One round of checks, kept as the latest and added to today's tally. */
+/** One round of checks, kept as the latest for every instance and added to today's tally. */
 async function sample() {
   const parts = await check();
-  latest = { at: Date.now(), parts };
+  await writeShared("status:latest", { at: Date.now(), parts } satisfies Latest);
   const day = wibDay();
   for (const p of parts) {
     if (p.state === "off") continue;
@@ -134,7 +136,7 @@ async function sample() {
 }
 
 export function startStatusChecks() {
-  const run = () => sample().catch((err) => recordError("status", err));
+  const run = leaderOnly(() => sample().catch((err) => recordError("status", err)));
   // After boot settles: the engine catalog and the first scan need a moment.
   setTimeout(run, 90_000);
   setInterval(run, 5 * MINUTE);
@@ -144,7 +146,12 @@ let answer: { at: number; body: unknown } | null = null;
 let inflight: Promise<unknown> | null = null;
 
 async function load() {
-  if (!latest) latest = { at: Date.now(), parts: await check() };
+  // The round the leading instance checked last; a fresh database has none yet, so this one checks once itself.
+  let latest = await readShared<Latest>("status:latest");
+  if (!latest) {
+    latest = { at: Date.now(), parts: await check() };
+    await writeShared("status:latest", latest);
+  }
   const since = wibDay(Date.now() - (HISTORY_DAYS - 1) * 24 * HOUR);
   const rows = await db.select().from(statusDays).where(gte(statusDays.day, since));
   const history: Record<string, Record<string, number>> = {};

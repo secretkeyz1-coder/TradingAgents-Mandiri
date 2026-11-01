@@ -14,6 +14,7 @@ import { z } from "zod";
 import { config } from "./config";
 import { db } from "./db";
 import { agentMemories, agentSessions, agentSkills, analyses, authTokens, chartDrawings, payments, users, watchlist, watchRuns } from "./db/schema";
+import { allow, clearFailures, lockedFor, recordFailure } from "./limits";
 import { log } from "./log";
 import { composeMail, mailEnabled, sendMail } from "./mail";
 import { limitsOf, onTrial, planOf, trialEnd } from "./plans";
@@ -88,20 +89,11 @@ export async function ensureAccounts(): Promise<User> {
 
 /** Behind the proxy, X-Real-IP is the client (nginx sets it); run directly, every caller shares one bucket. */
 const clientAddress = (c: Context) => c.req.header("x-real-ip") ?? "direct";
-const failures = new Map<string, { count: number; until: number }>();
 
-function blockedFor(address: string): number {
-  const entry = failures.get(address);
-  if (!entry || entry.until < Date.now()) return 0;
-  return entry.count >= MAX_FAILURES ? entry.until - Date.now() : 0;
-}
-
-function recordFailure(address: string) {
-  const now = Date.now();
-  const entry = failures.get(address);
-  if (!entry || entry.until < now) failures.set(address, { count: 1, until: now + FAILURE_WINDOW_MS });
-  else entry.count += 1;
-}
+// Wrong passwords per address and wrong codes per account, counted for every instance (limits.ts).
+const blockedFor = (key: string) => lockedFor(`fail:${key}`, MAX_FAILURES);
+const failed = (key: string) => recordFailure(`fail:${key}`, FAILURE_WINDOW_MS);
+const succeeded = (key: string) => clearFailures(`fail:${key}`);
 
 async function startSession(c: Context, user: User) {
   const expires = Date.now() + SESSION_DAYS * 86_400_000;
@@ -179,13 +171,13 @@ async function secondFactor(user: User, code: string): Promise<boolean> {
 /** secondFactor with wrong codes counted per account, as sign-in counts them per address: six digits fall to guessing otherwise. */
 async function checkedCode(user: User, code: string): Promise<{ error: string; status: 401 | 429 } | null> {
   const key = `2fa:${user.id}`;
-  const wait = blockedFor(key);
+  const wait = await blockedFor(key);
   if (wait) return { error: `Terlalu banyak kode salah. Coba lagi dalam ${Math.ceil(wait / 60_000)} menit.`, status: 429 };
   if (await secondFactor(user, code)) {
-    failures.delete(key);
+    await succeeded(key);
     return null;
   }
-  recordFailure(key);
+  await failed(key);
   return { error: "Kode salah atau sudah pernah dipakai.", status: 401 };
 }
 
@@ -254,21 +246,9 @@ function siteUrl(c: Context): string {
 
 const secureCookie = (c: Context) => c.req.header("x-forwarded-proto") === "https" || new URL(c.req.url).protocol === "https:";
 
-/** At most `max` attempts per key within the window (in memory: a restart forgets them). */
-function limiter(max: number, windowMs: number) {
-  const seen = new Map<string, number[]>();
-  return (key: string) => {
-    const now = Date.now();
-    const recent = (seen.get(key) ?? []).filter((t) => t > now - windowMs);
-    if (recent.length >= max) return false;
-    recent.push(now);
-    seen.set(key, recent);
-    if (seen.size > 10_000) seen.clear();
-    return true;
-  };
-}
-const signupLimit = limiter(5, 3_600_000);
-const mailLimit = limiter(5, 3_600_000);
+// Sign-ups per address, and mails per address, account or e-mail: five an hour each, for every instance (limits.ts).
+const signupLimit = (address: string) => allow(`signup:${address}`, 5, 3_600_000);
+const mailLimit = (key: string) => allow(`mail:${key}`, 5, 3_600_000);
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -371,15 +351,15 @@ const loginSchema = z.object({ username: z.string().max(200), password: z.string
 authApi.post("/login", async (c) => {
   if (!authEnabled()) return c.json({ auth: false, user: localAdmin ? publicUser(localAdmin) : null });
   const address = clientAddress(c);
-  const wait = blockedFor(address);
+  const wait = await blockedFor(address);
   if (wait) return c.json({ error: `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(wait / 60_000)} menit.` }, 429);
   const body = loginSchema.safeParse(await c.req.json().catch(() => null));
   const user = body.success ? await checkPassword(body.data.username, body.data.password) : null;
   if (!user) {
-    recordFailure(address);
+    await failed(address);
     return c.json({ error: "Nama pengguna atau kata sandi salah, atau akun dinonaktifkan." }, 401);
   }
-  failures.delete(address);
+  await succeeded(address);
   // With two-step sign-in the password only earns a ticket for the code step.
   if (user.totpEnabledAt) return c.json({ auth: false, twoFactor: true, ticket: ticketFor(user) });
   await startSession(c, user);
@@ -389,17 +369,17 @@ authApi.post("/login", async (c) => {
 authApi.post("/login/2fa", async (c) => {
   if (!authEnabled()) return c.json({ error: "Login tidak aktif di server ini" }, 400);
   const address = clientAddress(c);
-  const wait = blockedFor(address);
+  const wait = await blockedFor(address);
   if (wait) return c.json({ error: `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(wait / 60_000)} menit.` }, 429);
   const body = z.object({ ticket: z.string().max(300), code: z.string().trim().min(6).max(20) }).safeParse(await c.req.json().catch(() => null));
   const user = body.success ? await ticketUser(body.data.ticket) : null;
   if (!body.success || !user) return c.json({ error: "Langkah masuk ini sudah kedaluwarsa. Masuk lagi dari awal." }, 410);
   const refused = await checkedCode(user, body.data.code);
   if (refused) {
-    recordFailure(address);
+    await failed(address);
     return c.json({ error: refused.error }, refused.status);
   }
-  failures.delete(address);
+  await succeeded(address);
   await startSession(c, user);
   return c.json({ auth: true, user: publicUser(user) });
 });
@@ -424,7 +404,7 @@ const signupSchema = z.object({
 
 authApi.post("/signup", async (c) => {
   if (!signupOpen()) return c.json({ error: "Pendaftaran belum dibuka" }, 403);
-  if (!signupLimit(clientAddress(c))) return c.json({ error: "Terlalu banyak pendaftaran dari jaringan ini. Coba lagi nanti." }, 429);
+  if (!(await signupLimit(clientAddress(c)))) return c.json({ error: "Terlalu banyak pendaftaran dari jaringan ini. Coba lagi nanti." }, 429);
   const body = signupSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
   const { email, password } = body.data;
@@ -463,7 +443,7 @@ authApi.get("/verify-email", async (c) => {
 authApi.post("/password/forgot", async (c) => {
   const body = z.object({ email: emailSchema }).safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "Email tidak valid" }, 400);
-  if (!mailLimit(`forgot:${clientAddress(c)}`) || !mailLimit(`forgot:${body.data.email}`)) {
+  if (!(await mailLimit(`forgot:${clientAddress(c)}`)) || !(await mailLimit(`forgot:${body.data.email}`))) {
     return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
   }
   // The same answer whether or not the address has an account, so this form cannot find accounts.
@@ -691,7 +671,7 @@ meApi.post("/me/verify-email", async (c) => {
   const me = c.get("user");
   if (!me.email) return c.json({ error: "Akun ini belum punya email" }, 400);
   if (me.emailVerifiedAt) return c.json({ ok: true, mailed: false });
-  if (!mailLimit(`verify:${me.id}`)) return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
+  if (!(await mailLimit(`verify:${me.id}`))) return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
   const sent = await sendVerification(c, me, me.email);
   return c.json({ ok: true, mailed: sent.ok });
 });
@@ -707,7 +687,7 @@ meApi.post("/me/email", async (c) => {
     .from(users)
     .where(and(eq(users.email, email), ne(users.id, me.id)));
   if (taken) return c.json({ error: "Email ini sudah dipakai akun lain" }, 409);
-  if (!mailLimit(`email:${me.id}`)) return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
+  if (!(await mailLimit(`email:${me.id}`))) return c.json({ error: "Terlalu sering. Coba lagi nanti." }, 429);
   // An account without an address takes it now (unverified), so it can sign in and reset with it.
   const [user] = me.email ? [me] : await db.update(users).set({ email }).where(eq(users.id, me.id)).returning();
   const sent = await sendVerification(c, user, email);

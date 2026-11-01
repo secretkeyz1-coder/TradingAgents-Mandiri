@@ -9,6 +9,7 @@ import { db } from "./db";
 import { notices, payments, users } from "./db/schema";
 import { recordError } from "./errors";
 import { invoiceLink } from "./invoice";
+import { leaderOnly } from "./locks";
 import { composeMail, sendMail } from "./mail";
 import { escape, publicUrl, sendTelegram } from "./watch";
 import { PLANS, rupiah, TRIAL_DAYS } from "../../shared/plans";
@@ -140,7 +141,7 @@ export async function sendReminders(now = new Date()): Promise<void> {
 
 export function startReminders() {
   if (process.env.REMINDERS === "off") return;
-  const tick = () => sendReminders().catch((err) => recordError("reminders", err));
+  const tick = leaderOnly(() => sendReminders().catch((err) => recordError("reminders", err)));
   setTimeout(tick, 60_000);
   setInterval(tick, HOUR_MS);
 }

@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { labRuns, userScripts } from "./db/schema";
+import { holdLease, leaseHeld } from "./locks";
 import { capMessage, limitsOf } from "./plans";
 import { tradeCost } from "./ledger";
 import { getLabCandles, LAB_MAX_DAYS, SYMBOL_PATTERN, type Interval } from "./market";
@@ -26,8 +27,12 @@ export const LAB_ENGINES: Record<string, { label: string; timeframes: string[] }
 };
 const MAX_RUNS_KEPT = 30;
 const ENGINE_TIMEOUT_MS = 3 * 60_000;
-/** One run at a time on the server: a run is minutes of CPU for long histories. */
-let running = false;
+/**
+ * One run at a time across instances: a run is minutes of CPU for long histories. A lease
+ * (locks.ts), renewed while the run lasts; one left by a crashed process frees itself.
+ */
+const RUN_LEASE = "lab";
+const RUN_LEASE_MS = 2 * 60_000;
 
 const runSchema = z.object({
   strategy: z.discriminatedUnion("kind", [
@@ -163,7 +168,7 @@ export const labApi = new Hono<AppEnv>();
 labApi.get("/lab", async (c) => {
   const user = c.get("user");
   const scripts = await db.select({ id: userScripts.id, name: userScripts.name }).from(userScripts).where(eq(userScripts.userId, user.id));
-  return c.json({ engines: LAB_ENGINES, scripts, maxDays: LAB_MAX_DAYS, busy: running });
+  return c.json({ engines: LAB_ENGINES, scripts, maxDays: LAB_MAX_DAYS, busy: await leaseHeld(RUN_LEASE) });
 });
 
 labApi.post("/lab/run", async (c) => {
@@ -192,8 +197,8 @@ labApi.post("/lab/run", async (c) => {
     .where(and(eq(labRuns.userId, user.id), gte(labRuns.createdAt, new Date(Date.now() - 86_400_000))));
   const perDay = limitsOf(user).labRuns;
   if (today >= perDay) return c.json({ error: capMessage(user, perDay, "uji Lab per 24 jam") }, 429);
-  if (running) return c.json({ error: "Lab sedang menjalankan uji lain. Coba lagi sebentar lagi." }, 429);
-  running = true;
+  const lease = await holdLease(RUN_LEASE, RUN_LEASE_MS);
+  if (!lease) return c.json({ error: "Lab sedang menjalankan uji lain. Coba lagi sebentar lagi." }, 429);
   try {
     const result = await runLab(config, code);
     const [saved] = await db.insert(labRuns).values({ userId: user.id, name, config, result }).returning({ id: labRuns.id, createdAt: labRuns.createdAt });
@@ -202,7 +207,7 @@ labApi.post("/lab/run", async (c) => {
     await db.delete(labRuns).where(and(eq(labRuns.userId, user.id), notInArray(labRuns.id, keep.map((k) => k.id))));
     return c.json({ id: saved.id, createdAt: saved.createdAt, name, config, ...result });
   } finally {
-    running = false;
+    await lease.release();
   }
 });
 

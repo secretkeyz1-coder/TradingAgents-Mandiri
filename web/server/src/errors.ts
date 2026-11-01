@@ -5,6 +5,7 @@
 import { count, desc, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import { serverErrors } from "./db/schema";
+import { leaderOnly } from "./locks";
 import { log } from "./log";
 
 const KEEP_DAYS = 30;
@@ -45,11 +46,12 @@ export async function recordError(
 
 /** Drop errors older than KEEP_DAYS, now and once a day; started with the other schedulers (index.ts). */
 export function startErrorPruning() {
-  const prune = () =>
+  const prune = leaderOnly(() =>
     db
       .delete(serverErrors)
       .where(lt(serverErrors.createdAt, new Date(Date.now() - KEEP_DAYS * 86_400_000)))
-      .catch((err) => log.error("error_prune_failed", { error: err }));
+      .catch((err) => log.error("error_prune_failed", { error: err })),
+  );
   prune();
   setInterval(prune, 86_400_000);
 }

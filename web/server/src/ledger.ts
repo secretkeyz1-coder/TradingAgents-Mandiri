@@ -26,6 +26,7 @@ import { binancePair, binancePerpetual } from "./binance";
 import { db } from "./db";
 import { ledgerRecaps, ledgerSignals, signalAlerts, users, type SignalStatus } from "./db/schema";
 import { recordError } from "./errors";
+import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { getCandles, SYMBOL_PATTERN } from "./market";
 import { quickjs } from "./script-run";
@@ -567,5 +568,5 @@ export function startLedgerRecaps() {
       );
     }
   };
-  setInterval(tick, 60_000);
+  setInterval(leaderOnly(tick), 60_000);
 }

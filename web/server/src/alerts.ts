@@ -17,6 +17,7 @@ import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, t
 import { openCreatorSignals, recordCreatorSignal, scoreCreatorSignal } from "./creators";
 import { recordError } from "./errors";
 import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
+import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { capMessage, limitsOf, planOf } from "./plans";
 import { checkPrices, notificationsInUse } from "./price-alerts";
@@ -25,6 +26,7 @@ import { toScriptBars } from "../../shared/script";
 import { binancePair, binancePerpetual } from "./binance";
 import { cryptoBase, storedVenue, VENUES, venueOfTv, type VenueId } from "./venues";
 import { runOnSymbol, type ScriptTimeframe } from "./script-run";
+import { readShared, writeShared } from "./shared";
 import { escape, publicUrl, sendTelegram, telegramBot } from "./watch";
 import { runCommand } from "./worker";
 
@@ -130,11 +132,10 @@ function closeMessage(
 
 let running = false;
 
-/** One scan. `only` limits it to some alerts (a new one's silent first scan). */
-/** When the last full scan finished and whether it threw, for the status page (status.ts). */
-let lastScan: { at: number; ok: boolean } | null = null;
-export const scanHealth = () => lastScan;
+/** When the last full scan finished and whether it threw, for the status page (status.ts) on any instance. */
+export const scanHealth = () => readShared<{ at: number; ok: boolean }>("scan:last");
 
+/** One scan. `only` limits it to some alerts (a new one's silent first scan). */
 async function scan(only?: string[], withHourly = true) {
   if (running) return;
   running = true;
@@ -304,7 +305,7 @@ async function scan(only?: string[], withHourly = true) {
   } finally {
     running = false;
     // A new alert's own first scan (only) is not the scheduled one.
-    if (!only) lastScan = { at: Date.now(), ok: !failed };
+    if (!only) await writeShared("scan:last", { at: Date.now(), ok: !failed }).catch((err) => recordError("scan", err));
   }
 }
 
@@ -323,7 +324,7 @@ export function startAlertScheduler() {
     lastSlot = slot;
     scan(undefined, slot % 3 === 0).catch((err) => recordError("scan", err));
   };
-  setInterval(tick, 20_000);
+  setInterval(leaderOnly(tick), 20_000);
 }
 
 export const alertsApi = new Hono<AppEnv>();
