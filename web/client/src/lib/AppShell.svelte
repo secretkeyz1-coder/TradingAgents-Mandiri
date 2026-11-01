@@ -44,6 +44,11 @@
       resent = (e as Error).message;
     }
   }
+  // Whether the server can e-mail a link decides what an unverified account is asked to do:
+  // open the link, or wait for the admin (no mail set up, Konsol admin → Pengguna).
+  $effect(() => {
+    if (auth.user?.email && !auth.user.emailVerified && !auth.configLoaded) auth.loadConfig();
+  });
 
   /** The account button: initials, the name people chose (else the username), and one badge for role or plan. */
   const shownName = $derived(auth.user ? auth.user.displayName || auth.user.username : '');
@@ -94,13 +99,19 @@
       <button class="btn btn-ghost btn-xs" onclick={() => (auth.notice = null)}>Tutup</button>
     </div>
   {/if}
-  {#if auth.user?.email && !auth.user.emailVerified}
+  {#if auth.user?.email && !auth.user.emailVerified && auth.configLoaded}
     <div class="alert alert-soft alert-warning shrink-0 flex-wrap justify-between gap-2 rounded-none border-x-0 border-t-0 px-4 py-2 text-sm">
-      <span>
-        Verifikasi <strong>{auth.user.email}</strong> untuk memakai analisa AI dan chat agent{auth.user.trialUsed ? '' : ', sekaligus mengaktifkan trial Pro'}. Cek kotak masuk dan
-        folder spam.
-      </span>
-      {#if resent}<span class="text-xs">{resent}</span>{:else}<button class="btn btn-xs" onclick={resend}>Kirim ulang tautan</button>{/if}
+      {#if auth.config.mail}
+        <span>
+          Verifikasi <strong>{auth.user.email}</strong> untuk memakai analisa AI dan chat agent{auth.user.trialUsed ? '' : ', sekaligus mengaktifkan trial Pro'}. Cek kotak masuk dan
+          folder spam.
+        </span>
+        {#if resent}<span class="text-xs">{resent}</span>{:else}<button class="btn btn-xs" onclick={resend}>Kirim ulang tautan</button>{/if}
+      {:else}
+        <span>
+          Akunmu menunggu verifikasi admin. Setelah itu analisa AI dan chat agent bisa dipakai{auth.user.trialUsed ? '' : ', dan trial Pro aktif'}.
+        </span>
+      {/if}
     </div>
   {/if}
 

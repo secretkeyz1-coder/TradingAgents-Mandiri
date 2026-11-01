@@ -79,7 +79,9 @@
       {#if mode === 'login'}
         <p class="text-sm text-base-content/70">Uji indikatormu dengan jujur, catat sinyalnya, dan lihat hasil nyatanya setelah biaya.</p>
       {:else if mode === 'signup'}
-        <p class="text-sm text-base-content/70">Gratis selamanya untuk dicoba. Paket Pro aktif {auth.config.trialDays} hari setelah emailmu terverifikasi.</p>
+        <p class="text-sm text-base-content/70">
+          Gratis selamanya untuk dicoba. Paket Pro aktif {auth.config.trialDays} hari setelah {auth.config.mail ? 'emailmu terverifikasi' : 'akunmu diverifikasi admin'}.
+        </p>
       {:else if mode === 'forgot'}
         <p class="text-sm text-base-content/70">Masukkan email akunmu. Kami kirim tautan untuk membuat kata sandi baru.</p>
       {:else if mode === '2fa'}

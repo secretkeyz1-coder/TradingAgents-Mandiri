@@ -32,6 +32,8 @@ class Auth {
   /** Set when the session check itself failed (server down), not when signed out. */
   error = $state('');
   config = $state<AuthConfig>({ signup: false, google: false, mail: false, trialDays: 7 });
+  /** loadConfig() has answered (or failed), so `config` is the server's and not the defaults. */
+  configLoaded = $state(false);
   /** A message from the link that opened the page, shown once. */
   notice = $state<Notice | null>(null);
   /**
@@ -76,6 +78,8 @@ class Auth {
       if (res.ok) this.config = await res.json();
     } catch {
       /* the login form works without the extras */
+    } finally {
+      this.configLoaded = true;
     }
   }
 
