@@ -1,5 +1,6 @@
 // Members run on the server's provider and models whatever they send, and never see
-// key names or backend URLs (models.ts); admins keep their choice. The admin console's
+// key names or backend URLs (models.ts); their analyses and backtests also run the
+// standard analysis (shared/analysis.ts). Admins keep their choice. The admin console's
 // read-only settings are for admins only and carry no secret (business.ts).
 import { expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
@@ -48,6 +49,29 @@ test("an admin keeps the models it chose", async () => {
   expect(asked.status).toBe(201);
   const [row] = await db.select({ request: analyses.request }).from(analyses).where(eq(analyses.id, asked.body.id));
   expect((row.request as unknown as Record<string, unknown>).quickModel).toBe("pilihan-admin");
+});
+
+test("a member's analyses and backtests run the standard analysis; an admin's run as sent", async () => {
+  const d = (await call("/api/options", { cookie: await admin() })).body.defaults;
+  const m = await member({ plan: "pro", verified: true });
+  const sent = { analysts: ["news"], depth: 5, language: "English", provider: d.provider, quickModel: d.quickModel, deepModel: d.deepModel };
+  const stored = async (id: string) =>
+    (await db.select({ request: analyses.request }).from(analyses).where(eq(analyses.id, id)))[0].request as unknown as Record<string, unknown>;
+
+  // A crypto pair has no company behind it, so no fundamentals; a stock has.
+  const crypto = await call("/api/analyses", { cookie: m.cookie, body: { ticker: "BTC-USD", date: today(), ...sent } });
+  expect(crypto.status).toBe(201);
+  expect(await stored(crypto.body.id)).toMatchObject({ analysts: ["market", "social", "news"], depth: 1, language: "Indonesian" });
+  const stock = await call("/api/analyses", { cookie: m.cookie, body: { ticker: "BBCA.JK", date: today(), ...sent } });
+  expect(stock.status).toBe(201);
+  expect(await stored(stock.body.id)).toMatchObject({ analysts: ["market", "social", "news", "fundamentals"], depth: 1, language: "Indonesian" });
+  const backtest = await call("/api/backtests", { cookie: m.cookie, body: { tickers: ["BTC-USD", "BBCA.JK"], start: today(), end: today(), everyNDays: 14, ...sent } });
+  expect(backtest.status).toBe(201);
+  expect(await stored(backtest.body.id)).toMatchObject({ analysts: ["market", "social", "news", "fundamentals"], depth: 1, language: "Indonesian" });
+
+  const own = await call("/api/analyses", { cookie: await admin(), body: { ticker: "BTC-USD", date: today(), ...sent } });
+  expect(own.status).toBe(201);
+  expect(await stored(own.body.id)).toMatchObject({ analysts: ["news"], depth: 5, language: "English" });
 });
 
 test("a member's Telegram error names no server setting", async () => {

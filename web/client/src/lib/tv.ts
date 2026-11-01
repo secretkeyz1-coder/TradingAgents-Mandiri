@@ -143,12 +143,6 @@ export function resolveSymbol(input: string): { tv: string; yahoo: string | null
   return { tv: toTradingView(s), yahoo: s };
 }
 
-/** Assets with no company behind them: the fundamentals analyst has nothing to read. */
-export function hasNoFundamentals(yahoo: string): boolean {
-  const s = yahoo.trim().toUpperCase();
-  return /-(USD|USDT|USDC|BTC|ETH)$/.test(s) || s.endsWith('=X') || s.endsWith('=F') || s.startsWith('^');
-}
-
 /** The market list's own name for a symbol ("Emas", "Bank Central Asia"), when the list has it. */
 export function nameOf(tv: string): string | null {
   for (const tab of MARKET_TABS) for (const group of tab.groups) for (const [symbol, name] of group.symbols) if (symbol === tv) return name;

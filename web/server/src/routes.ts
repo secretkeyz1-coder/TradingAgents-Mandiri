@@ -9,7 +9,7 @@ import { db } from "./db";
 import { analyses, analysisEvents, users, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
 import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
-import { catalogFor, modelsFor } from "./models";
+import { catalogFor, modelsFor, standardFor } from "./models";
 import { briefFor } from "./site";
 import { overLimit, room, usage } from "./usage";
 import { isVenue } from "./venues";
@@ -131,7 +131,7 @@ api.get("/analyses", async (c) => {
 api.post("/backtests", async (c) => {
   const parsed = backtestSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: issues(parsed.error) }, 400);
-  const request = await modelsFor(c.get("user"), parsed.data);
+  const request = standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), parsed.data.tickers);
   if (request.end < request.start) return c.json({ error: "Tanggal akhir sebelum tanggal mulai" }, 400);
   const cells = new Set(request.tickers.map((t) => t.toUpperCase())).size * gridDates(request.start, request.end, request.everyNDays).length;
   if (cells === 0) return c.json({ error: "Rentang tanggal tidak menghasilkan sel" }, 400);
@@ -248,7 +248,7 @@ api.get("/verdict", async (c) => {
 api.post("/analyses", async (c) => {
   const parsed = createSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: issues(parsed.error) }, 400);
-  const request = await modelsFor(c.get("user"), parsed.data);
+  const request = standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), [parsed.data.ticker]);
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
   const quota = await overLimit(c.get("user"), "analyses");

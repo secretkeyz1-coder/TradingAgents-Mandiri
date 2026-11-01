@@ -9,7 +9,7 @@
   import { jobs } from '../stores/jobs.svelte';
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
-  import { hasNoFundamentals } from '../tv';
+  import { STANDARD_DEPTH, STANDARD_LANGUAGE, standardAnalysts } from '../../../../shared/analysis';
   import { biasLean, friendlyName, ratingLean, toneOf, type Lean } from './plain';
 
   let verdict = $state<Verdict | undefined>(undefined);
@@ -63,7 +63,7 @@
     return () => clearInterval(timer);
   });
 
-  /** A standard analysis on the server's models: every analyst that has something to read, depth 1, in Indonesian. */
+  /** The standard analysis (shared/analysis.ts) on the server's models. */
   async function ask() {
     const ticker = ws.yahoo;
     const d = catalog.value?.defaults;
@@ -74,9 +74,9 @@
       await api.create({
         ticker,
         date: today(),
-        analysts: ['market', 'social', 'news', ...(hasNoFundamentals(ticker) ? [] : ['fundamentals'])],
-        depth: 1,
-        language: 'Indonesian',
+        analysts: standardAnalysts([ticker]),
+        depth: STANDARD_DEPTH,
+        language: STANDARD_LANGUAGE,
         provider: d.provider,
         quickModel: d.quickModel,
         deepModel: d.deepModel,

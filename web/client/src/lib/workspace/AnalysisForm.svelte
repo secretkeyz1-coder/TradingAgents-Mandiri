@@ -1,7 +1,8 @@
 <script lang="ts">
-  // Start an analysis or a backtest for the symbol in focus. Team and model
-  // settings fold away and are remembered between visits. Provider, models and
-  // backend URL are an admin's: members run on the server's own (server/src/models.ts).
+  // Start an analysis or a backtest for the symbol in focus. Only admins see the
+  // settings (team, depth, language, provider, models, backend URL), folded away
+  // and remembered between visits. Members see none: they run the standard
+  // analysis on the server's models (shared/analysis.ts, server/src/models.ts).
   import { api, type Catalog, type Provider } from '../api';
   import { auth } from '../auth.svelte';
   import { gridDates, today } from '../format';
@@ -9,7 +10,7 @@
   import { jobs } from '../stores/jobs.svelte';
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
-  import { hasNoFundamentals } from '../tv';
+  import { hasNoFundamentals, STANDARD_DEPTH, STANDARD_LANGUAGE, standardAnalysts } from '../../../../shared/analysis';
 
   let { mode }: { mode: 'analysis' | 'backtest' } = $props();
 
@@ -105,15 +106,16 @@
     }
   });
 
-  /** The settings both forms share, and the chat agent reads (stores/agent.svelte.ts). */
+  /** The settings both forms share, and the chat agent reads (stores/agent.svelte.ts); a member's are the standard ones. */
   function settings() {
+    const admin = auth.isAdmin;
     return {
-      analysts,
-      depth,
+      analysts: admin ? analysts : standardAnalysts(mode === 'analysis' ? [ticker] : tickers),
+      depth: admin ? depth : STANDARD_DEPTH,
       provider: providerKey,
       quickModel: quickChoice === CUSTOM ? quickCustom.trim() : quickChoice,
       deepModel: deepChoice === CUSTOM ? deepCustom.trim() : deepChoice,
-      language,
+      language: admin ? language : STANDARD_LANGUAGE,
       backendUrl: showUrl ? backendUrl.trim() : '',
     };
   }
@@ -203,11 +205,12 @@
     </p>
   {/if}
 
+  {#if auth.isAdmin}
   <details class="collapse collapse-arrow rounded-field border border-base-300">
     <summary class="collapse-title min-h-0 px-3 py-2 text-sm">
       <span class="font-medium">Pengaturan</span>
       <span class="block truncate text-xs text-base-content/70">
-        {#if auth.isAdmin}{providerKey || '…'} · {modelLabel || '…'} · {/if}{depthLabel} · {language} · {analysts.length} analis
+        {providerKey || '…'} · {modelLabel || '…'} · {depthLabel} · {language} · {analysts.length} analis
       </span>
     </summary>
     <div class="collapse-content flex flex-col gap-2 px-3">
@@ -237,7 +240,6 @@
           </select>
         </fieldset>
       </div>
-      {#if auth.isAdmin}
       <fieldset class="fieldset py-0">
         <legend class="fieldset-legend">Provider LLM</legend>
         <select class="select select-sm w-full" value={providerKey} onchange={(e) => selectProvider(e.currentTarget.value)}>
@@ -275,9 +277,9 @@
           {#if deepChoice === CUSTOM}<input class="input input-sm w-full" bind:value={deepCustom} placeholder="ID model" required />{/if}
         </fieldset>
       {/if}
-      {/if}
     </div>
   </details>
+  {/if}
 
   {#if submitError}
     <p role="alert" class="text-sm text-error">{submitError}</p>
