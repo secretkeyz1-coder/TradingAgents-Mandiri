@@ -3,14 +3,18 @@
   // off on the AI chart, and open the editor.
   import { indicators } from '../stores/indicators.svelte';
   import { scripts } from '../stores/scripts.svelte';
-  import { placeMenu } from './menuSide';
+  import { keepPlaced, placeMenu } from './menuSide';
 
   let open = $state(false);
-  let place = $state({ rightward: false, maxHeight: 0 });
+  let place = $state({ left: 0, width: 0, maxHeight: 0 });
   let root: HTMLDivElement | undefined = $state();
 
   scripts.load();
   const shown = $derived(scripts.items.filter((s) => indicators.scriptIds.includes(s.id)).length);
+
+  $effect(() => {
+    if (open && root) return keepPlaced(root, 18, (p) => (place = p));
+  });
 
   $effect(() => {
     if (!open) return;
@@ -49,7 +53,9 @@
   </button>
   {#if open}
     <div
-      class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-72 flex-col gap-2 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      class="ta-pop absolute top-full z-40 mt-1 flex flex-col gap-2 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      style:left="{place.left}px"
+      style:width="{place.width}px"
       style:max-height="{place.maxHeight}px"
       role="dialog"
       aria-label="Skrip indikator"

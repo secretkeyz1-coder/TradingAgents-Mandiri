@@ -11,7 +11,7 @@
   import PriceLevels from '../PriceLevels.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { CRYPTO_VENUES, nameOf, type VenueId } from '../tv';
-  import { placeMenu } from './menuSide';
+  import { keepPlaced, placeMenu } from './menuSide';
 
   let { symbol, venue = null, last = null }: { symbol: string; venue?: VenueId | null; last?: number | null } = $props();
 
@@ -20,7 +20,7 @@
   const venueLabel = $derived(venue ? (CRYPTO_VENUES.find((v) => v.id === venue)?.label ?? venue) : '');
 
   let open = $state(false);
-  let place = $state({ rightward: false, maxHeight: 0 });
+  let place = $state({ left: 0, width: 0, maxHeight: 0 });
   let data = $state<SignalAlerts | null>(null);
   let error = $state('');
   let note = $state('');
@@ -37,6 +37,9 @@
   }
   $effect(() => {
     if (open) load();
+  });
+  $effect(() => {
+    if (open && root) return keepPlaced(root, 22, (p) => (place = p));
   });
   $effect(() => {
     if (!open) return;
@@ -124,7 +127,9 @@
   </button>
   {#if open}
     <div
-      class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-88 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      class="ta-pop absolute top-full z-40 mt-1 flex flex-col gap-3 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      style:left="{place.left}px"
+      style:width="{place.width}px"
       style:max-height="{place.maxHeight}px"
       role="dialog"
       aria-label="Notifikasi"

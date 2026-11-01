@@ -5,7 +5,7 @@
   // indicators to that venue's prices.
   import { ws } from '../stores/workspace.svelte';
   import { CRYPTO_VENUES, onVenue, type VenueId } from '../tv';
-  import { placeMenu } from './menuSide';
+  import { keepPlaced, placeMenu } from './menuSide';
 
   let { base, venue }: { base: string; venue: VenueId } = $props();
 
@@ -24,12 +24,15 @@
   };
 
   let open = $state(false);
-  let place = $state({ rightward: false, maxHeight: 0 });
+  let place = $state({ left: 0, width: 0, maxHeight: 0 });
   let quotes = $state<Quote[]>([]);
   let note = $state('');
   let now = $state(Date.now());
   let root: HTMLDivElement | undefined = $state();
 
+  $effect(() => {
+    if (open && root) return keepPlaced(root, 26, (p) => (place = p));
+  });
   $effect(() => {
     if (!open) return;
     const stream = new EventSource(`/api/venues/stream?base=${encodeURIComponent(base)}`);
@@ -98,7 +101,9 @@
   </button>
   {#if open}
     <div
-      class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      class="ta-pop absolute top-full z-40 mt-1 flex flex-col gap-2 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      style:left="{place.left}px"
+      style:width="{place.width}px"
       style:max-height="{place.maxHeight}px"
       role="dialog"
       aria-label="Harga {base} di semua bursa"

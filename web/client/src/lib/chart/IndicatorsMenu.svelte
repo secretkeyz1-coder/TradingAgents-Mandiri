@@ -3,15 +3,19 @@
   // with a line on what it draws and, when the timeframe rules it out, why.
   // Scalper Pro+ keeps its own settings panel (IndicatorPanel), opened from here.
   import { indicators } from '../stores/indicators.svelte';
-  import { placeMenu } from './menuSide';
+  import { keepPlaced, placeMenu } from './menuSide';
 
   let { pobOk, fibOk }: { pobOk: boolean; fibOk: boolean } = $props();
 
   let open = $state(false);
-  let place = $state({ rightward: false, maxHeight: 0 });
+  let place = $state({ left: 0, width: 0, maxHeight: 0 });
   let root: HTMLDivElement | undefined = $state();
 
   const active = $derived(Number(indicators.scalperOn) + Number(indicators.pobOn) + Number(indicators.fibOn));
+
+  $effect(() => {
+    if (open && root) return keepPlaced(root, 20, (p) => (place = p));
+  });
 
   $effect(() => {
     if (!open) return;
@@ -46,7 +50,9 @@
   </button>
   {#if open}
     <div
-      class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 text-sm shadow-xl"
+      class="ta-pop absolute top-full z-40 mt-1 flex flex-col gap-1 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 text-sm shadow-xl"
+      style:left="{place.left}px"
+      style:width="{place.width}px"
       style:max-height="{place.maxHeight}px"
       role="dialog"
       aria-label="Indikator"
