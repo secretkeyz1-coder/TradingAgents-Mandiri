@@ -266,6 +266,8 @@ cp .env.example .env      # isi POSTGRES_PASSWORD, APP_PASSWORD, key LLM, ALLOWE
 docker compose up -d --build
 ```
 
+- **Migrasi** berjalan sebagai langkah sendiri: service `migrate` menjalankan `bun src/migrate.ts` dengan image baru, lalu selesai. Container app baru diganti setelah langkah itu sukses (app sendiri start dengan `MIGRATE_ON_START=0`). Kalau migrasi gagal, `docker compose up` berhenti dengan error dan app yang lama tetap melayani. Lognya: `docker compose logs migrate`.
+
 - **Login**: halaman login sendiri per akun (lihat "Akun" di bawah), sesi berupa cookie HttpOnly bertanda tangan HMAC selama 30 hari. Maksimal 10 percobaan gagal per IP per 15 menit. Semua `/api/*` butuh sesi; skrip boleh mengirim header HTTP Basic (nama pengguna + kata sandi akun) sebagai gantinya, kecuali untuk akun dengan verifikasi dua langkah. Server menolak start di alamat non-loopback tanpa `APP_PASSWORD`. `/healthz` terbuka untuk health check.
 
 ### Akun
@@ -417,6 +419,7 @@ Semua opsional, lewat environment variable:
 | `LLM_COST_IDR_PER_MTOK` | kosong | Harga token model dalam rupiah per sejuta token, `masuk,keluar` (mis. `15000,60000`), untuk perkiraan biaya di dashboard bisnis |
 | `SESSION_SECRET` | dari `APP_PASSWORD` (lokal saja) | Kunci tanda tangan cookie sesi dan tautan tagihan, minimal 32 karakter. Wajib saat server terbuka ke jaringan dengan login (`HOST` bukan loopback dan `APP_PASSWORD` terisi). Menggantinya mengeluarkan semua orang dan membatalkan tautan tagihan lama |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, atau `silent` |
+| `MIGRATE_ON_START` | `1` | `0` kalau migrasi sudah dijalankan langkah deploy sebelumnya (`bun src/migrate.ts`, service `migrate` di compose) |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |
 
@@ -457,7 +460,7 @@ Edit `server/src/db/schema.ts`, lalu dari `server/`:
 bun run db:generate
 ```
 
-Migrasi baru di `server/drizzle/` diterapkan otomatis saat server start berikutnya.
+Migrasi baru di `server/drizzle/` diterapkan otomatis saat server start berikutnya. Di produksi, migrasi berjalan sebelum app diganti (service `migrate`), jadi app versi lama masih melayani di atas skema baru selama beberapa detik. Karena itu migrasi harus tetap cocok dengan versi yang sedang berjalan: tambahkan tabel atau kolom dulu, dan hapus yang lama di rilis berikutnya. Beberapa instance yang start bersamaan bergiliran lewat advisory lock, jadi setiap migrasi diterapkan sekali.
 
 ## Batasan MVP
 

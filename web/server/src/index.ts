@@ -19,7 +19,8 @@ import { startStatusChecks } from "./status";
 import { startWatchScheduler } from "./watch";
 import { getCatalog } from "./worker";
 
-await runMigrations();
+// In production the deploy migrates first (migrate.ts) and sets MIGRATE_ON_START=0.
+if (process.env.MIGRATE_ON_START !== "0") await runMigrations();
 // The first admin, and the owner of everything stored before accounts existed.
 await ensureAccounts();
 await recover();

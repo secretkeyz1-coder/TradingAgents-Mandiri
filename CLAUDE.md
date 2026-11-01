@@ -20,7 +20,8 @@ Two products live in this repo:
   CI (`.github/workflows/web.yml`) runs all of these, plus the client build, on every push.
 - Build the client: `bun run build`
 - Schema change: edit `server/src/db/schema.ts`, then `cd server && bunx drizzle-kit generate --name <what>`;
-  migrations apply at server start.
+  migrations apply at server start in dev, and in production in the compose `migrate` service before the app is
+  replaced. The running version must keep working on the new schema: add first, remove in a later release.
 
 ## Code style (match what is there)
 - Every module opens with a prose comment: what it is for and why it works that way. Exported functions get a one-line

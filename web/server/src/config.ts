@@ -24,6 +24,7 @@ const SETTINGS = z.object({
   SMTP_URL: z.preprocess(blank, z.url().optional()),
   SESSION_SECRET: z.preprocess(blank, z.string().min(32, "minimal 32 karakter").optional()),
   LOG_LEVEL: z.preprocess(blank, z.enum(["debug", "info", "warn", "error", "silent"]).optional()),
+  MIGRATE_ON_START: z.preprocess(blank, z.enum(["0", "1"]).optional()),
 });
 
 /**

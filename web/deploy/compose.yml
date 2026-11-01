@@ -21,6 +21,20 @@ services:
       retries: 20
     restart: unless-stopped
 
+  # Applies the database migrations with the new image, then exits. The app is replaced only
+  # after it succeeds, so a failed migration leaves the running app serving as before.
+  migrate:
+    image: tradingagents-web:latest
+    pull_policy: never
+    command: ["bun", "src/migrate.ts"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://tradingagents:${POSTGRES_PASSWORD}@db:5432/tradingagents
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   app:
     build:
       context: ../..
@@ -29,6 +43,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgres://tradingagents:${POSTGRES_PASSWORD}@db:5432/tradingagents
+      # The migrate service has run them.
+      MIGRATE_ON_START: "0"
     ports:
       - "127.0.0.1:${APP_PORT:-8410}:3080"
     volumes:
@@ -36,6 +52,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
