@@ -14,7 +14,7 @@ import type { AppEnv, User } from "./auth";
 import { db } from "./db";
 import { analyses, users, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
 import { recordError } from "./errors";
-import { enqueue, subscribe } from "./jobs";
+import { enqueue, subscribe, TERMINAL } from "./jobs";
 import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { SYMBOL_PATTERN } from "./market";
@@ -140,8 +140,11 @@ async function report(userId: string, ids: string[], skipped: string[], title: s
   return lines.join("\n");
 }
 
-/** When every analysis of a run has ended, send one message for the whole run to the user's chat. */
-function notifyWhenDone(userId: string, ids: string[], skipped: string[], title: string, runId?: string) {
+/**
+ * When every analysis of a run has ended, send one message for the whole run to the user's chat.
+ * Resolves once listening; the analyses may run in another process (jobs.ts).
+ */
+async function notifyWhenDone(userId: string, ids: string[], skipped: string[], title: string, runId?: string) {
   const finish = async () => {
     // Read the chat id now, not when the run started: the user may have just set it.
     const [user] = await db.select({ chat: users.telegramChatId }).from(users).where(eq(users.id, userId));
@@ -151,14 +154,23 @@ function notifyWhenDone(userId: string, ids: string[], skipped: string[], title:
   };
   if (!ids.length) return void finish().catch((err) => recordError("watchlist", err));
   const pending = new Set(ids);
+  const stops = new Map<string, () => void>();
+  const ended = (id: string) => {
+    stops.get(id)?.();
+    stops.delete(id);
+    if (!pending.delete(id)) return;
+    if (!pending.size) finish().catch((err) => recordError("watchlist", err));
+  };
   for (const id of ids) {
-    const stop = subscribe(id, (event) => {
-      if (event.type !== "end") return;
-      stop();
-      pending.delete(id);
-      if (!pending.size) finish().catch((err) => recordError("watchlist", err));
+    const stop = await subscribe(id, (event) => {
+      if (event.type === "end") ended(id);
     });
+    if (pending.has(id)) stops.set(id, stop);
+    else stop();
   }
+  // One a runner finished before its subscription counts as ended too.
+  const finished = await db.select({ id: analyses.id }).from(analyses).where(and(inArray(analyses.id, ids), inArray(analyses.status, TERMINAL)));
+  for (const { id } of finished) ended(id);
 }
 
 /** Queue one analysis per symbol on this user's watchlist, as many as today's caps allow. */
@@ -197,7 +209,7 @@ async function startRun(user: User, runId?: string): Promise<{ ids: string[]; sk
   if (runId) await db.update(watchRuns).set({ analysisIds: ids, skipped }).where(eq(watchRuns.id, runId));
   const title = `Watchlist ${new Date().toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric" })}`;
   // Subscribe before the queue can start them, so no ending is missed.
-  notifyWhenDone(user.id, ids, skipped, title, runId);
+  await notifyWhenDone(user.id, ids, skipped, title, runId);
   for (const id of ids) enqueue(id);
   return { ids, skipped };
 }

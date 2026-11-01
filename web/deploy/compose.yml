@@ -45,6 +45,8 @@ services:
       DATABASE_URL: postgres://tradingagents:${POSTGRES_PASSWORD}@db:5432/tradingagents
       # The migrate service has run them.
       MIGRATE_ON_START: "0"
+      # The worker service runs the analyses and backtests; the app only queues them.
+      MAX_CONCURRENT_ANALYSES: "0"
     ports:
       - "127.0.0.1:${APP_PORT:-8410}:3080"
     volumes:
@@ -54,6 +56,27 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Runs the analyses and backtests the app queues (src/runner.ts), MAX_CONCURRENT_ANALYSES
+  # from .env at a time (2 by default). More of them: docker compose up -d --scale worker=2.
+  worker:
+    image: tradingagents-web:latest
+    pull_policy: never
+    command: ["bun", "src/runner.ts"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://tradingagents:${POSTGRES_PASSWORD}@db:5432/tradingagents
+    volumes:
+      - data:/home/appuser/.tradingagents
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # The image's check calls the app's HTTP port; a runner serves none.
+    healthcheck:
+      disable: true
     restart: unless-stopped
 
 volumes:

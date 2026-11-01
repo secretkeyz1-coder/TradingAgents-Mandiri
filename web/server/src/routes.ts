@@ -311,10 +311,11 @@ api.get("/analyses/:id/events", async (c) => {
   const after = Number(c.req.header("Last-Event-ID") ?? c.req.query("after") ?? 0) || 0;
 
   return streamSSE(c, async (stream) => {
-    // Subscribe before reading history so nothing published in between is lost.
+    // Subscribe before reading history so nothing stored in between is lost; the analysis may run
+    // in another process (jobs.ts), its events arrive through the database either way.
     const pending: LiveEvent[] = [];
     let wake: (() => void) | null = null;
-    const unsubscribe = subscribe(id, (event) => {
+    const unsubscribe = await subscribe(id, (event) => {
       pending.push(event);
       wake?.();
     });

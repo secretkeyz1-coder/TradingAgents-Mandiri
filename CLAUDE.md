@@ -51,7 +51,8 @@ Two products live in this repo:
 | A server test | `server/test/*.test.ts` with `test/helpers.ts` (`call`, `admin`, `member`, `lastMail`) |
 | A table or column | `server/src/db/schema.ts` + a generated migration in `server/drizzle/` |
 | Background work | the `start*` schedulers in `alerts.ts`, `watch.ts`, `ledger.ts`, `reminders.ts`, `site.ts`, `status.ts` |
-| Analysis jobs | `server/src/jobs.ts` (queue, claim, heartbeat) and `server/src/worker.ts` (spawn) |
+| Analysis jobs | `server/src/jobs.ts` (queue in Postgres, claim, NOTIFY, heartbeat), `server/src/runner.ts` (worker process), `server/src/worker.ts` (spawn) |
+| One-instance work | `server/src/locks.ts` (scheduler leader, leases), `limits.ts` (rate limits), `shared.ts` (shared values) |
 | Sign-in, sessions, 2FA | `server/src/auth.ts`, `server/src/totp.ts` |
 | Pro workspace | `client/src/lib/workspace/`, chart in `client/src/lib/DecisionChart.svelte` |
 | Pemula screen | `client/src/lib/beginner/` |
@@ -68,5 +69,7 @@ Two products live in this repo:
   same commit when behaviour, routes or settings change.
 - A server change comes with a test in `server/test`: in-process through `app.request`, with the seams for what
   leaves the process (`outbox` in `mail.ts`, `useQuotes` in `price-alerts.ts`, `forgetCache` in `site.ts`).
-- Known gaps, not conventions: schedulers and caches are in-process (one server instance), and the content policy
-  is report-only. Do not add more in-memory state that must be shared across instances.
+- Several app instances and worker processes can share one database: state they must agree on goes in Postgres
+  (`locks.ts`, `limits.ts`, `shared.ts`), never in a module-level Map; caches may stay per process.
+- Known gaps, not conventions: chat answers, Lab runs, signal scans and the AI brief still spawn the engine in the
+  app process (only analyses and backtests have worker processes), and the content policy is report-only.

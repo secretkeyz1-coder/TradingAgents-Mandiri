@@ -388,7 +388,14 @@ Beberapa instance server boleh berjalan di atas satu database. Yang harus sama d
 - **Satu jawaban per sesi chat, dan satu uji Lab sekaligus,** di instance mana pun, lewat lease di tabel `leases`. Lease diperbarui selama kerja berjalan, dan lepas sendiri dalam 2 menit kalau instance-nya mati.
 - **Halaman status** membaca hasil cek terakhir dari `shared_values`, yang ditulis instance pemegang scheduler.
 
-Cache (candle, katalog model, halaman Creator, jawaban halaman status) tetap per instance. Isinya boleh sedikit berbeda antar-instance karena tidak pernah memberi jawaban salah; paling buruk satu instance mengambil ulang datanya. Analisa masih berjalan sebagai subprocess di instance yang menerimanya.
+Cache (candle, katalog model, halaman Creator, jawaban halaman status) tetap per instance. Isinya boleh sedikit berbeda antar-instance karena tidak pernah memberi jawaban salah; paling buruk satu instance mengambil ulang datanya.
+
+**Worker analisa.** Antrean analisa dan backtest ada di Postgres (`jobs.ts`). Di produksi, service `worker` di compose (`bun src/runner.ts`) mengambil baris yang antre (`FOR UPDATE SKIP LOCKED`, jadi satu analisa tidak pernah diambil dua worker) dan menjalankan engine; app sendiri tidak menjalankan analisa (`MAX_CONCURRENT_ANALYSES=0`). Setiap event disimpan di `analysis_events` dan diumumkan lewat `NOTIFY`, jadi stream langsung di browser dan ringkasan watchlist berjalan di instance app mana pun. Tambah worker dengan `docker compose up -d --scale worker=2`; masing-masing menjalankan `MAX_CONCURRENT_ANALYSES` analisa sekaligus.
+- **Batal:** baris langsung ditandai dibatalkan, dan worker yang menjalankannya diberi tahu untuk mematikan prosesnya.
+- **Worker berhenti** (deploy, restart): analisa yang sedang jalan ditandai gagal dengan alasannya, karena analisa tidak bisa dilanjutkan di tengah. Worker yang mati mendadak berhenti mengirim heartbeat, dan analisanya ditandai gagal oleh instance pemegang scheduler dalam sekitar 2 menit.
+- Chat agen, uji Lab, terjemahan Pine, pemindaian sinyal, dan ringkasan AI masih berjalan di proses app.
+
+Tanpa worker terpisah (development, `bun run dev`), app menjalankan antreannya sendiri selama `MAX_CONCURRENT_ANALYSES` lebih dari 0.
 
 ## Konfigurasi server
 
@@ -399,7 +406,7 @@ Semua opsional, lewat environment variable:
 | `DATABASE_URL` | `postgres://tradingagents:tradingagents@127.0.0.1:5590/tradingagents` | Koneksi Postgres |
 | `PORT` / `HOST` | `3080` / `127.0.0.1` | Alamat server |
 | `PYTHON_BIN` | `.venv` repo | Interpreter untuk worker |
-| `MAX_CONCURRENT_ANALYSES` | `2` | Analisa yang jalan bersamaan; sisanya antre |
+| `MAX_CONCURRENT_ANALYSES` | `2` | Analisa yang dijalankan proses ini bersamaan; sisanya antre. `0`: proses ini hanya mengantre, worker terpisah yang menjalankan (`bun src/runner.ts`, service `worker` di compose) |
 | `MAX_BACKTEST_CELLS` | `40` | Batas sel per backtest (samakan dengan `MAX_CELLS` di `client/src/routes/Home.svelte`) |
 | `TA_WORKER_SCRIPT` | `web/worker/ta_worker.py` | Ganti ke `web/worker/demo_worker.py` untuk mode demo |
 | `JOB_IDLE_MINUTES` | `15` | Analisa/backtest tanpa event selama ini dianggap macet: worker dihentikan, status gagal |
@@ -465,5 +472,5 @@ Migrasi baru di `server/drizzle/` diterapkan otomatis saat server start berikutn
 ## Batasan MVP
 
 - Tanpa `APP_PASSWORD` tidak ada login, dan server hanya listen di `127.0.0.1`. Jangan buka server seperti itu ke internet, karena setiap analisa memakai API key dan biaya LLM kamu.
-- Worker berjalan sebagai subprocess server. Kalau server restart, analisa yang sedang berjalan ditandai gagal; yang masih antre dijalankan lagi.
+- Analisa yang sedang berjalan tidak bisa dilanjutkan setelah worker-nya restart: ditandai gagal dan perlu dijalankan lagi. Yang masih antre tetap menunggu worker berikutnya.
 - Provider ChatGPT (login), Azure, dan Bedrock belum tersedia di form web.

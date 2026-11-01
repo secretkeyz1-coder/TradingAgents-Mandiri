@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Period, PlanId } from "../../../shared/plans";
 
@@ -199,6 +200,8 @@ export const analyses = pgTable(
     index("analyses_created_at_idx").on(t.createdAt),
     index("analyses_kind_ticker_idx").on(t.kind, t.ticker),
     index("analyses_user_idx").on(t.userId, t.createdAt),
+    // The runners' queue (jobs.ts claimNext): the oldest queued row, without reading the finished ones.
+    index("analyses_queued_idx").on(t.createdAt).where(sql`${t.status} = 'queued'`),
   ],
 );
 
