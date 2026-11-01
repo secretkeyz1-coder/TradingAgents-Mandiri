@@ -17,6 +17,8 @@ RUN bun run --filter client build
 
 
 FROM python:3.13-slim
+# Lets web/deploy/deploy.sh remove this project's unused images and no other project's.
+LABEL org.opencontainers.image.title="tradingagents-web"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

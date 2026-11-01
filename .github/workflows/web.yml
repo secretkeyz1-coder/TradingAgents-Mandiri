@@ -13,12 +13,15 @@ on:
   pull_request:
     paths: ["web/**", "tradingagents/**", "cli/**", "pyproject.toml", ".github/workflows/web.yml"]
   workflow_dispatch:
+  # deploy.yml runs these checks on the commit it ships, whatever paths that commit touched.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: web-${{ github.ref }}
+  # A deploy's checks never cancel a push's, nor the other way round.
+  group: web-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:

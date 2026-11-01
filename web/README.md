@@ -266,6 +266,12 @@ cp .env.example .env      # isi POSTGRES_PASSWORD, APP_PASSWORD, key LLM, ALLOWE
 docker compose up -d --build
 ```
 
+- **Rilis berikutnya** dikirim lewat GitHub Actions: Actions, Deploy, Run workflow, lalu ketik `deploy`. Workflow menjalankan semua cek di commit itu, mengemasnya (`git archive`), dan mengirimnya lewat SSH ke `web/deploy/receive-release.sh`, satu-satunya perintah yang boleh dijalankan kunci deploy. Skrip itu membongkar rilis di `~/tradingagents/releases/<waktu>-<commit>` lalu menjalankan `deploy.sh` milik rilis itu:
+  - membawa `.env` dari rilis yang sedang jalan dan menandai image lama `:previous`;
+  - build, lalu `docker compose up -d` (migrasi dulu, baru app dan worker diganti);
+  - menunggu `/healthz` dan memastikan worker berjalan.
+
+  Kalau satu langkah gagal, image dan rilis sebelumnya otomatis dipulihkan. Kalau berhasil, `~/tradingagents/src` menjadi symlink ke rilis baru, tiga rilis terakhir disimpan, dan image lama proyek ini dibersihkan. Menyiapkan kunci deploy dan secret-nya dijelaskan di `docs/runbooks/deploy.md`. Tanpa Actions: `git archive --format=tar.gz HEAD | ssh <user>@<host> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"`.
 - **Migrasi** berjalan sebagai langkah sendiri: service `migrate` menjalankan `bun src/migrate.ts` dengan image baru, lalu selesai. Container app baru diganti setelah langkah itu sukses (app sendiri start dengan `MIGRATE_ON_START=0`). Kalau migrasi gagal, `docker compose up` berhenti dengan error dan app yang lama tetap melayani. Lognya: `docker compose logs migrate`.
 
 - **Login**: halaman login sendiri per akun (lihat "Akun" di bawah), sesi berupa cookie HttpOnly bertanda tangan HMAC selama 30 hari. Maksimal 10 percobaan gagal per IP per 15 menit. Semua `/api/*` butuh sesi; skrip boleh mengirim header HTTP Basic (nama pengguna + kata sandi akun) sebagai gantinya, kecuali untuk akun dengan verifikasi dua langkah. Server menolak start di alamat non-loopback tanpa `APP_PASSWORD`. `/healthz` terbuka untuk health check.
