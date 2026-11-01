@@ -1,8 +1,9 @@
 <script lang="ts">
-  // The "Tata letak" menu: presets, each panel's mode, and saving the current
-  // arrangement to the account. Opens under its button; Escape or a click
-  // outside closes it.
+  // The "Tata letak" menu: presets, the mode of each panel this screen has, and
+  // saving the current arrangement to the account. Opens under its button;
+  // Escape or a click outside closes it.
   import { layout, PANELS, PRESETS, type PanelMode } from '../stores/layout.svelte';
+  import { ws } from '../stores/workspace.svelte';
 
   let open = $state(false);
   let root: HTMLDivElement | undefined = $state();
@@ -32,6 +33,8 @@
     };
   });
 
+  /** Pasar has the market list, Riset AI its own panel; both have the bottom panel. */
+  const here = $derived(PANELS.filter((p) => p.id === 'dock' || (p.id === 'market' ? ws.screen === 'pasar' : ws.screen === 'riset')));
   const active = $derived(
     PRESETS.find(
       (p) => p.arrangement.focus === layout.focus && PANELS.every(({ id }) => p.arrangement.modes[id] === layout.modes[id]),
@@ -83,7 +86,7 @@
 
       <div class="flex flex-col gap-1.5">
         <span class="text-xs text-base-content/70">Setiap panel</span>
-        {#each PANELS as p (p.id)}
+        {#each here as p (p.id)}
           <div class="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 text-sm">
             <span>{p.label}</span>
             <div class="join w-full" role="group" aria-label={p.label}>

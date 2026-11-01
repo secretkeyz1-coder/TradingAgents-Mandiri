@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Pantau & alert → Alert: every notification on the account in one place. Price levels
+  // Pantau → Alert: every notification on the account in one place. Price levels
   // (a message when the price reaches X, server/src/price-alerts.ts) and signal alerts (new
   // signals of an indicator, server/src/alerts.ts), each removable; on Creator a signal alert
   // can be made public. New ones are set from the chart's Notifikasi menu, where the symbol's
@@ -7,7 +7,6 @@
   import { indicatorName, SIGNAL_STATUS, TIMEFRAME_LABELS } from '../../alertLabels';
   import { api, type PriceLevel, type PriceLevels, type SignalAlerts } from '../../api';
   import { auth } from '../../auth.svelte';
-  import { layoutOf, viewport } from '../../stores/viewport.svelte';
   import { ws } from '../../stores/workspace.svelte';
 
   let levels = $state<PriceLevels | null>(null);
@@ -59,8 +58,8 @@
   const creator = $derived(auth.user?.plan === 'creator');
   const allowance = $derived(signals ?? levels);
   const telegram = $derived(signals?.telegram ?? levels?.telegram);
-  /** On a phone the chart is its own screen; on a desktop only the TradingView view lacks the menu. */
-  const toChart = $derived(!!ws.yahoo && (ws.chartView !== 'ai' || layoutOf(viewport) === 'narrow'));
+  /** The Notifikasi menu lives on the Keputusan AI chart, which an engine symbol can open. */
+  const toChart = $derived(!!ws.yahoo);
 
   const fmt = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : Math.abs(v) >= 0.01 ? 5 : 8 });
   const when = (iso: string) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -68,7 +67,7 @@
 
   function openChart() {
     ws.setChartView('ai');
-    ws.goPhone('chart');
+    ws.showChart();
   }
 </script>
 

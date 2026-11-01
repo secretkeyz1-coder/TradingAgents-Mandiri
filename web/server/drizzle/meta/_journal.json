@@ -176,6 +176,13 @@
       "when": 1793546996853,
       "tag": "0024_scalper_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793561214625,
+      "tag": "0025_signal_history",
+      "breakpoints": true
     }
   ]
 }

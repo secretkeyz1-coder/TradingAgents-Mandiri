@@ -852,6 +852,29 @@
         }
       }
     },
+    "/api/alerts/history": {
+      "get": {
+        "tags": [
+          "alerts"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
     "/api/alerts/test": {
       "post": {
         "tags": [

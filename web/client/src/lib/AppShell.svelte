@@ -1,9 +1,10 @@
 <script lang="ts">
-  // One workspace screen, in one of two modes: Pemula (one asset in plain words)
-  // or Pro (the full workspace), switched in the top bar. Routing lives in the
-  // workspace store (URL hash), and old page links are translated there, so the
-  // shell only draws the frame. Loaded only once the user is signed in: the
-  // workspace store calls the API as soon as it is imported.
+  // The signed-in app in one of two modes: Pemula (one asset in plain words) or Pro,
+  // switched in the top bar, where Pro also lists its screens (Beranda, Pasar, Riset AI,
+  // Pantau, Uji strategi; a phone has them in a bottom tab bar instead). Routing lives in
+  // the workspace store (URL hash), and old page links are translated there, so the
+  // shell only draws the frame. Loaded only once the user is signed in: the workspace
+  // store calls the API as soon as it is imported.
   import { PLANS } from '../../../shared/plans';
   import { api } from './api';
   import BillingDialog from './account/BillingDialog.svelte';
@@ -14,12 +15,15 @@
   import { layout } from './stores/layout.svelte';
   import { mode } from './stores/mode.svelte';
   import { layoutOf, viewport } from './stores/viewport.svelte';
+  import { isChartScreen, SCREENS, ws } from './stores/workspace.svelte';
   import SymbolSearch from './SymbolSearch.svelte';
   import UpdateNotice from './UpdateNotice.svelte';
   import WorkspaceShell from './workspace/WorkspaceShell.svelte';
 
-  // Focus mode gives the Pro chart the whole window; phones and Pemula have no focus mode.
-  const framed = $derived(mode.value === 'pemula' || !layout.focus || layoutOf(viewport) === 'narrow');
+  const narrow = $derived(layoutOf(viewport) === 'narrow');
+  const pro = $derived(mode.value === 'pro');
+  // Focus mode gives a Pro chart screen the whole window; phones and Pemula have no focus mode.
+  const framed = $derived(!pro || !layout.focus || narrow || !isChartScreen(ws.screen));
 
   let menu: HTMLDetailsElement | undefined = $state();
   type Dialog = 'profile' | 'billing';
@@ -67,12 +71,30 @@
   <header class="flex shrink-0 items-center gap-3 border-b border-base-300 px-3 py-2 sm:px-4" class:hidden={!framed}>
     <a href="#/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight" aria-label="TradingAgents">
       <Logo />
-      <span class="hidden md:inline">TradingAgents</span>
+      <span class="hidden {pro ? 'xl:inline' : 'md:inline'}">TradingAgents</span>
     </a>
     <div role="tablist" class="tabs tabs-box tabs-sm shrink-0" aria-label="Tampilan">
       <button role="tab" class="tab" class:tab-active={mode.value === 'pemula'} aria-selected={mode.value === 'pemula'} title="Satu aset, bahasa sederhana" onclick={() => mode.set('pemula')}>Pemula</button>
       <button role="tab" class="tab" class:tab-active={mode.value === 'pro'} aria-selected={mode.value === 'pro'} title="Semua alat: chart, analisa, backtest, sinyal" onclick={() => mode.set('pro')}>Pro</button>
     </div>
+    {#if pro && !narrow}
+      <nav class="flex min-w-0 items-center gap-0.5" aria-label="Menu utama">
+        {#each SCREENS as s (s.key)}
+          <a
+            class="ta-nav"
+            href="#/{s.key}"
+            aria-current={ws.screen === s.key ? 'page' : undefined}
+            onclick={(e) => {
+              e.preventDefault();
+              ws.go(s.key);
+            }}
+          >
+            {s.label}
+            {#if s.tabs.some((t) => ws.live(t.key))}<span class="status status-xs status-info motion-safe:animate-pulse" aria-label="berjalan"></span>{/if}
+          </a>
+        {/each}
+      </nav>
+    {/if}
     <div class="ml-auto w-full max-w-80 min-w-0">
       <SymbolSearch />
     </div>

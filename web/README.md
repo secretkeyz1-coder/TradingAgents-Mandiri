@@ -18,22 +18,23 @@ web/worker/ta_worker.py  →  engine tradingagents (Python, .venv repo)
 | `server/` | API Bun + Hono, skema dan migrasi Drizzle, antrean job, SSE |
 | `worker/` | Jembatan ke engine Python (`ta_worker.py`) dan worker demo tanpa LLM (`demo_worker.py`) |
 
-## Workspace satu layar
+## Lima layar
 
-Semua fitur ada di satu layar yang berpusat pada **simbol aktif**. Ganti simbol (kotak pencarian Ctrl/⌘ K, daftar Pasar, atau klik di widget TradingView) dan semua panel ikut berganti. Kotak pencarian menerima nama aset (Emas, Bitcoin, Bank Central Asia) selain kode (BBCA, BBCA.JK, IDX:BBCA, BTC-USD), dan menyarankan aset dari daftar Pasar saat mengetik. Nama yang dipakai beberapa aset (mis. "bank") meminta pilihan dari saran.
+Mode Pro punya lima layar, dipilih dari menu di bilah atas (di ponsel dari tab bawah): **Beranda**, **Pasar**, **Riset AI**, **Pantau**, dan **Uji strategi** (`SCREENS` di `stores/workspace.svelte.ts`, lihat [ADR 0010](../docs/adr/0010-navigasi-lima-layar.md)). Semuanya berbagi **simbol aktif**: ganti simbol (kotak pencarian Ctrl/⌘ K, daftar Pasar, atau klik di widget TradingView) dan chart serta panelnya ikut berganti. Memilih simbol dari daftar di layar tanpa chart membuka chart-nya di Pasar. Kotak pencarian menerima nama aset (Emas, Bitcoin, Bank Central Asia) selain kode (BBCA, BBCA.JK, IDX:BBCA, BTC-USD), dan menyarankan aset dari daftar Pasar saat mengetik. Nama yang dipakai beberapa aset (mis. "bank") meminta pilihan dari saran.
 
-| Panel | Isi |
+| Layar | Isi |
 | --- | --- |
-| Pasar (kiri) | Daftar pilihan per tab: IDX, US, Crypto, Forex, Komoditas |
-| Chart (tengah) | Chart TradingView, atau "Keputusan AI": candle Yahoo + marker setiap keputusan |
-| Riset AI (kanan) | Tab **Tanya** (agent chart) dan **Jalankan**: analisa yang terbuka (progres agent, keputusan), keputusan terakhir simbol ini, form analisa |
-| Panel bawah | Tab milik tujuan yang sedang dipakai: Pasar (Screener), Riset AI (Riwayat, Laporan, Log), Pantau & alert (Analisa terjadwal, Sinyal, Alert), Uji strategi (Backtest: form, daftar, dan hasil; Lab). Tiap tujuan ingat tab terakhirnya; panel bisa diperbesar, diciutkan, atau ditutup |
+| Beranda | Kinerja sinyalmu: call dari notifikasi sinyal dan hasilnya untuk 7 hari sampai 1 tahun (jumlah call, TP, SL, rasio menang, total R, R kumulatif per hari, per indikator, per aset, riwayat call yang bisa disaring), lalu yang berjalan sekarang, kuota hari ini, analisa terjadwal, dan alert harga |
+| Pasar | Daftar harga per pasar (IDX, US, Crypto, Forex, Komoditas) di kiri, chart di tengah (TradingView, atau "Keputusan AI": candle Yahoo + marker setiap keputusan, dengan Indikator dan Notifikasi), Screener di panel bawah |
+| Riset AI | Chart simbol aktif, panel **Tanya** (agent chart) dan **Jalankan** (analisa yang terbuka, keputusan terakhir, form analisa) di kanan, dan Riwayat, Laporan, Log di panel bawah |
+| Pantau | Hanya yang kamu pantau: Analisa terjadwal dan Alert (semua alert harga dan sinyal) |
+| Uji strategi | Backtest (form, daftar, hasil), Lab, dan Strategi live (buku sinyal strategi bawaan) |
 
-Rail kiri berisi empat tujuan yang dinamai menurut pekerjaannya: **Pasar**, **Riset AI**, **Pantau & alert**, dan **Uji strategi** (`DESTINATIONS` di `stores/workspace.svelte.ts`). Klik satu tujuan membuka panel sampingnya (Pasar di kiri, Riset AI di kanan) bila ada, dan panel bawah pada tab-tabnya. Rail tidak pernah menutup apa pun, jadi selalu tepat satu tujuan aktif: tujuan panel bawah. Panel ditutup lewat tombol × di kepalanya atau menu Tata letak. Di mode fokus rail tersembunyi, jadi kepala panel bawah memuat pemilih tujuan.
+Di Pasar dan Riset AI tiap panel bisa menempel, melayang di atas chart, atau ditutup (tombol × di kepalanya; tombolnya menunggu di pojok chart sampai dibuka lagi), dan menu Tata letak menyimpan susunannya. Mode fokus (tombol F) memberi chart seluruh jendela. Tiap layar ingat tab terakhirnya.
 
-Lebar ≥ 1280 px: tiga kolom + panel bawah. 1024–1279 px: chart + Riset AI, daftar Pasar jadi laci. < 1024 px: satu layar per tujuan dengan tab bawah (Chart · Pasar · Riset AI · Pantau & alert · Uji strategi). Tiap layar menjajarkan tab panel samping dan panel bawahnya dalam satu baris, mis. Riset AI: Tanya · Jalankan · Riwayat · Laporan · Log (`PhoneScreen.svelte`).
+Lebar ≥ 1024 px: layar penuh dengan menu atas. < 1024 px: satu kolom per layar dengan tab bawah, dan tab di dalam layar menjajarkan semua isinya dalam satu baris, mis. Riset AI: Chart · Tanya · Jalankan · Riwayat · Laporan · Log (`PhoneScreen.svelte`).
 
-**Status di URL** — `#/?s=IDX:BBCA&run=<id>&bt=<id>&dock=log&m=crypto&v=ai&ai=chat`, jadi link bisa dibagikan dan tombol Back berjalan. Link lama (`#/analyses/:id`, `#/backtests/:id`, `#/chart?symbol=…`, `#/markets?tab=…`, `#/?ticker=…`, `ai=backtest`) diterjemahkan otomatis.
+**Status di URL** — `#/riset?s=IDX:BBCA&run=<id>&dock=log&tf=4h&ai=chat` (layar, simbol, analisa dan backtest terbuka, tab, pasar, chart), jadi link bisa dibagikan dan tombol Back berpindah antar layar. Link lama (`#/?s=…&run=…` dari pesan Telegram dan email, `#/analyses/:id`, `#/backtests/:id`, `#/chart?symbol=…`, `#/markets?tab=…`, `#/?ticker=…`, `ai=backtest`) dibuka di layar yang sekarang memuat isinya.
 
 ### Mode Pemula dan Pro
 
@@ -90,7 +91,7 @@ Di mode demo, pesan yang memuat "skill" membuat agent mengusulkan `sr-ringkas`, 
 ```
 client/src/lib/
 ├─ stores/
-│  ├─ workspace.svelte.ts   simbol aktif, run/backtest terbuka, tujuan dan tab panel bawah; sinkron ke URL
+│  ├─ workspace.svelte.ts   layar, simbol aktif, run/backtest terbuka, tab tiap layar; sinkron ke URL
 │  ├─ run.svelte.ts         satu analisa: status + stream SSE (log, laporan, progres agent)
 │  ├─ backtest.svelte.ts    satu backtest: status + stream progres
 │  ├─ jobs.svelte.ts        riwayat analisa dan backtest (polling saat ada yang berjalan)
@@ -98,8 +99,10 @@ client/src/lib/
 │  ├─ catalog.svelte.ts     opsi provider/model dari engine
 │  └─ viewport.svelte.ts    layout lebar/sedang/sempit
 └─ workspace/
-   ├─ WorkspaceShell.svelte tata letak saja; Rail (desktop) dan PhoneScreen (ponsel) untuk tujuan
-   ├─ MarketPanel · ChartPanel · AiPanel · Dock
+   ├─ WorkspaceShell.svelte menata layar yang terbuka; menu atas ada di AppShell, tab bawah ponsel di sini
+   ├─ DashboardScreen.svelte Beranda (ResultCurve.svelte: R kumulatif)
+   ├─ PageScreen.svelte     Pantau dan Uji strategi; PhoneScreen.svelte: Pasar dan Riset AI di ponsel
+   ├─ MarketPanel · ChartPanel · AiPanel · Dock (panel bawah) · TabView (isi satu tab)
    ├─ ChatPanel.svelte      chat agent; SkillsPanel.svelte untuk meninjau skill
    ├─ AnalysisForm.svelte   form analisa (Riset AI) dan backtest (Uji strategi)
    └─ dock/  HistoryView · ReportView · LogView · WatchView · SignalsView · AlertsView · BacktestView · LabView
@@ -116,7 +119,7 @@ Backtest memakai `tradingagents.backtest.run_backtest` milik engine: tim agent d
 
 ### Analisa terjadwal dan Telegram
 
-Klik **Analisa harian** di atas chart untuk memasukkan simbol ke analisa terjadwal (sebanyak batas paket; server menyimpannya sebagai watchlist). Tab **Analisa terjadwal** di Pantau & alert menampilkan jadwal, keputusan terakhir tiap simbol, status Telegram, tombol **Jalankan sekarang**, dan **Kirim tes**.
+Klik **Analisa harian** di atas chart untuk memasukkan simbol ke analisa terjadwal (sebanyak batas paket; server menyimpannya sebagai watchlist). Tab **Analisa terjadwal** di Pantau menampilkan jadwal, keputusan terakhir tiap simbol, status Telegram, tombol **Jalankan sekarang**, dan **Kirim tes**.
 
 - Setiap hari `WATCH_DAYS` (default Sen–Jum) pukul `WATCH_TIME` WIB (default 16.30), server menjalankan satu analisa per simbol dengan model default server (`TRADINGAGENTS_*`), analis `WATCH_ANALYSTS`, dan kedalaman `WATCH_DEPTH`. Kalau server baru menyala lebih dari 3 jam setelah jadwal, putaran hari itu tidak dikejar.
 - Analisanya analisa biasa: masuk antrean, tampil di Riwayat, dan memakai kuota harian. Simbol yang tidak muat di sisa kuota dilewati dan disebut di pesan.
@@ -127,7 +130,9 @@ API: `GET /api/watchlist`, `POST /api/watchlist {symbol, tvSymbol}`, `DELETE /ap
 
 ### Notifikasi sinyal (Telegram)
 
-Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), sebanyak batas notifikasi paket (Gratis 3, Pro 15, Creator 50), yang dipakai bersama notifikasi harga. Chat ID boleh ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan analisa terjadwal. Semua notifikasi akun, harga dan sinyal, terkumpul di Pantau & alert → **Alert**, dengan tombol hapus dan sakelar Publik (Creator); yang baru tetap dipasang dari tombol Notifikasi.
+Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), sebanyak batas notifikasi paket (Gratis 3, Pro 15, Creator 50), yang dipakai bersama notifikasi harga. Chat ID boleh ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan analisa terjadwal. Semua notifikasi akun, harga dan sinyal, terkumpul di Pantau → **Alert**, dengan tombol hapus dan sakelar Publik (Creator); yang baru tetap dipasang dari tombol Notifikasi.
+
+Beranda menghitung **call**: sinyal yang keluar live dari notifikasi (terkirim, atau mestinya terkirim bila Telegram belum diatur), bukan riwayat yang dicatat diam-diam saat notifikasi baru dinyalakan. R dihitung dari yang diselesaikan mesin dengan pasti: TP = jarak target dibagi jarak stop, SL = −1; keluar karena kondisi dan kedaluwarsa dihitung sebagai call tetapi tidak masuk R karena harga keluarnya tidak disimpan. Riwayat tetap ada setelah notifikasinya dihapus (sejak migrasi 0025 tiap sinyal membawa pemilik dan pasangannya sendiri); sinyal yang saat itu masih berjalan ditandai "tidak dipantau lagi". API: `GET /api/alerts/history?days=7|30|90|365`.
 
 - Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.

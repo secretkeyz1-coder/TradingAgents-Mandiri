@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Pantau & alert → Analisa terjadwal (the server's watchlist, server/src/watch.ts): what
+  // Pantau → Analisa terjadwal (the server's watchlist, server/src/watch.ts): what
   // the server analyses on its own each trading day, the latest decision for each symbol, and
   // whether Telegram gets the summary. A symbol joins from the chart's Analisa harian button.
   import { auth } from '../../auth.svelte';

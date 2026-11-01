@@ -307,6 +307,42 @@ export type SignalAlerts = {
   telegram: { bot: boolean; chat: boolean; configured: boolean };
 };
 
+/** One signal a member's notification called live, and how it ended (server/src/alerts.ts GET /alerts/history). */
+export type SignalCall = {
+  id: string;
+  /** false once its alert was removed: an open call is then no longer followed. */
+  tracked: boolean;
+  symbol: string;
+  tvSymbol: string;
+  indicator: string;
+  timeframe: SignalAlert['timeframe'];
+  venue: string;
+  side: string;
+  label: string;
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  status: NonNullable<SignalAlert['last']>['status'];
+  signalTime: string;
+  exitTime: string | null;
+  /** A target pays its distance over the stop's, a stop costs 1; other endings are not scored. */
+  r: number | null;
+};
+export type SignalTally = { total: number; win: number; loss: number; open: number; r: number };
+/** Beranda's numbers for the last `days`: the calls, their results by indicator, asset and day, and the newest 200 calls. */
+export type SignalHistory = {
+  days: number;
+  summary: SignalTally & { exit: number; expired: number; replaced: number; stopped: number; winRate: number | null; alerts: number; max: number };
+  byIndicator: (SignalTally & { indicator: string; timeframe: SignalAlert['timeframe'] })[];
+  bySymbol: (SignalTally & { symbol: string; tvSymbol: string })[];
+  daily: { day: string; win: number; loss: number; r: number }[];
+  calls: SignalCall[];
+  /** Names for `script:<id>` indicators; a removed script has none. */
+  scriptNames: Record<string, string>;
+  /** Telegram is set up for this account, so calls also arrive as messages. */
+  telegram: boolean;
+};
+
 /** "Kabari saya saat harga menyentuh X" (server/src/price-alerts.ts): fires once, then stays as a record. */
 export type PriceLevel = {
   id: string;
@@ -684,6 +720,7 @@ export const api = {
   translateScript: (body: { pine: string; provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string }) =>
     request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
+  alertHistory: (days: number) => request<SignalHistory>(`/alerts/history?days=${days}`),
   priceLevels: (symbol?: string) => request<PriceLevels>(`/price-alerts${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`),
   priceLevelAdd: (body: { symbol: string; tvSymbol: string; price: number; label?: string }) =>
     request<PriceLevel>('/price-alerts', { method: 'POST', body: JSON.stringify(body) }),

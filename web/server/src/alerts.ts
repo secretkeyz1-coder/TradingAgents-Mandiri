@@ -14,7 +14,7 @@
 // that signal to its end, and what the new inputs fired before the move is recorded
 // as history, never sent as if it were fresh.
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "./auth";
@@ -343,6 +343,13 @@ async function scan(only?: string[], withHourly = true) {
             .insert(signalEvents)
             .values({
               alertId: alert.id,
+              // The pair travels with the signal, so the owner's history keeps it after the alert is removed.
+              userId: alert.userId,
+              symbol: alert.symbol,
+              tvSymbol: alert.tvSymbol,
+              indicator: alert.indicator,
+              timeframe: alert.timeframe,
+              venue: alert.venue,
               signalTime: s.time,
               side: s.side,
               label: s.label,
@@ -457,6 +464,113 @@ alertsApi.get("/alerts", async (c) => {
   });
 });
 
+// The member's own signal calls, for Beranda. A call is a signal that went out live (announced,
+// or due to be when Telegram is not set up), not the history a new alert records silently on
+// its first scan (inserted already closed, never announced). R counts what the engines settle
+// exactly: a target pays its distance over the stop's, a stop costs one; an exit by condition or
+// time is counted, not scored, since its exit price is not kept.
+const HISTORY_DAYS = [7, 30, 90, 365];
+const liveCall = or(isNotNull(signalEvents.notifiedAt), isNull(signalEvents.closeNotifiedAt));
+const rOf = sql<number | null>`case
+  when ${signalEvents.status} = 'win' and abs(${signalEvents.entry} - ${signalEvents.stopLoss}) > 0
+    then abs(${signalEvents.takeProfit} - ${signalEvents.entry}) / abs(${signalEvents.entry} - ${signalEvents.stopLoss})
+  when ${signalEvents.status} = 'loss' then -1
+end`;
+// A signal recorded by the previous release in the moment before migration 0025's columns were
+// filled has its pair only through its alert.
+const evSymbol = sql<string>`coalesce(${signalEvents.symbol}, ${signalAlerts.symbol})`;
+const evTvSymbol = sql<string>`coalesce(${signalEvents.tvSymbol}, ${signalAlerts.tvSymbol})`;
+const evIndicator = sql<SignalIndicator>`coalesce(${signalEvents.indicator}, ${signalAlerts.indicator})`;
+const evTimeframe = sql<string>`coalesce(${signalEvents.timeframe}, ${signalAlerts.timeframe})`;
+const tally = {
+  total: sql<number>`count(*)::int`,
+  win: sql<number>`count(*) filter (where ${signalEvents.status} = 'win')::int`,
+  loss: sql<number>`count(*) filter (where ${signalEvents.status} = 'loss')::int`,
+  // Still running only while its alert watches it; a removed alert's open signal is no longer followed.
+  open: sql<number>`count(*) filter (where ${signalEvents.status} = 'open' and ${signalEvents.alertId} is not null)::int`,
+  r: sql<number>`coalesce(sum(${rOf}), 0)::float`,
+};
+
+alertsApi.get("/alerts/history", async (c) => {
+  const user = c.get("user");
+  const asked = Number(c.req.query("days"));
+  const days = HISTORY_DAYS.includes(asked) ? asked : 90;
+  const where = and(
+    sql`coalesce(${signalEvents.userId}, ${signalAlerts.userId}) = ${user.id}`,
+    gte(signalEvents.createdAt, new Date(Date.now() - days * 86_400_000)),
+    liveCall,
+  );
+  const join = eq(signalEvents.alertId, signalAlerts.id);
+  const day = sql<string>`to_char(${signalEvents.createdAt} at time zone 'Asia/Jakarta', 'YYYY-MM-DD')`;
+  const [[totals], byIndicator, bySymbol, daily, calls, scripts, [held]] = await Promise.all([
+    db
+      .select({
+        ...tally,
+        exit: sql<number>`count(*) filter (where ${signalEvents.status} = 'exit')::int`,
+        expired: sql<number>`count(*) filter (where ${signalEvents.status} = 'expired')::int`,
+        replaced: sql<number>`count(*) filter (where ${signalEvents.status} = 'replaced')::int`,
+        stopped: sql<number>`count(*) filter (where ${signalEvents.status} = 'open' and ${signalEvents.alertId} is null)::int`,
+      })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(where),
+    db
+      .select({ indicator: evIndicator, timeframe: evTimeframe, ...tally })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(where)
+      .groupBy(evIndicator, evTimeframe)
+      .orderBy(desc(tally.total)),
+    db
+      .select({ symbol: evSymbol, tvSymbol: evTvSymbol, ...tally })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(where)
+      .groupBy(evSymbol, evTvSymbol)
+      .orderBy(desc(tally.total))
+      .limit(20),
+    db.select({ day, win: tally.win, loss: tally.loss, r: tally.r }).from(signalEvents).leftJoin(signalAlerts, join).where(where).groupBy(day).orderBy(asc(day)),
+    db
+      .select({
+      id: signalEvents.id,
+      tracked: sql<boolean>`${signalEvents.alertId} is not null`,
+      symbol: evSymbol,
+      tvSymbol: evTvSymbol,
+      indicator: evIndicator,
+      timeframe: evTimeframe,
+      venue: sql<string>`coalesce(${signalEvents.venue}, ${signalAlerts.venue}, '')`,
+      side: signalEvents.side,
+      label: signalEvents.label,
+      entry: signalEvents.entry,
+      stopLoss: signalEvents.stopLoss,
+      takeProfit: signalEvents.takeProfit,
+      status: signalEvents.status,
+      signalTime: signalEvents.signalTime,
+      exitTime: signalEvents.exitTime,
+      r: rOf,
+    })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(where)
+      .orderBy(desc(signalEvents.createdAt))
+      .limit(200),
+    db.select({ id: userScripts.id, name: userScripts.name }).from(userScripts).where(eq(userScripts.userId, user.id)),
+    db.select({ n: sql<number>`count(*)::int` }).from(signalAlerts).where(eq(signalAlerts.userId, user.id)),
+  ]);
+  const decided = totals.win + totals.loss;
+  return c.json({
+    days,
+    summary: { ...totals, winRate: decided ? totals.win / decided : null, alerts: held.n, max: limitsOf(user).alerts },
+    byIndicator,
+    bySymbol,
+    daily,
+    calls,
+    /** Names for `script:<id>` indicators; a removed script has none. */
+    scriptNames: Object.fromEntries(scripts.map((s) => [`script:${s.id}`, s.name])),
+    telegram: telegramBot() && Boolean(user.telegramChatId),
+  });
+});
+
 export const alertSchema = z.object({
   symbol: z.string().regex(SYMBOL_PATTERN),
   tvSymbol: z.string().min(1).max(40),
@@ -494,12 +608,17 @@ alertsApi.post("/alerts", async (c) => {
 alertsApi.delete("/alerts/:id", async (c) => {
   const id = c.req.param("id");
   if (!z.uuid().safeParse(id).success) return c.json({ error: "Not found" }, 404);
-  const [mine] = await db.select({ id: signalAlerts.id }).from(signalAlerts).where(and(eq(signalAlerts.id, id), eq(signalAlerts.userId, c.get("user").id)));
+  const [mine] = await db.select().from(signalAlerts).where(and(eq(signalAlerts.id, id), eq(signalAlerts.userId, c.get("user").id)));
   if (!mine) return c.json({ ok: true });
   // Its scan scores the public record's open signals: deleting it now would leave them open forever.
   if (await openCreatorSignals(id)) {
     return c.json({ error: "Alert ini punya sinyal yang masih berjalan di halaman publikmu. Jadikan privat dulu; alert bisa dihapus setelah sinyalnya selesai." }, 409);
   }
+  // Its signals stay in the owner's history; one recorded before they carried their pair takes it now.
+  await db
+    .update(signalEvents)
+    .set({ userId: mine.userId, symbol: mine.symbol, tvSymbol: mine.tvSymbol, indicator: mine.indicator, timeframe: mine.timeframe, venue: mine.venue })
+    .where(and(eq(signalEvents.alertId, id), isNull(signalEvents.userId)));
   await db.delete(signalAlerts).where(eq(signalAlerts.id, id));
   return c.json({ ok: true });
 });

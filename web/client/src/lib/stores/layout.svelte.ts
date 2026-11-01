@@ -1,5 +1,5 @@
-// How the workspace panels are arranged on a desktop-sized screen. Each panel
-// (Pasar, Riset AI, the bottom panel) is docked to its edge, floating as a window
+// How the panels of the chart screens are arranged on a desktop-sized screen (Pasar has
+// the market list, Riset AI its own panel, both the bottom panel). Each is docked to its edge, floating as a window
 // over the chart, or minimised to the tray; focus mode gives the chart the
 // whole screen and leaves only the floating panels. Remembered per browser at
 // once, and per account on the server so another browser opens the same way.
@@ -29,19 +29,19 @@ export const PRESETS: { id: PresetId; label: string; hint: string; arrangement: 
   {
     id: 'classic',
     label: 'Klasik',
-    hint: 'Pasar · chart · Riset AI · panel bawah',
+    hint: 'Semua panel menempel',
     arrangement: { focus: false, modes: { market: 'dock', ai: 'dock', dock: 'dock' }, rects: { market: null, ai: null, dock: null } },
   },
   {
     id: 'focus',
     label: 'Fokus chart',
-    hint: 'Chart penuh, Riset AI melayang',
+    hint: 'Chart penuh, panel melayang',
     arrangement: { focus: true, modes: { market: 'min', ai: 'float', dock: 'min' }, rects: { market: null, ai: null, dock: null } },
   },
   {
     id: 'analyst',
     label: 'Analis',
-    hint: 'Chart + laporan melayang besar',
+    hint: 'Panel bawah melayang besar',
     arrangement: { focus: false, modes: { market: 'min', ai: 'dock', dock: 'float' }, rects: { market: null, ai: null, dock: null } },
   },
 ];
@@ -111,7 +111,7 @@ class Layout {
     this.#changed();
   }
 
-  /** Rail and tray buttons: show a hidden panel where it was, hide a shown one. */
+  /** Show a hidden panel where it was, hide a shown one. */
   toggle(id: PanelId) {
     if (this.effective(id) !== 'min') this.setMode(id, 'min');
     else this.restore(id);

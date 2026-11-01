@@ -383,14 +383,24 @@ export const signalAlerts = pgTable(
   (t) => [uniqueIndex("signal_alerts_user_pair_idx").on(t.userId, t.symbol, t.indicator, t.timeframe, t.venue)],
 );
 
-/** Every signal an alert has seen, so each is sent once and its outcome once. */
+/**
+ * Every signal an alert has seen, so each is sent once and its outcome once. It carries its
+ * owner and what it was on, so removing the alert keeps the signal in the member's history
+ * (Beranda, GET /api/alerts/history).
+ */
 export const signalEvents = pgTable(
   "signal_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    alertId: uuid("alert_id")
-      .notNull()
-      .references(() => signalAlerts.id, { onDelete: "cascade" }),
+    /** null once the alert is removed. */
+    alertId: uuid("alert_id").references(() => signalAlerts.id, { onDelete: "set null" }),
+    /** Copied from the alert as the signal is recorded; rows older than these columns got them in migration 0025. */
+    userId: owner(),
+    symbol: text("symbol"),
+    tvSymbol: text("tv_symbol"),
+    indicator: text("indicator").$type<SignalIndicator>(),
+    timeframe: text("timeframe"),
+    venue: text("venue"),
     /** The signal bar's time, exchange-local, as the engines print it. */
     signalTime: text("signal_time").notNull(),
     side: text("side").notNull(),
@@ -404,7 +414,7 @@ export const signalEvents = pgTable(
     closeNotifiedAt: timestamp("close_notified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("signal_events_alert_time_idx").on(t.alertId, t.signalTime)],
+  (t) => [uniqueIndex("signal_events_alert_time_idx").on(t.alertId, t.signalTime), index("signal_events_user_created_idx").on(t.userId, t.createdAt)],
 );
 
 export type PriceDirection = "above" | "below";

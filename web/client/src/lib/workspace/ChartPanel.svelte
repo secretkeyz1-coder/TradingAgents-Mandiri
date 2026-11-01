@@ -2,7 +2,7 @@
   // The symbol in focus: TradingView's full chart, or the engine's daily
   // candles with every AI decision marked, plus the chart's own tools (zoom,
   // jump to a date, navigator, Scalper Pro+). Analisa harian puts the symbol on
-  // the scheduled analyses (Pantau & alert). On a desktop screen the header also
+  // the scheduled analyses (Pantau). On a desktop screen the header also
   // holds focus mode and the layout menu.
   import DecisionChart from '../DecisionChart.svelte';
   import { agent, LAYERS } from '../stores/agent.svelte';
@@ -68,7 +68,7 @@
         aria-pressed={watched}
         title={watched
           ? 'Analisa harian aktif: AI menganalisa simbol ini tiap hari bursa, memakai 1 kuota analisa per hari. Klik untuk berhenti.'
-          : 'AI menganalisa simbol ini otomatis tiap hari bursa; hasilnya di Pantau & alert dan Telegram. Memakai 1 kuota analisa per hari.'}
+          : 'AI menganalisa simbol ini otomatis tiap hari bursa; hasilnya di Pantau dan Telegram. Memakai 1 kuota analisa per hari.'}
         onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class:text-accent={watched} aria-hidden="true"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14" /><circle cx="16" cy="16" r="6" /></svg>
