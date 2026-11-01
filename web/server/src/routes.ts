@@ -21,7 +21,7 @@ const MAX_BACKTEST_CELLS = Number(process.env.MAX_BACKTEST_CELLS ?? 40);
 
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 
-const createSchema = z.object({
+export const createSchema = z.object({
   ticker: z
     .string()
     .trim()
@@ -41,7 +41,7 @@ const createSchema = z.object({
   backendUrl: z.url().max(300).optional().or(z.literal("").transform(() => undefined)),
 });
 
-const backtestSchema = createSchema.omit({ ticker: true, date: true }).extend({
+export const backtestSchema = createSchema.omit({ ticker: true, date: true }).extend({
   tickers: z
     .array(createSchema.shape.ticker)
     .min(1, "Isi minimal satu ticker")

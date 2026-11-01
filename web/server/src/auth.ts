@@ -346,7 +346,7 @@ authApi.get("/session", async (c) => {
   return user ? c.json({ auth: true, user: publicUser(user) }) : c.json({ error: "Belum masuk" }, 401);
 });
 
-const loginSchema = z.object({ username: z.string().max(200), password: z.string().max(500) });
+export const loginSchema = z.object({ username: z.string().max(200), password: z.string().max(500) });
 
 authApi.post("/login", async (c) => {
   if (!authEnabled()) return c.json({ auth: false, user: localAdmin ? publicUser(localAdmin) : null });
@@ -395,7 +395,7 @@ authApi.get("/auth/config", (c) => c.json({ signup: signupOpen(), google: google
 /** A new member starts on the simple screen (Pemula); an account without `ui` opens the full workspace (Pro). */
 const BEGINNER = { ui: { mode: "pemula" } };
 
-const signupSchema = z.object({
+export const signupSchema = z.object({
   email: emailSchema,
   password: z.string().min(8, "Kata sandi minimal 8 karakter").max(200),
   phone: z.string().max(24).optional(),

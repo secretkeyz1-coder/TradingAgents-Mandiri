@@ -188,7 +188,7 @@ priceAlertsApi.get("/price-alerts", async (c) => {
   });
 });
 
-const levelSchema = z.object({
+export const levelSchema = z.object({
   symbol: z.string().regex(SYMBOL_PATTERN),
   tvSymbol: z.string().min(1).max(40),
   price: z.number().positive().finite(),

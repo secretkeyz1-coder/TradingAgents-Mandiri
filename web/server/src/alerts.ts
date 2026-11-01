@@ -362,7 +362,7 @@ alertsApi.get("/alerts", async (c) => {
   });
 });
 
-const alertSchema = z.object({
+export const alertSchema = z.object({
   symbol: z.string().regex(SYMBOL_PATTERN),
   tvSymbol: z.string().min(1).max(40),
   indicator: z.union([z.enum(["pob", "scalper", "fib"]), z.string().regex(SCRIPT_ID)]),

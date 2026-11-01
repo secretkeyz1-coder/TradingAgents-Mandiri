@@ -19,6 +19,8 @@ Two products live in this repo:
   `cd client && bun run test` (indicator parity; Python with pandas). Lint the worker from the repo root: `ruff check web`.
   CI (`.github/workflows/web.yml`) runs all of these, plus the client build, on every push.
 - Build the client: `bun run build`
+- API reference: after adding or changing a route, `cd server && bun run openapi` and commit `docs/api/openapi.json`
+  (a test fails while it is out of date).
 - Schema change: edit `server/src/db/schema.ts`, then `cd server && bunx drizzle-kit generate --name <what>`;
   migrations apply at server start in dev, and in production in the compose `migrate` service before the app is
   replaced. The running version must keep working on the new schema: add first, remove in a later release.
@@ -59,6 +61,8 @@ Two products live in this repo:
 | Admin console | `client/src/lib/admin/` |
 | Public pages | `client/index.html`, `client/<page>/index.html`, `client/src/site/` |
 | Backups, restore drill | `web/deploy/backup.sh`, `web/deploy/restore-check.sh` (run on the VPS) |
+| Deploys | `web/deploy/deploy.sh`, `receive-release.sh`, `.github/workflows/deploy.yml` |
+| Architecture, decisions, runbooks | `docs/architecture.md`, `docs/adr/`, `docs/runbooks/` (Indonesian, like `web/README.md`) |
 
 ## Rules
 - The fork is public: never commit secrets, `.env` files, `.serena/`, server addresses, keys or production URLs of LLM
@@ -67,6 +71,8 @@ Two products live in this repo:
   credentials into a browser. Verify production through its database and logs.
 - Commit each finished feature: subject `web: <what users get>`, body explaining why. Update `web/README.md` in the
   same commit when behaviour, routes or settings change.
+- A decision that changes how the system is built gets an ADR in `docs/adr/` (a new number; accepted ADRs are not
+  rewritten). A new operating procedure, or what an incident taught, goes in `docs/runbooks/`.
 - A server change comes with a test in `server/test`: in-process through `app.request`, with the seams for what
   leaves the process (`outbox` in `mail.ts`, `useQuotes` in `price-alerts.ts`, `forgetCache` in `site.ts`).
 - Several app instances and worker processes can share one database: state they must agree on goes in Postgres

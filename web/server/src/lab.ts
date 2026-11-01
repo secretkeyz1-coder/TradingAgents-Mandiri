@@ -34,7 +34,7 @@ const ENGINE_TIMEOUT_MS = 3 * 60_000;
 const RUN_LEASE = "lab";
 const RUN_LEASE_MS = 2 * 60_000;
 
-const runSchema = z.object({
+export const runSchema = z.object({
   strategy: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("engine"), name: z.enum(["pob", "scalper", "fib"]) }),
     z.object({ kind: z.literal("script"), id: z.uuid() }),

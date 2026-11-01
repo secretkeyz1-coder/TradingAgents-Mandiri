@@ -459,6 +459,8 @@ Setiap analisa yang berjalan mengirim *heartbeat* ke barisnya tiap 30 detik. Saa
 
 ## API
 
+Referensi lengkapnya ada di [`docs/api/openapi.json`](../docs/api/openapi.json) (OpenAPI 3.1). Isinya setiap rute, apakah perlu sesi atau khusus admin, dan isian rute-rute utama. Berkas itu dibangkitkan dari rute server: setelah menambah atau mengubah rute, jalankan `bun run openapi` di `web/server`; tesnya gagal selama berkas tertinggal. Arsitektur, keputusan desain (ADR), dan runbook operasi ada di [`docs/`](../docs/README.md). Tabel di bawah merangkum rute yang paling sering dipakai.
+
 | Method | Path | Fungsi |
 | --- | --- | --- |
 | GET | `/api/options` | Provider, model, analis, kedalaman, bahasa |
