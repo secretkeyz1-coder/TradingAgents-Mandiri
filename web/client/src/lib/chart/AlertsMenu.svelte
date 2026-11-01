@@ -1,17 +1,19 @@
 <script lang="ts">
-  // Telegram notifications for new signals: switch PoB BYSTRA (15m, 1h) and
-  // Scalper Pro+ (15m) on or off for the symbol in focus, see every alert of
+  // Notifications for the symbol in focus: a message when the price reaches a level
+  // (PriceLevels, from the chart's last price), and Telegram messages for new signals:
+  // switch PoB BYSTRA (15m, 1h) and Scalper Pro+ (15m) on or off, see every alert of
   // the account, send a test message. The server does the scanning. Crypto is
   // watched on the venue the chart shows (the Bursa menu): its own bars. On
   // Creator, an alert can be made public: its live signals go on the account's
   // track record at /c/<username> (server/src/creators.ts).
   import { api, type SignalAlert, type SignalAlerts } from '../api';
   import { auth } from '../auth.svelte';
+  import PriceLevels from '../PriceLevels.svelte';
   import { ws } from '../stores/workspace.svelte';
-  import { CRYPTO_VENUES, type VenueId } from '../tv';
+  import { CRYPTO_VENUES, nameOf, type VenueId } from '../tv';
   import { placeMenu } from './menuSide';
 
-  let { symbol, venue = null }: { symbol: string; venue?: VenueId | null } = $props();
+  let { symbol, venue = null, last = null }: { symbol: string; venue?: VenueId | null; last?: number | null } = $props();
 
   /** The venue as alerts store it: "" for the default source. */
   const here = $derived(venue && venue !== 'binance' ? venue : '');
@@ -125,9 +127,9 @@
       class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-88 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
       style:max-height="{place.maxHeight}px"
       role="dialog"
-      aria-label="Notifikasi sinyal"
+      aria-label="Notifikasi"
     >
-      <h3 class="font-semibold">Notifikasi Telegram · <span class="font-mono">{symbol}</span>{venueLabel ? ` · ${venueLabel}` : ''}</h3>
+      <h3 class="font-semibold">Notifikasi · <span class="font-mono">{symbol}</span>{venueLabel ? ` · ${venueLabel}` : ''}</h3>
       {#if error}
         <p class="text-xs text-error" role="alert">{error}</p>
       {:else if !data}
@@ -136,8 +138,13 @@
         {#if !data.telegram.bot}
           <p class="text-xs text-warning">{auth.isAdmin ? 'Bot Telegram server belum diisi (TELEGRAM_BOT_TOKEN).' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}</p>
         {:else if !data.telegram.chat}
-          <p class="text-xs text-warning">Isi Chat ID Telegram Anda di menu akun → Profil, lalu kembali ke sini.</p>
+          <p class="text-xs text-warning">Isi Chat ID Telegram Anda di menu akun → Profil → Notifikasi, lalu kembali ke sini.</p>
         {/if}
+        <section class="flex flex-col gap-2" aria-label="Notifikasi harga">
+          <h4 class="text-xs font-semibold text-base-content/70">Harga</h4>
+          <PriceLevels {symbol} tvSymbol={ws.symbol} label={nameOf(ws.symbol) ?? symbol} {last} />
+        </section>
+        <h4 class="border-t border-base-300 pt-2 text-xs font-semibold text-base-content/70">Sinyal</h4>
         <div class="flex flex-col gap-1.5">
           {#each data.combos as combo (combo.indicator + combo.timeframe)}
             <label class="flex cursor-pointer items-center gap-2">
@@ -159,7 +166,7 @@
         </p>
         {#if data.items.length}
           <div class="flex flex-col gap-1 border-t border-base-300 pt-2">
-            <span class="text-xs text-base-content/70">Semua notifikasi Anda ({data.items.length}/{data.max})</span>
+            <span class="text-xs text-base-content/70">Semua notifikasi sinyal Anda ({data.items.length}; {data.used}/{data.max} terpakai bersama notifikasi harga)</span>
             {#if creator}
               <span class="text-xs text-base-content/70">
                 Nyalakan Publik agar sinyal baru alert itu tercatat di <a class="link" href="/c/{auth.user?.username}" target="_blank" rel="noopener">halaman rekam jejak</a> Anda.

@@ -278,8 +278,35 @@ export type SignalAlert = {
 export type SignalAlerts = {
   items: SignalAlert[];
   max: number;
+  /** Signal alerts plus active price levels: they share the plan's allowance. */
+  used: number;
   combos: { indicator: SignalAlert['indicator']; timeframe: SignalAlert['timeframe']; label: string }[];
   telegram: { bot: boolean; chat: boolean; configured: boolean };
+};
+
+/** "Kabari saya saat harga menyentuh X" (server/src/price-alerts.ts): fires once, then stays as a record. */
+export type PriceLevel = {
+  id: string;
+  symbol: string;
+  tvSymbol: string;
+  label: string | null;
+  /** Set from the price when it was added: above waits for a rise, below for a fall. */
+  direction: 'above' | 'below';
+  price: number;
+  active: boolean;
+  triggeredAt: string | null;
+  triggeredPrice: number | null;
+  /** The message reached Telegram or e-mail. */
+  notified: boolean;
+  createdAt: string;
+};
+
+export type PriceLevels = {
+  items: PriceLevel[];
+  used: number;
+  max: number;
+  telegram: { bot: boolean; chat: boolean; configured: boolean };
+  mail: boolean;
 };
 
 export const INTERVALS = ['15m', '1h', '4h', '1d', '1wk', '1mo'] as const;
@@ -633,6 +660,10 @@ export const api = {
   translateScript: (body: { pine: string; provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string }) =>
     request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
+  priceLevels: (symbol?: string) => request<PriceLevels>(`/price-alerts${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`),
+  priceLevelAdd: (body: { symbol: string; tvSymbol: string; price: number; label?: string }) =>
+    request<PriceLevel>('/price-alerts', { method: 'POST', body: JSON.stringify(body) }),
+  priceLevelRemove: (id: string) => request<{ ok: true }>(`/price-alerts/${id}`, { method: 'DELETE' }),
   lab: () =>
     request<{ engines: Record<string, { label: string; timeframes: string[] }>; scripts: { id: string; name: string }[]; maxDays: Record<string, number>; busy: boolean }>('/lab'),
   labRun: (config: LabConfig) => request<LabRun>('/lab/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(config) }),

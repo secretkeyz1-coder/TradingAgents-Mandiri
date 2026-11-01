@@ -11,6 +11,7 @@
   import { ws } from '../stores/workspace.svelte';
   import { theme, tokenColor } from '../theme.svelte';
   import { venueOf } from '../tv';
+  import { latest } from './latest.svelte';
   import { friendlyName, priceText, toneOf } from './plain';
 
   type Span = { key: string; short: string; label: string; range: string; interval: Interval; days: 'session' | number | null };
@@ -122,6 +123,12 @@
     return { price: now.close, change: now.close / before.close - 1, today: now.time.slice(0, 10) === today() };
   });
   const live = $derived(!!daily?.source && daily.source !== 'yahoo');
+
+  // Shared with the cards beside the chart.
+  $effect(() => {
+    latest.symbol = ws.yahoo ?? '';
+    latest.price = quote?.price ?? null;
+  });
 
   // --- The chart: made once its box exists, fed and coloured as data and theme change.
   let box: HTMLDivElement | undefined = $state();

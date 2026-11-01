@@ -397,6 +397,38 @@ export const signalEvents = pgTable(
   (t) => [uniqueIndex("signal_events_alert_time_idx").on(t.alertId, t.signalTime)],
 );
 
+export type PriceDirection = "above" | "below";
+
+/**
+ * "Tell me when the price reaches X": one message, once, when the price crosses the level.
+ * Checked every minute beside the signal scan (price-alerts.ts); a fired alert stays as a record.
+ */
+export const priceAlerts = pgTable(
+  "price_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner(),
+    /** Yahoo symbol, as the engine reads it (GC=F). */
+    symbol: text("symbol").notNull(),
+    tvSymbol: text("tv_symbol").notNull(),
+    /** The name the user knows the asset by ("Emas"), from the app's market list, for the message. */
+    label: text("label"),
+    /** For crypto: the venue whose price is read (venues.ts); empty = the default source. */
+    venue: text("venue").notNull().default(""),
+    direction: text("direction").$type<PriceDirection>().notNull(),
+    price: doublePrecision("price").notNull(),
+    active: boolean("active").notNull().default(true),
+    /** The newest 15m bar when the alert was armed: highs and lows from it and before never fire it. */
+    armedBar: text("armed_bar"),
+    triggeredAt: timestamp("triggered_at", { withTimezone: true }),
+    triggeredPrice: doublePrecision("triggered_price"),
+    /** When the message reached Telegram or e-mail; null when neither is set up or both failed. */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("price_alerts_active_idx").on(t.active, t.symbol), index("price_alerts_user_idx").on(t.userId, t.createdAt)],
+);
+
 /**
  * The signal ledger: every signal the built-in engines fire on the tracked symbols,
  * whoever watches them, frozen at birth and scored against later bars, with the

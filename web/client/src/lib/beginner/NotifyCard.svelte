@@ -1,9 +1,12 @@
 <script lang="ts">
   // What the user is told about the asset in focus: the daily AI summary (the asset on
-  // Pantauanku, analysed each trading day, the result sent to Telegram), and whether
-  // Telegram is connected. `onprofile` opens the profile, where Telegram is linked.
+  // Pantauanku, analysed each trading day, the result sent to Telegram), a message when
+  // the price reaches a level, and whether Telegram is connected. `onprofile` opens the
+  // profile, where Telegram is linked.
+  import PriceLevels from '../PriceLevels.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
+  import { latest } from './latest.svelte';
   import { friendlyName } from './plain';
 
   let { onprofile }: { onprofile: () => void } = $props();
@@ -56,6 +59,17 @@
       <input type="checkbox" class="toggle toggle-primary mt-0.5 shrink-0" checked={on} disabled={!ws.yahoo || full || saving} onchange={flip} />
     </label>
     {#if full}<p class="text-xs text-warning">Pantauanku penuh: paketmu memuat {w.max} aset. Hapus satu dulu, lewat tombol Dipantau di aset itu.</p>{/if}
+
+    {#if ws.yahoo}
+      <div class="border-t border-base-300 pt-3">
+        <PriceLevels
+          symbol={ws.yahoo}
+          tvSymbol={ws.symbol}
+          label={name}
+          last={latest.symbol === ws.yahoo ? latest.price : null}
+        />
+      </div>
+    {/if}
 
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-base-300 pt-3 text-sm">
       {#if w.telegram.configured}

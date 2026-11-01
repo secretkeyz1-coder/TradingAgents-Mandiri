@@ -41,7 +41,7 @@ Sakelar **Pemula | Pro** ada di bilah atas.
 
 - **Pemula** menampilkan satu aset dengan bahasa sederhana:
   - **Pantauanku**: watchlist, dengan saran AI terakhir tiap aset. Kalau masih kosong, tampil aset populer.
-  - **Aset**: nama, harga terakhir dan perubahan hari ini, grafik area 1 hari sampai 1 tahun, kartu **Saran AI**, dan kartu **Kabari saya** (sakelar ringkasan AI harian, yang sekaligus memasukkan aset ke Pantauanku, plus status Telegram).
+  - **Aset**: nama, harga terakhir dan perubahan hari ini, grafik area 1 hari sampai 1 tahun, kartu **Saran AI**, dan kartu **Kabari saya** (sakelar ringkasan AI harian, yang sekaligus memasukkan aset ke Pantauanku; notifikasi harga; dan status Telegram).
   - **Tanya AI**: chat agent tanpa nama tool, memori, dan skill.
 
   Mulai 1024 px tampil tiga kolom; di bawahnya, tiga tab bawah.
@@ -127,12 +127,30 @@ API: `GET /api/watchlist`, `POST /api/watchlist {symbol, tvSymbol}`, `DELETE /ap
 
 ### Notifikasi sinyal (Telegram)
 
-Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), sebanyak batas paket (Gratis 3, Pro 15, Creator 50). Chat ID boleh ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan watchlist.
+Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), sebanyak batas notifikasi paket (Gratis 3, Pro 15, Creator 50), yang dipakai bersama notifikasi harga. Chat ID boleh ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan watchlist.
 
 - Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
 - Saat notifikasi dinyalakan, sinyal yang sudah ada dicatat tanpa dikirim. Sinyal yang baru terlihat lebih dari `SIGNAL_STALE_BARS` candle (default 4) setelah muncul, misalnya karena server mati, dicatat tanpa dikirim.
 - Kripto dipantau di bursa yang sedang dipilih di chart (tombol Bursa): notifikasi pada `BYBIT:BTCUSDT` memakai candle Bybit dan pesannya menyebut sumber datanya. Indikator yang sama boleh dinyalakan di beberapa bursa.
+
+### Notifikasi harga
+
+"Kabari saya saat harga menyentuh X". Levelnya dipasang di kartu **Kabari saya** (Pemula) atau di bagian **Harga** pada menu **Notifikasi** chart (Pro). Arahnya mengikuti harga saat dipasang: level di atas harga menunggu kenaikan, di bawahnya menunggu penurunan. Kotak harga membaca format Indonesia maupun Inggris (4.100 atau 4,100) dengan memilih tafsiran yang paling dekat dengan harga sekarang, dan baris di bawahnya menyebut arahnya sebelum dipasang.
+
+- Tiap menit, di samping pemindaian sinyal (`server/src/price-alerts.ts`), server membaca candle 15m yang sama dengan chart:
+  - **Kripto dan emas:** real-time dari Binance (emas dari perpetual XAUUSDT), atau dari bursa yang dipilih di chart.
+  - **Aset lain:** dari Yahoo. Datanya tertunda dan di-cache 15 menit, jadi notifikasinya bisa terlambat.
+- Level terpicu kalau harga terbaru melewatinya, atau kalau high/low candle yang dibuka setelah level dipasang menyentuhnya. Sentuhan di antara dua pemeriksaan tetap terhitung, sedangkan gerakan sebelum level dipasang tidak pernah memicunya.
+- **Sekali saja:** level dimatikan dengan satu update bersyarat sebelum pesannya dikirim, jadi tetap terkirim sekali walau ada dua instance server.
+- **Pesan:** dikirim lewat Telegram, dan lewat email kalau SMTP diatur dan alamatnya terverifikasi. Isinya nama aset, level, harga saat itu, dan sumber datanya.
+- **Catatan:** level yang terpicu tetap tersimpan (waktu dan harga), dan bisa dihapus.
+- **Jatah:** level aktif memakai jatah notifikasi paket bersama notifikasi sinyal. Kalau paket turun, notifikasi sinyal didahulukan dan level terbaru dijeda.
+
+API:
+- `GET /api/price-alerts?symbol=`: daftar level, jumlah terpakai, batas paket, dan status Telegram/email.
+- `POST /api/price-alerts {symbol, tvSymbol, price, label?}`: menolak harga yang sama dengan harga sekarang dan level di atas batas paket; level yang sama dikembalikan apa adanya.
+- `DELETE /api/price-alerts/:id`.
 
 ### Kripto multi-bursa (tombol Bursa di chart)
 

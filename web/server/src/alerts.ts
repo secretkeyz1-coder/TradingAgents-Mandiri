@@ -17,6 +17,7 @@ import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, t
 import { openCreatorSignals, recordCreatorSignal, scoreCreatorSignal } from "./creators";
 import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
 import { capMessage, limitsOf, planOf } from "./plans";
+import { checkPrices, notificationsInUse } from "./price-alerts";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
 import { toScriptBars } from "../../shared/script";
 import { binancePair, binancePerpetual } from "./binance";
@@ -306,8 +307,15 @@ async function scan(only?: string[], withHourly = true) {
 }
 
 let lastSlot = -1;
+let lastMinute = -1;
 export function startAlertScheduler() {
   const tick = () => {
+    // Price levels (price-alerts.ts) are checked every minute.
+    const minute = Math.floor(Date.now() / 60_000);
+    if (minute !== lastMinute) {
+      lastMinute = minute;
+      checkPrices().catch((err) => console.error("price check failed", err));
+    }
     const slot = Math.floor((Date.now() - SCAN_DELAY_MS) / (SLOT_MINUTES * 60_000));
     if (slot === lastSlot) return;
     lastSlot = slot;
@@ -339,6 +347,8 @@ alertsApi.get("/alerts", async (c) => {
       };
     }),
     max: limitsOf(user).alerts,
+    /** Signal alerts plus active price levels: they share the plan's allowance. */
+    used: await notificationsInUse(user.id),
     combos: [
       ...COMBOS,
       ...(await db.select().from(userScripts).where(eq(userScripts.userId, user.id)).orderBy(asc(userScripts.name))).flatMap((s) =>
@@ -371,9 +381,8 @@ alertsApi.post("/alerts", async (c) => {
   // The venue comes from the chart's symbol: BYBIT:BTCUSDT watches Bybit's bars, BINANCE:… the default source.
   const venue = storedVenue(venueOfTv(tvSymbol));
   if (venue && !cryptoBase(symbol)) return c.json({ error: "Bursa hanya untuk simbol kripto" }, 400);
-  const count = (await db.select({ id: signalAlerts.id }).from(signalAlerts).where(eq(signalAlerts.userId, user.id))).length;
   const max = limitsOf(user).alerts;
-  if (count >= max) return c.json({ error: capMessage(user, max, "notifikasi") }, 409);
+  if ((await notificationsInUse(user.id)) >= max) return c.json({ error: capMessage(user, max, "notifikasi") }, 409);
   const [row] = await db
     .insert(signalAlerts)
     .values({ userId: user.id, symbol: symbol.toUpperCase(), tvSymbol: tvSymbol.toUpperCase(), indicator: indicator as SignalIndicator, timeframe, venue })

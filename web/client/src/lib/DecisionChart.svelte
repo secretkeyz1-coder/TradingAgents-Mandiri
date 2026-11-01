@@ -809,7 +809,7 @@
         <IndicatorsMenu pobOk={!!pobTf} {fibOk} />
         <ScriptsMenu />
         {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
-        <AlertsMenu {symbol} {venue} />
+        <AlertsMenu {symbol} {venue} last={candles.at(-1)?.close ?? null} />
       {/if}
     </div>
   </div>

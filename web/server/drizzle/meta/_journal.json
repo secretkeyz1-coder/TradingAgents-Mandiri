@@ -141,6 +141,13 @@
       "when": 1793508271519,
       "tag": "0019_creator_pages",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793522080185,
+      "tag": "0020_price_alerts",
+      "breakpoints": true
     }
   ]
 }
