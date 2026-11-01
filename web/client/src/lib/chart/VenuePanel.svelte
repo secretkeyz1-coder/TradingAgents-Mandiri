@@ -25,6 +25,9 @@
 
   let open = $state(false);
   let place = $state({ left: 0, width: 0, maxHeight: 0 });
+  /** Menu width (px) the spread and age columns need beside price and gap; narrower, a stale price wears the warning itself. */
+  const FULL_TABLE_PX = 380;
+  const roomy = $derived(place.width >= FULL_TABLE_PX);
   let quotes = $state<Quote[]>([]);
   let note = $state('');
   let now = $state(Date.now());
@@ -116,14 +119,16 @@
       {#if !quotes.length}
         <p class="flex items-center gap-2 text-xs text-base-content/70"><span class="loading loading-spinner loading-xs"></span> Menghubungi bursa…</p>
       {:else}
-        <table class="table table-xs">
+        <table class="table table-xs [&_td]:px-1.5 [&_th]:px-1.5">
           <thead>
             <tr>
-              <th>Bursa</th>
-              <th class="text-right">Harga</th>
-              <th class="text-right" title="Selisih terhadap median semua bursa, dalam dolar">vs median</th>
-              <th class="text-right" title="Selisih bid dan ask, dalam basis poin">Spread</th>
-              <th class="text-right">Umur</th>
+              <th class="text-xs">Bursa</th>
+              <th class="text-right text-xs">Harga</th>
+              <th class="text-right text-xs" title="Selisih terhadap median semua bursa, dalam dolar">vs median</th>
+              {#if roomy}
+                <th class="text-right text-xs" title="Selisih bid dan ask, dalam basis poin">Spread</th>
+                <th class="text-right text-xs">Umur</th>
+              {/if}
             </tr>
           </thead>
           <tbody>
@@ -137,21 +142,29 @@
                 aria-disabled={!q.pair}
                 onclick={() => q.pair && pick(q.venue)}
               >
-                <td class="whitespace-nowrap">
-                  <span class="font-medium">{q.label}</span>
+                <td>
+                  <span class="font-medium whitespace-nowrap">{q.label}</span>
+                  <span class="block font-mono text-xs text-base-content/60">{q.pair ?? '—'}</span>
                   {#if q.venue === lowest}<span class="badge badge-xs badge-success badge-soft">termurah</span>{/if}
                   {#if q.venue === highest}<span class="badge badge-xs badge-error badge-soft">termahal</span>{/if}
-                  <span class="block font-mono text-[11px] text-base-content/60">{q.pair ?? '—'}</span>
                 </td>
                 {#if q.error && q.last == null}
-                  <td colspan="4" class="text-right text-xs text-base-content/60">{q.error}</td>
+                  <td colspan={roomy ? 4 : 2} class="text-right text-xs text-base-content/60">{q.error}</td>
                 {:else}
-                  <td class="text-right font-mono tabular-nums">{price(q)}</td>
+                  <td
+                    class="text-right font-mono tabular-nums"
+                    class:text-warning={!roomy && a != null && a > 30}
+                    title={a == null ? undefined : `Diperbarui ${a} dtk lalu`}
+                  >
+                    {price(q)}
+                  </td>
                   <td class="text-right tabular-nums" class:text-warning={g != null && Math.abs(g) > 0.3}>
                     {g == null ? '–' : `${g >= 0 ? '+' : '−'}${Math.abs(g).toFixed(2)}%`}
                   </td>
-                  <td class="text-right tabular-nums">{s == null ? '–' : s.toFixed(1)}</td>
-                  <td class="text-right tabular-nums" class:text-warning={a != null && a > 30}>{a == null ? '–' : `${a} dtk`}</td>
+                  {#if roomy}
+                    <td class="text-right tabular-nums">{s == null ? '–' : s.toFixed(1)}</td>
+                    <td class="text-right tabular-nums" class:text-warning={a != null && a > 30}>{a == null ? '–' : `${a} dtk`}</td>
+                  {/if}
                 {/if}
               </tr>
             {/each}
