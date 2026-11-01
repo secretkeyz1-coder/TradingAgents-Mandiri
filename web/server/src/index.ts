@@ -14,6 +14,7 @@ import { startLedgerRecaps } from "./ledger";
 import { startLimitPruning } from "./limits";
 import { isLeader, resignLeadership, startLeadership } from "./locks";
 import { log } from "./log";
+import { startOpsAlerts } from "./monitor";
 import { startReminders } from "./reminders";
 import { startBriefs } from "./site";
 import { startStatusChecks } from "./status";
@@ -39,6 +40,7 @@ startReminders();
 startStatusChecks();
 startErrorPruning();
 startLimitPruning();
+startOpsAlerts();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => recordError("catalog", err));
 

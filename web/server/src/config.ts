@@ -25,6 +25,8 @@ const SETTINGS = z.object({
   SESSION_SECRET: z.preprocess(blank, z.string().min(32, "minimal 32 karakter").optional()),
   LOG_LEVEL: z.preprocess(blank, z.enum(["debug", "info", "warn", "error", "silent"]).optional()),
   MIGRATE_ON_START: z.preprocess(blank, z.enum(["0", "1"]).optional()),
+  METRICS_TOKEN: z.preprocess(blank, z.string().min(16, "minimal 16 karakter").optional()),
+  ALERT_CHAT_ID: z.preprocess(blank, z.string().regex(/^(-?\d+|@\w{5,})$/, "chat id Telegram (angka) atau @nama_channel").optional()),
 });
 
 /**

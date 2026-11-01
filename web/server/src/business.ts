@@ -2,7 +2,7 @@
 // recurring revenue that makes, money in per month, how trials convert, the
 // renewals coming up and the paid plans that lapsed, coupon use, and what the
 // model work costs in tokens (tokens.ts). Amounts leave out the unique codes.
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { googleEnabled, requireAdmin, signupOpen, type AppEnv } from "./auth";
 import { config } from "./config";
@@ -131,7 +131,14 @@ businessApi.get("/admin/errors", async (c) => c.json(await recentErrors()));
 
 businessApi.get("/admin/config", async (c) => {
   const catalog = await getCatalog().catch(() => null);
+  // Where the server's own alerts go (monitor.ts): the ALERT_CHAT_ID chat, else every admin with a chat id.
+  const [alerted] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.disabled, false), isNotNull(users.telegramChatId)));
   return c.json({
+    metrics: Boolean(process.env.METRICS_TOKEN),
+    opsAlerts: { chat: Boolean(process.env.ALERT_CHAT_ID), admins: alerted?.n ?? 0 },
     signup: signupOpen(),
     publicSite: process.env.PUBLIC_SITE === "on",
     publicUrl: process.env.PUBLIC_URL || null,

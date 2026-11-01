@@ -1,6 +1,7 @@
 // The HTTP app: every route, its middleware and the error answer, with no side
 // effects of its own. index.ts runs the migrations and the schedulers and serves
 // it; the test suite (web/server/test) calls it directly with app.request().
+import { createHash, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { Hono, type Context } from "hono";
 import { serveStatic } from "hono/bun";
@@ -18,6 +19,7 @@ import { errorCode, recordError } from "./errors";
 import { labApi } from "./lab";
 import { ledgerApi } from "./ledger";
 import { log } from "./log";
+import { metricsText, observeRequest } from "./metrics";
 import { priceAlertsApi } from "./price-alerts";
 import { api } from "./routes";
 import { scriptsApi } from "./scripts";
@@ -36,6 +38,8 @@ app.use("*", async (c, next) => {
   const started = performance.now();
   await next();
   c.res.headers.set("X-Request-Id", id);
+  // After next(), routePath is the matched route's pattern: ids stay out of the metric's labels.
+  observeRequest(c.req.method, c.req.routePath, c.res.status, (performance.now() - started) / 1000);
   if (c.req.path.startsWith("/api/")) {
     // The path only: query strings can carry one-time tokens.
     log.info("request", { id, method: c.req.method, path: c.req.path, status: c.res.status, ms: Math.round(performance.now() - started), user: c.get("user")?.id });
@@ -74,6 +78,16 @@ app.use(
 
 // Unauthenticated, for the container's health check and a reverse proxy.
 app.get("/healthz", (c) => c.text("ok"));
+
+// For a Prometheus scrape (metrics.ts), with the token as "Authorization: Bearer"; no page at all without one set.
+const digest = (s: string) => createHash("sha256").update(s).digest();
+app.get("/metrics", async (c) => {
+  const token = process.env.METRICS_TOKEN;
+  if (!token) return c.notFound();
+  const given = c.req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (!timingSafeEqual(digest(given), digest(token))) return c.text("Unauthorized", 401);
+  return c.text(await metricsText(), 200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8", "Cache-Control": "no-store" });
+});
 
 // What the content policy would have blocked, as browsers report it: logged, at most 30 a minute.
 // Counted per instance on purpose (unlike limits.ts): the route takes anyone's request, and a

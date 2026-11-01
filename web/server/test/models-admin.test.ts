@@ -61,7 +61,8 @@ test("a member's Telegram error names no server setting", async () => {
 test("the server settings page is for admins only and shows no secret value", async () => {
   const r = await call("/api/admin/config", { cookie: await admin() });
   expect(r.status).toBe(200);
-  for (const key of ["signup", "telegram", "mail", "models"]) expect(r.body).toHaveProperty(key);
+  for (const key of ["signup", "telegram", "mail", "models", "metrics"]) expect(r.body).toHaveProperty(key);
+  expect(r.body.opsAlerts).toEqual({ chat: false, admins: expect.any(Number) });
   const text = JSON.stringify(r.body);
   expect(text).not.toContain(process.env.SESSION_SECRET!);
   expect(text).not.toContain(process.env.APP_PASSWORD!);

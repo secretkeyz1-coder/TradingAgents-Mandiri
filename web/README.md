@@ -397,6 +397,19 @@ Cache (candle, katalog model, halaman Creator, jawaban halaman status) tetap per
 
 Tanpa worker terpisah (development, `bun run dev`), app menjalankan antreannya sendiri selama `MAX_CONCURRENT_ANALYSES` lebih dari 0.
 
+### Pemantauan
+
+**Peringatan di Telegram.** Instance pemegang scheduler memeriksa setiap menit dan mengirim pesan ke grup atau channel `ALERT_CHAT_ID`. Kalau tidak diisi, pesan dikirim ke setiap admin yang mengisi chat ID Telegram di profilnya. Setiap kondisi dikirim sekali saat mulai dan sekali saat pulih:
+- 5 error server atau lebih dalam 10 menit (sumbernya disebut);
+- antrean analisa tidak berjalan: yang tertua menunggu 10 menit tanpa ada analisa yang jalan, atau 60 menit dalam keadaan apa pun;
+- 3 analisa gagal atau lebih dalam 30 menit;
+- pemindai sinyal diam lebih dari 20 menit;
+- cek status menemukan bagian yang mati.
+
+**Metrik.** Dengan `METRICS_TOKEN`, `GET /metrics` menjawab dalam format Prometheus (header `Authorization: Bearer <token>`). Isinya: request per pola route dan status beserta durasinya, antrean analisa (antre, jalan, umur yang tertua), error satu jam terakhir, scan sinyal terakhir, instance pemegang scheduler, uptime, dan memori. Angka request dihitung per instance, jadi setiap instance di-scrape sendiri. Tanpa token, halaman ini tidak ada.
+
+Tracing (OpenTelemetry) belum dipasang. Satu request sudah bisa dilacak lewat `X-Request-Id`, yang muncul di log JSON dan di kode error.
+
 ## Konfigurasi server
 
 Semua opsional, lewat environment variable:
@@ -426,6 +439,8 @@ Semua opsional, lewat environment variable:
 | `LLM_COST_IDR_PER_MTOK` | kosong | Harga token model dalam rupiah per sejuta token, `masuk,keluar` (mis. `15000,60000`), untuk perkiraan biaya di dashboard bisnis |
 | `SESSION_SECRET` | dari `APP_PASSWORD` (lokal saja) | Kunci tanda tangan cookie sesi dan tautan tagihan, minimal 32 karakter. Wajib saat server terbuka ke jaringan dengan login (`HOST` bukan loopback dan `APP_PASSWORD` terisi). Menggantinya mengeluarkan semua orang dan membatalkan tautan tagihan lama |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, atau `silent` |
+| `METRICS_TOKEN` | kosong | Token untuk `GET /metrics` (format Prometheus), minimal 16 karakter. Kosong: halaman metrik tidak ada |
+| `ALERT_CHAT_ID` | kosong | Chat ID Telegram (angka) atau `@channel` tujuan peringatan server. Kosong: dikirim ke admin yang mengisi chat ID Telegram |
 | `MIGRATE_ON_START` | `1` | `0` kalau migrasi sudah dijalankan langkah deploy sebelumnya (`bun src/migrate.ts`, service `migrate` di compose) |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |

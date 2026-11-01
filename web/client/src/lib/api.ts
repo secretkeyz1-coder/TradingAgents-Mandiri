@@ -250,6 +250,10 @@ export type AdminConfig = {
   /** How many backend URLs the server's API key may go to; 0 = any. */
   backendLimit: number;
   models: { provider: string; quick: string; deep: string } | null;
+  /** GET /metrics is on (METRICS_TOKEN set). */
+  metrics: boolean;
+  /** Where the server's alerts go: the ALERT_CHAT_ID chat, else this many admins with a Telegram chat id. */
+  opsAlerts: { chat: boolean; admins: number };
 };
 
 export type ServiceState = 'ok' | 'degraded' | 'down' | 'off';

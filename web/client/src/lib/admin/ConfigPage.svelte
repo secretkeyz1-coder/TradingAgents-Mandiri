@@ -62,6 +62,24 @@
           { label: 'Harga token', on: cfg.tokenCost, value: cfg.tokenCost ? 'Terisi' : 'Kosong; Ringkasan tidak menghitung biaya model', env: 'LLM_COST_IDR_PER_MTOK' },
         ],
       },
+      {
+        title: 'Pemantauan',
+        rows: [
+          {
+            label: 'Peringatan server di Telegram',
+            on: cfg.telegram && (cfg.opsAlerts.chat || cfg.opsAlerts.admins > 0),
+            value: !cfg.telegram
+              ? 'Bot Telegram belum diatur'
+              : cfg.opsAlerts.chat
+                ? 'Dikirim ke grup atau channel yang diatur'
+                : cfg.opsAlerts.admins > 0
+                  ? `Dikirim ke ${cfg.opsAlerts.admins} admin yang mengisi chat ID Telegram`
+                  : 'Belum ada tujuan; isi chat ID Telegram di profil admin',
+            env: 'ALERT_CHAT_ID',
+          },
+          { label: 'Metrik Prometheus (/metrics)', on: cfg.metrics, value: cfg.metrics ? 'Aktif, dengan token' : 'Mati', env: 'METRICS_TOKEN' },
+        ],
+      },
     ];
   });
 </script>
