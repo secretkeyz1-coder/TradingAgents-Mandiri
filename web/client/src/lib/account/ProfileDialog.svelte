@@ -172,7 +172,9 @@
     <form class="flex flex-col gap-2" onsubmit={saveChat}>
       <h3 class="text-sm font-semibold">Telegram</h3>
       {#if watch.value && !watch.value.telegram.bot}
-        <p class="text-xs text-warning">Bot Telegram belum diatur di server (TELEGRAM_BOT_TOKEN), jadi pesan belum bisa dikirim.</p>
+        <p class="text-xs text-warning">
+          {auth.isAdmin ? 'Bot Telegram belum diatur di server (TELEGRAM_BOT_TOKEN), jadi pesan belum bisa dikirim.' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}
+        </p>
       {/if}
       <fieldset class="fieldset py-0">
         <legend class="fieldset-legend pt-0">Chat ID</legend>

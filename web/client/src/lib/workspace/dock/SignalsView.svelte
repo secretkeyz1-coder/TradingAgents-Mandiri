@@ -247,7 +247,7 @@
           {#if realFees}
             Biaya nyata: fee taker dasar tiap bursa (tanpa diskon VIP, BNB, atau token), dibayar saat masuk dan saat keluar; slippage dan pajak kripto belum
             termasuk. Akun utama memakai biaya kripto {data ? feeText(data.config.cryptoCost) : '…'} per trade.
-            {#if unknownFees.length}Fee {unknownFees.join(', ')} belum diketahui (atur SIGNAL_VENUE_FEES), jadi tidak ditampilkan.{/if}
+            {#if unknownFees.length}Fee {unknownFees.join(', ')} belum diketahui{auth.isAdmin ? ' (atur SIGNAL_VENUE_FEES)' : ''}, jadi tidak ditampilkan.{/if}
           {/if}
         </p>
         <label class="label cursor-pointer gap-2 text-xs">

@@ -149,6 +149,12 @@ export function hasNoFundamentals(yahoo: string): boolean {
   return /-(USD|USDT|USDC|BTC|ETH)$/.test(s) || s.endsWith('=X') || s.endsWith('=F') || s.startsWith('^');
 }
 
+/** The market list's own name for a symbol ("Emas", "Bank Central Asia"), when the list has it. */
+export function nameOf(tv: string): string | null {
+  for (const tab of MARKET_TABS) for (const group of tab.groups) for (const [symbol, name] of group.symbols) if (symbol === tv) return name;
+  return null;
+}
+
 export type MarketGroup = {
   name: string;
   /** [TradingView symbol, display name]. */

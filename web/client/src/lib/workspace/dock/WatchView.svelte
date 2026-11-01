@@ -1,6 +1,7 @@
 <script lang="ts">
   // The watchlist: what the server analyses on its own each trading day, the
   // latest decision for each symbol, and whether Telegram gets the summary.
+  import { auth } from '../../auth.svelte';
   import { formatDateTime, ratingBadge } from '../../format';
   import { usage } from '../../stores/usage.svelte';
   import { watch } from '../../stores/watch.svelte';
@@ -39,7 +40,8 @@
           <p class="text-xs"><span class="status status-success status-xs" aria-hidden="true"></span> Ringkasan dikirim ke Telegram saat semua analisa selesai.</p>
         {:else if !w.telegram.bot}
           <p class="text-xs text-warning">
-            Bot Telegram belum diatur di server (<code>TELEGRAM_BOT_TOKEN</code>). Analisa tetap berjalan dan hasilnya ada di Riwayat.
+            {#if auth.isAdmin}Bot Telegram belum diatur di server (<code>TELEGRAM_BOT_TOKEN</code>).{:else}Notifikasi Telegram belum tersedia di server ini.{/if}
+            Analisa tetap berjalan dan hasilnya ada di Riwayat.
           </p>
         {:else}
           <p class="text-xs text-warning">Isi chat ID Telegram-mu di menu akun → Profil untuk menerima ringkasan. Analisa tetap berjalan tanpa itu.</p>

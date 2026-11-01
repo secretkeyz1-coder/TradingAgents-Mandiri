@@ -41,6 +41,18 @@
       resent = (e as Error).message;
     }
   }
+
+  /** The account button: initials, the name people chose (else the username), and one badge for role or plan. */
+  const shownName = $derived(auth.user ? auth.user.displayName || auth.user.username : '');
+  const initials = $derived(
+    shownName
+      .split(/[\s._-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase() || '?',
+  );
 </script>
 
 <div class="flex h-dvh flex-col bg-base-100">
@@ -54,9 +66,10 @@
     </div>
     {#if auth.user}
       <details class="dropdown dropdown-end shrink-0" bind:this={menu}>
-        <summary class="btn btn-ghost btn-sm gap-1.5 font-normal" aria-label="Menu akun {auth.user.username}">
-          <span class="max-w-28 truncate font-mono">{auth.user.username}</span>
-          {#if auth.isAdmin}<span class="badge badge-xs badge-ghost">admin</span>{:else}<span class="badge badge-xs badge-ghost">{PLANS[auth.user.plan].name}{auth.user.onTrial ? ' · trial' : ''}</span>{/if}
+        <summary class="btn btn-ghost btn-sm gap-2 rounded-full pl-1 font-normal" aria-label="Menu akun {shownName}">
+          <span class="grid size-7 place-items-center rounded-full bg-accent/15 text-xs font-semibold" aria-hidden="true">{initials}</span>
+          <span class="hidden max-w-28 truncate sm:inline">{shownName}</span>
+          {#if auth.isAdmin}<span class="badge badge-xs badge-soft badge-secondary">Admin</span>{:else}<span class="badge badge-xs badge-soft badge-info">{PLANS[auth.user.plan].name}{auth.user.onTrial ? ', trial' : ''}</span>{/if}
         </summary>
         <ul class="menu dropdown-content z-30 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-1 shadow-sm">
           <li><button onclick={() => open('profile')}>Profil</button></li>

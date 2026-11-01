@@ -1,7 +1,7 @@
 /* Hallmark · genre: modern-minimal · theme: Cobalt palette + Geist type (per audit fix)
  * paper oklch(98.5% 0.004 250) · ink oklch(24% 0.02 258) · signal cobalt oklch(52% 0.2 256)
  * contrast: pass (40–41; checked light + dark) · nav: N13 · footer: Ft2 · mobile: pass at 320 px
- * primary = ink (monochrome); cobalt only for focus, links, active nav, progress
+ * primary = ink on the public pages; inside the app (#app) primary is cobalt, one main action per area
  * up/down = success/error tokens, the only other chroma on the page
  */
 @import "@fontsource-variable/geist";
@@ -107,6 +107,25 @@ h2 {
   min-width: 0;
 }
 
+/* Inside the app, primary is cobalt with white text, so the one main action of
+   each area stands out; the public pages keep their ink buttons. */
+#app {
+  --color-primary: oklch(52% 0.2 256);
+  --color-primary-content: oklch(98.5% 0.004 250);
+}
+
+/* No text under 12px and no control under 28px: daisyUI's extra-small sizes
+   (11px buttons, 10px badges, 16px toggles) are raised here once instead of in
+   every component that uses them. */
+.btn-xs { --fontsize: 0.75rem; --size: calc(var(--size-field, 0.25rem) * 7); }
+.badge-xs,
+.kbd-xs { --size: calc(var(--size-selector, 0.25rem) * 5); font-size: 0.75rem; }
+.input-xs { --font-size: 0.75rem; --font-size-min: 0.75rem; }
+.select-xs { --font-size: 0.75rem; --font-size-min: 0.75rem; }
+.table-xs :not(thead, tfoot) tr { font-size: 0.75rem; }
+.toggle-xs[type="checkbox"],
+.checkbox-xs { --size: calc(var(--size-selector, 0.25rem) * 5); }
+
 /* Third-party loaders and pulses stop for people who asked for less motion. */
 @media (prefers-reduced-motion: reduce) {
   .loading,
@@ -125,14 +144,14 @@ h2 {
 .ta-rail {
   position: relative;
   display: flex;
-  width: 2.75rem;
+  width: 3.25rem;
   height: 3rem;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
   border-radius: var(--radius-field);
-  font-size: 11px;
+  font-size: 12px;
   color: color-mix(in oklch, var(--color-base-content) 78%, transparent);
   transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }

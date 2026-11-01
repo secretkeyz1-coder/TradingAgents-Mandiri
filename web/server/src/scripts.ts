@@ -7,6 +7,7 @@ import { z } from "zod";
 import { SCRIPT_LIMITS, SCRIPT_REFERENCE, SCRIPT_TEMPLATES } from "../../shared/script";
 import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
+import { modelsFor } from "./models";
 import { db } from "./db";
 import { signalAlerts, userScripts } from "./db/schema";
 import { SYMBOL_PATTERN } from "./market";
@@ -96,7 +97,7 @@ const translateSchema = z.object({
 scriptsApi.post("/scripts/translate", async (c) => {
   const parsed = translateSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues.map((i) => i.message).join("; ") }, 400);
-  const job = parsed.data;
+  const job = await modelsFor(c.get("user"), parsed.data);
   const provider = (await getCatalog()).providers.find((p) => p.key === job.provider);
   if (!provider) return c.json({ error: `Provider tidak dikenal: ${job.provider}` }, 400);
   if (provider.needsUrl && !job.backendUrl) return c.json({ error: `${provider.label} butuh Backend URL` }, 400);

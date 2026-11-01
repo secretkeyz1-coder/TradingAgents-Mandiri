@@ -24,6 +24,7 @@
   import { onMount } from 'svelte';
   import { api, type Candle, type Decision, type Drawing, type Interval } from './api';
   import AlertsMenu from './chart/AlertsMenu.svelte';
+  import IndicatorsMenu from './chart/IndicatorsMenu.svelte';
   import IndicatorPanel from './chart/IndicatorPanel.svelte';
   import ScriptEditor from './chart/ScriptEditor.svelte';
   import ScriptsMenu from './chart/ScriptsMenu.svelte';
@@ -81,19 +82,19 @@
   // The engine scores a decision over this many trading days from the first close after its date.
   const HOLDING_DAYS = 5;
   const RANGES = [
-    { value: '6mo', label: '6B', days: 182 },
-    { value: '1y', label: '1T', days: 365 },
-    { value: '2y', label: '2T', days: 730 },
-    { value: '5y', label: '5T', days: 1826 },
+    { value: '6mo', label: '6bl', days: 182 },
+    { value: '1y', label: '1th', days: 365 },
+    { value: '2y', label: '2th', days: 730 },
+    { value: '5y', label: '5th', days: 1826 },
   ] as const;
   type Range = (typeof RANGES)[number]['value'];
   const TIMEFRAMES: { value: Interval; label: string; title: string }[] = [
     { value: '15m', label: '15m', title: '15 menit (1 bulan terakhir)' },
     { value: '1h', label: '1j', title: '1 jam' },
     { value: '4h', label: '4j', title: '4 jam' },
-    { value: '1d', label: '1H', title: '1 hari' },
-    { value: '1wk', label: '1M', title: '1 minggu' },
-    { value: '1mo', label: '1B', title: '1 bulan' },
+    { value: '1d', label: '1h', title: '1 hari' },
+    { value: '1wk', label: '1mg', title: '1 minggu' },
+    { value: '1mo', label: '1bl', title: '1 bulan' },
   ];
   // Yahoo keeps hourly bars for two years at most; the server clamps, the buttons say so.
   const INTRADAY_RANGES: Range[] = ['6mo', '1y'];
@@ -760,7 +761,7 @@
       {#if source && source !== 'yahoo'}
         <span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari {sourceLabel}">{sourceLabel} · real-time</span>
       {/if}
-      <span>· {decisions.length} keputusan AI</span>
+      <span class="badge badge-sm badge-info badge-soft">{decisions.length} keputusan AI</span>
       {#if hitRate != null}
         <span class="badge badge-sm {hitRate >= 0.5 ? 'badge-success' : 'badge-warning'} badge-soft">
           arah benar {Math.round(hitRate * 100)}% ({scored.length})
@@ -800,39 +801,11 @@
           <button class="btn btn-xs join-item" aria-label="Perbesar" onclick={() => zoom(0.66)}>+</button>
           <button class="btn btn-xs join-item" onclick={reset}>Reset</button>
         </div>
-        <button class="btn btn-xs" class:btn-active={jumpOpen} aria-expanded={jumpOpen} onclick={() => (jumpOpen = !jumpOpen)}>Tanggal</button>
-        <div class="join">
-          <button class="btn btn-xs join-item" class:btn-active={indicators.scalperOn} aria-pressed={indicators.scalperOn} onclick={() => indicators.toggle()}>
-            Scalper Pro+
-          </button>
-          {#if indicators.scalperOn}
-            <button
-              class="btn btn-xs join-item"
-              class:btn-active={indicators.settingsOpen}
-              aria-label="Pengaturan Scalper Pro+"
-              aria-expanded={indicators.settingsOpen}
-              onclick={() => (indicators.settingsOpen = !indicators.settingsOpen)}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1" /></svg>
-            </button>
-          {/if}
-        </div>
-        <button
-          class="btn btn-xs"
-          class:btn-active={indicators.pobOn}
-          aria-pressed={indicators.pobOn}
-          disabled={!pobTf}
-          title={pobTf ? 'Setup PoB BYSTRA (SNR, QM, Manipulation, CK2/CK3)' : 'PoB BYSTRA hanya untuk timeframe 15m dan 1j'}
-          onclick={() => indicators.togglePob()}>PoB BYSTRA</button
-        >
-        <button
-          class="btn btn-xs"
-          class:btn-active={indicators.fibOn}
-          aria-pressed={indicators.fibOn}
-          disabled={!fibOk}
-          title={fibOk ? 'Fibonacci golden zone pullback (0,5–0,618)' : 'Fib Golden Zone untuk timeframe 15m, 1j dan 1H'}
-          onclick={() => indicators.toggleFib()}>Fib GZ</button
-        >
+        <button class="btn btn-xs gap-1" class:btn-active={jumpOpen} aria-expanded={jumpOpen} onclick={() => (jumpOpen = !jumpOpen)}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+          Tanggal
+        </button>
+        <IndicatorsMenu pobOk={!!pobTf} {fibOk} />
         <ScriptsMenu />
         {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
         <AlertsMenu {symbol} {venue} />

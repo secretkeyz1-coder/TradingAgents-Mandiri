@@ -9,6 +9,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
+import { modelsFor } from "./models";
 import { db } from "./db";
 import {
   agentMemories,
@@ -245,7 +246,7 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
   const parsed = turnSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues.map((i) => i.message).join("; ") }, 400);
-  const turn = parsed.data;
+  const turn = await modelsFor(c.get("user"), parsed.data);
   const provider = (await getCatalog()).providers.find((p) => p.key === turn.provider);
   if (!provider) return c.json({ error: `Provider tidak dikenal: ${turn.provider}` }, 400);
   if (provider.needsUrl && !turn.backendUrl) return c.json({ error: `${provider.label} butuh Backend URL` }, 400);

@@ -11,7 +11,7 @@
   import { ws } from '../stores/workspace.svelte';
   import { theme, tokenColor } from '../theme.svelte';
   import TradingViewWidget from '../TradingViewWidget.svelte';
-  import { venueOf } from '../tv';
+  import { nameOf, venueOf } from '../tv';
   import LayoutMenu from './LayoutMenu.svelte';
 
   // The chart canvas takes the panel's own surface and hairline colours.
@@ -51,7 +51,10 @@
 
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Chart">
   <header class="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-base-300 px-3 py-1">
-    <h2 class="truncate font-mono text-sm font-semibold">{ws.symbol}</h2>
+    <h2 class="flex min-w-0 items-baseline gap-2 text-sm font-semibold">
+      {#if nameOf(ws.symbol)}<span class="truncate">{nameOf(ws.symbol)}</span>{/if}
+      <span class="truncate font-mono text-xs font-normal text-base-content/70" class:text-sm={!nameOf(ws.symbol)} class:font-semibold={!nameOf(ws.symbol)} class:text-base-content={!nameOf(ws.symbol)}>{ws.symbol}</span>
+    </h2>
     <span class="badge badge-xs badge-ghost hidden gap-1 whitespace-nowrap sm:inline-flex" title={freshness.title}>
       <span class="status status-xs {freshness.status}" aria-hidden="true"></span>
       {freshness.label}
@@ -64,22 +67,28 @@
         title={watched ? 'Hapus dari watchlist' : 'Analisa otomatis tiap hari bursa, hasilnya ke Telegram'}
         onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
       >
-        <span class:text-accent={watched} aria-hidden="true">{watched ? '★' : '☆'}</span>{watched ? 'Dipantau' : 'Pantau'}
+        <svg width="14" height="14" viewBox="0 0 24 24" fill={watched ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" class:text-warning={watched} aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>
+        {watched ? 'Dipantau' : 'Pantau'}
       </button>
-      <button class="btn btn-ghost btn-xs shrink-0" title="Buka chart Keputusan AI di tanggal tertentu" onclick={jumpToDate}>Lompat ke tanggal</button>
+      <button class="btn btn-ghost btn-xs shrink-0 gap-1" title="Buka chart Keputusan AI di tanggal tertentu" onclick={jumpToDate}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+        Lompat ke tanggal
+      </button>
     {/if}
-    <div class="join shrink-0">
-      <button class="btn btn-xs join-item" class:btn-active={view === 'tv'} onclick={() => ws.setChartView('tv')}>TradingView</button>
+    <div class="join shrink-0" role="group" aria-label="Jenis grafik">
+      <button class="btn btn-xs join-item" class:btn-active={view === 'tv'} aria-pressed={view === 'tv'} onclick={() => ws.setChartView('tv')}>TradingView</button>
       <button
         class="btn btn-xs join-item"
         class:btn-active={view === 'ai'}
+        aria-pressed={view === 'ai'}
         disabled={!ws.yahoo}
         title={ws.yahoo ? undefined : 'Simbol ini belum bisa dianalisa engine'}
         onclick={() => ws.setChartView('ai')}>Keputusan AI</button
       >
     </div>
     {#if desktop}
-      <button class="btn btn-xs shrink-0" class:btn-active={layout.focus} aria-pressed={layout.focus} title="Tombol F" onclick={() => layout.toggleFocus()}>
+      <button class="btn btn-xs shrink-0 gap-1" class:btn-active={layout.focus} aria-pressed={layout.focus} title="Tombol F" onclick={() => layout.toggleFocus()}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
         {layout.focus ? 'Keluar fokus' : 'Fokus'}
       </button>
       <LayoutMenu />

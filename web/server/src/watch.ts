@@ -77,7 +77,7 @@ let lastSend: { at: number; ok: boolean } | null = null;
 export const telegramHealth = () => ({ configured: telegramBot(), last: lastSend });
 
 export async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: boolean; error?: string }> {
-  if (!settings.telegramToken) return { ok: false, error: "TELEGRAM_BOT_TOKEN belum diisi di .env server" };
+  if (!settings.telegramToken) return { ok: false, error: "Bot Telegram belum diatur di server ini. Hubungi admin." };
   if (!chatId) return { ok: false, error: "Chat ID Telegram belum diisi di Profil" };
   try {
     const res = await fetch(`${settings.telegramApi}/bot${settings.telegramToken}/sendMessage`, {
