@@ -6,7 +6,7 @@
 import { and, count, eq, gte, type SQL } from "drizzle-orm";
 import type { User } from "./auth";
 import { db } from "./db";
-import { limitsOf, needsVerification, planOf } from "./plans";
+import { limitsOf, needsPhone, needsVerification, planOf } from "./plans";
 import { agentMessages, agentSessions, analyses } from "./db/schema";
 
 const DAY_MS = 86_400_000;
@@ -83,6 +83,7 @@ export async function room(user: User, kind: Kind): Promise<number> {
 /** Why `add` more analyses (or chat turns) would go over a cap today, or null when they fit. */
 export async function overLimit(user: User, kind: Kind, add = 1): Promise<string | null> {
   if (needsVerification(user)) return "Verifikasi email kamu dulu untuk memakai analisa AI dan chat agent. Tautannya ada di email pendaftaran.";
+  if (needsPhone(user)) return "Isi nomor WhatsApp-mu dulu untuk memakai analisa AI dan chat agent.";
   const left = await room(user, kind);
   if (add <= left) return null;
   const mine = (await usage(user))[kind];

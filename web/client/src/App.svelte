@@ -7,9 +7,11 @@
   // Google sign-in, and ?notice=… shows its message once. #/admin and its pages
   // open the admin console instead of the workspace, for admins only; that hash
   // is followed as it changes, since the console is reached from the app's menu.
+  // An account that signed up with Google gives its WhatsApp number first (PhoneStep).
   import { onMount } from 'svelte';
   import { auth } from './lib/auth.svelte';
   import LoginPage from './lib/LoginPage.svelte';
+  import PhoneStep from './lib/PhoneStep.svelte';
 
   const route = location.hash.match(/^#\/(reset|signup|2fa)\b/)?.[1];
   const query = new URLSearchParams(location.hash.split('?')[1] ?? '');
@@ -44,6 +46,8 @@
   <LoginPage mode="reset" {token} />
 {:else if route === '2fa' && auth.challenge}
   <LoginPage mode="2fa" />
+{:else if auth.state === 'in' && auth.user?.needsPhone}
+  <PhoneStep />
 {:else if auth.state === 'in' && adminRoute && auth.isAdmin}
   {#await import('./lib/admin/AdminConsole.svelte') then adminConsole}
     <adminConsole.default />

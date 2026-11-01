@@ -17,7 +17,7 @@ import { agentMemories, agentSessions, agentSkills, analyses, authTokens, chartD
 import { allow, clearFailures, lockedFor, recordFailure } from "./limits";
 import { log } from "./log";
 import { composeMail, mailEnabled, sendMail } from "./mail";
-import { limitsOf, onTrial, planOf, trialEnd } from "./plans";
+import { limitsOf, needsPhone, onTrial, planOf, trialEnd } from "./plans";
 import { hashRecovery, matchStep, newRecoveryCodes, newSecret, otpauthUri } from "./totp";
 import { BRAND } from "../../shared/brand";
 import { PLAN_IDS, TRIAL_DAYS } from "../../shared/plans";
@@ -210,6 +210,8 @@ export const publicUser = (u: User) => ({
   email: u.email,
   emailVerified: Boolean(u.emailVerifiedAt),
   phone: u.phone,
+  /** Signed up with Google and still owes a phone number: the page asks for it before the app opens. */
+  needsPhone: needsPhone(u),
   google: Boolean(u.googleSub),
   hasPassword: Boolean(u.passwordHash),
   twoFactor: Boolean(u.totpEnabledAt),
@@ -655,13 +657,18 @@ meApi.patch("/me", async (c) => {
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
   const phone = body.data.phone === undefined ? undefined : normalizePhone(body.data.phone);
   if (body.data.phone && phone === undefined) return c.json({ error: "Nomor HP tidak valid, contoh 0812 3456 7890" }, 400);
+  const me = c.get("user");
+  // A Google account gave its number in place of the sign-up form, so it keeps one.
+  if (body.data.phone !== undefined && !phone && needsPhone({ ...me, phone: null })) {
+    return c.json({ error: "Akun yang masuk dengan Google wajib punya nomor WhatsApp" }, 400);
+  }
   const [updated] = await db
     .update(users)
     .set({
       ...(body.data.telegramChatId !== undefined ? { telegramChatId: body.data.telegramChatId || null } : {}),
       ...(body.data.phone !== undefined ? { phone } : {}),
     })
-    .where(eq(users.id, c.get("user").id))
+    .where(eq(users.id, me.id))
     .returning();
   return c.json(publicUser(updated));
 });

@@ -100,6 +100,8 @@ export type Account = {
   emailVerified: boolean;
   /** WhatsApp number in +62 form. */
   phone: string | null;
+  /** Signed up with Google and has no phone number yet: PhoneStep asks for it before the app opens. */
+  needsPhone: boolean;
   /** Signs in with Google. */
   google: boolean;
   /** False for an account that only signs in with Google. */

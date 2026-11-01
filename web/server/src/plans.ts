@@ -17,6 +17,9 @@ export const limitsOf = (u: PlanFields): PlanLimits => PLANS[planOf(u)].limits;
 /** An account whose e-mail is not verified yet spends no LLM credits (accounts without e-mail predate sign-up). */
 export const needsVerification = (u: Pick<User, "email" | "emailVerifiedAt">) => Boolean(u.email && !u.emailVerifiedAt);
 
+/** Signed in with Google and no phone number yet: the e-mail sign-up form asks for one, Google skips that form. */
+export const needsPhone = (u: Pick<User, "role" | "googleSub" | "phone">) => u.role !== "admin" && Boolean(u.googleSub) && !u.phone;
+
 /** Still inside the one Pro trial: the plan ends no later than the trial does. */
 export function onTrial(u: PlanFields & Pick<User, "trialStartedAt">): boolean {
   return Boolean(
