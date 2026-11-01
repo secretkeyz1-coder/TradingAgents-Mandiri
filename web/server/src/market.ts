@@ -51,6 +51,39 @@ type YahooChart = {
   };
 };
 
+const zoneFormats = new Map<string, Intl.DateTimeFormat | null>();
+/**
+ * A Yahoo timestamp as wall-clock time in the exchange's time zone (YYYY-MM-DDTHH:MM:SS), with the
+ * offset of that day. Yahoo's `gmtoffset` is today's only: across a daylight-saving change it puts
+ * intraday bars an hour off, and a daily bar stamped at local midnight (COMEX gold, forex) on the
+ * day before, a day off the engine's bars (yfinance converts each bar in its zone). Without a zone
+ * Intl knows, `fallbackOffset` (seconds) applies to every bar.
+ */
+export function exchangeTime(ts: number, zone: string | undefined, fallbackOffset = 0): string {
+  let format = zone ? zoneFormats.get(zone) : null;
+  if (zone && format === undefined) {
+    try {
+      format = new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {
+      format = null; // a zone name Intl does not know
+    }
+    zoneFormats.set(zone, format);
+  }
+  if (!format) return new Date((ts + fallbackOffset) * 1000).toISOString().slice(0, 19);
+  const parts = format.formatToParts(new Date(ts * 1000));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}:${part("second")}`;
+}
+
 export async function getCandles(symbol: string, range: (typeof RANGES)[number], interval: Interval = "1d", venue?: VenueId): Promise<CandleSeries> {
   const intraday = INTRADAY.includes(interval);
   if (intraday && (range === "2y" || range === "5y")) range = INTRADAY_MAX_RANGE;
@@ -115,13 +148,14 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number],
   const adjclose = result.indicators.adjclose?.[0]?.adjclose;
   // Times in the exchange's own time zone: a Jakarta session at 09:00 WIB is
   // still the previous day in UTC.
-  const offset = (result.meta.gmtoffset ?? 0) * 1000;
+  const zone = result.meta.exchangeTimezoneName;
+  const offset = result.meta.gmtoffset ?? 0;
   let candles: Candle[] = [];
   (result.timestamp ?? []).forEach((ts, i) => {
     const [open, high, low, close] = [quote.open[i], quote.high[i], quote.low[i], quote.close[i]];
     if (open == null || high == null || low == null || close == null) return;
-    const local = new Date(ts * 1000 + offset).toISOString();
-    const time = intraday ? local.slice(0, 19) : local.slice(0, 10);
+    const local = exchangeTime(ts, zone, offset);
+    const time = intraday ? local : local.slice(0, 10);
     const f = adjclose?.[i] != null && close ? adjclose[i]! / close : 1;
     const candle = { time, open: open * f, high: high * f, low: low * f, close: close * f, volume: quote.volume[i] ?? 0 };
     // Yahoo can repeat the current bar; keep the latest row for a time.
