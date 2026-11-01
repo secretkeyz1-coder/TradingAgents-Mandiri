@@ -5,10 +5,11 @@
 import { afterAll, expect, test } from "bun:test";
 import { eq, sql } from "drizzle-orm";
 import { db, pgClient } from "../src/db";
-import { leases, rateLimits } from "../src/db/schema";
+import { leases, rateLimits, sharedValues } from "../src/db/schema";
 import { allow, clearFailures, lockedFor, recordFailure } from "../src/limits";
 import { contendForLeadership, holdLease, isLeader, leaderOnly, leaseHeld, resignLeadership } from "../src/locks";
 import { writeShared } from "../src/shared";
+import { forgetStatus } from "../src/status";
 import { admin, call, member } from "./helpers";
 
 const LOCK = "tradingagents:scheduler";
@@ -33,12 +34,15 @@ test("one instance leads the schedulers, and another takes over when it goes", a
   tick();
   expect(ticks).toBe(1);
 
-  // The leader's connection dies (the database restarted): its next try notices, and the lock is free again.
+  // The leader's connection dies (the database restarted): it stops leading as soon as the connection
+  // closes, its timers go quiet, and its next try takes the lock that died with the connection.
   const [held] = await pgClient`select pid from pg_locks where locktype = 'advisory' and granted
     and database = (select oid from pg_database where datname = current_database())`;
   await pgClient`select pg_terminate_backend(${held.pid})`;
-  expect(await contendForLeadership()).toBe(false);
+  for (let i = 0; i < 100 && isLeader(); i++) await Bun.sleep(50);
   expect(isLeader()).toBe(false);
+  tick();
+  expect(ticks).toBe(1);
   expect(await contendForLeadership()).toBe(true);
 
   await resignLeadership();
@@ -103,10 +107,17 @@ test("ten wrong passwords lock that address out, even for the right password, an
 test("the status page shows the round the leading instance checked last", async () => {
   const at = Date.now() - 60_000;
   await writeShared("status:latest", { at, parts: [{ key: "database", name: "Database", state: "ok", detail: "Menjawab dalam 3 ms" }] });
-  const r = await call("/api/public/status");
-  expect(r.status).toBe(200);
-  expect(r.body.checkedAt).toBe(new Date(at).toISOString());
-  expect(r.body.parts.map((p: { key: string }) => p.key)).toEqual(["database"]);
+  forgetStatus();
+  try {
+    const r = await call("/api/public/status");
+    expect(r.status).toBe(200);
+    expect(r.body.checkedAt).toBe(new Date(at).toISOString());
+    expect(r.body.parts.map((p: { key: string }) => p.key)).toEqual(["database"]);
+  } finally {
+    // The other files' status checks start from no round at all, whatever order the files run in.
+    await db.delete(sharedValues).where(eq(sharedValues.key, "status:latest"));
+    forgetStatus();
+  }
 });
 
 test("a chat session another instance is answering shows busy and cannot be deleted", async () => {

@@ -7,13 +7,17 @@ import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { recordCreatorSignal, scoreCreatorSignal } from "../src/creators";
 import { db } from "../src/db";
-import { creatorSignals, signalAlerts, signalEvents } from "../src/db/schema";
+import { creatorSignals, sharedValues, signalAlerts, signalEvents } from "../src/db/schema";
 import { tradeCost } from "../src/ledger";
+import { forgetStatus } from "../src/status";
 import { admin, call, member } from "./helpers";
 
 const near = (a: unknown, b: number) => typeof a === "number" && Math.abs(a - b) < 1e-9;
 
 test("the status page reports every part, with the database up", async () => {
+  // A full round of its own, not one another file stored or the page cached.
+  await db.delete(sharedValues).where(eq(sharedValues.key, "status:latest"));
+  forgetStatus();
   const r = await call("/api/public/status");
   expect(r.status).toBe(200);
   const parts: { key: string; state: string }[] = r.body.parts;

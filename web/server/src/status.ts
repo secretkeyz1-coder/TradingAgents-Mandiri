@@ -144,6 +144,10 @@ export function startStatusChecks() {
 
 let answer: { at: number; body: unknown } | null = null;
 let inflight: Promise<unknown> | null = null;
+/** Drops the cached answer, so the next request reads the latest round again (tests). */
+export const forgetStatus = () => {
+  answer = null;
+};
 
 async function load() {
   // The round the leading instance checked last; a fresh database has none yet, so this one checks once itself.
