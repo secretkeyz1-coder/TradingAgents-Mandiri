@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Harga · {{BRAND}}</title>
-    <meta name="description" content="Harga paket {{BRAND}}: Gratis, Pro, dan Creator. Alat riset sama di semua paket, yang berbeda kapasitasnya; Creator juga mendapat halaman rekam jejak publik." />
+    <meta name="description" content="Harga paket {{BRAND}}: Gratis, Pro, dan Creator, dengan kapasitas dan indikator chart tiap paket. Creator juga mendapat halaman rekam jejak publik." />
     <link rel="stylesheet" href="/src/site.css" />
   </head>
   <body class="bg-base-100 text-base-content">
@@ -20,6 +20,13 @@
         <h2 class="text-xl font-semibold tracking-tight">Kapasitas per paket</h2>
         <!-- site:limits -->
       </section>
+      <section class="flex flex-col gap-4" data-indicators aria-labelledby="indicators-title">
+        <div class="flex max-w-3xl flex-col gap-1.5">
+          <h2 id="indicators-title" class="text-xl font-semibold tracking-tight">Indikator chart per paket</h2>
+          <p class="text-base-content/75">Indikator yang bisa kamu nyalakan di chart, pasangi notifikasi sinyal, dan uji di Lab.</p>
+        </div>
+        <p data-indicators-note class="text-sm text-base-content/70">Memuat daftar indikator…</p>
+      </section>
       <section class="flex max-w-3xl flex-col gap-3">
         <h2 class="text-xl font-semibold tracking-tight">Pembayaran</h2>
         <p class="text-base-content/75">
@@ -32,5 +39,6 @@
       </section>
     </main>
     <!-- site:footer -->
+    <script type="module" src="/src/site/harga.ts"></script>
   </body>
 </html>

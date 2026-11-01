@@ -31,6 +31,7 @@
     catalog.load();
     layout.adopt();
     indicators.adopt();
+    indicators.load();
   });
 
   // The agent's chats, drawings and memories follow the symbol in focus.

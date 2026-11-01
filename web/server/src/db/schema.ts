@@ -350,8 +350,44 @@ export const userScripts = pgTable(
   (t) => [uniqueIndex("user_scripts_user_name_idx").on(t.userId, t.name)],
 );
 
-/** Built-in engines, or "script:<user_scripts.id>" for a user's own script. */
-export type SignalIndicator = "pob" | "scalper" | "fib" | `script:${string}`;
+/**
+ * The chart's indicator catalog (indicators.ts): the built-in engines and the script indicators
+ * an admin publishes, with who may use each, by plan and by account (indicator_grants). An
+ * admin always may; an inactive one is hidden from everyone else and its alerts pause.
+ */
+export const indicators = pgTable("indicators", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** "scalper", "pob" or "fib" for a built-in engine; null for a published script. */
+  builtin: text("builtin").$type<"pob" | "scalper" | "fib">().unique(),
+  name: text("name").notNull(),
+  /** The one line the Indikator menu shows under the name. */
+  description: text("description").notNull().default(""),
+  /** A published script's source (shared/script.ts), copied when published, so editing the admin's own script later changes nothing here. */
+  code: text("code"),
+  plans: jsonb("plans").$type<PlanId[]>().notNull().default(sql`'["free","pro","creator"]'::jsonb`),
+  /** Switched on for an account that has not chosen its indicators yet. */
+  defaultOn: boolean("default_on").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(100),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** An account an admin lets use an indicator whatever its plan. */
+export const indicatorGrants = pgTable(
+  "indicator_grants",
+  {
+    indicatorId: uuid("indicator_id")
+      .notNull()
+      .references(() => indicators.id, { onDelete: "cascade" }),
+    userId: owner().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("indicator_grants_pair_idx").on(t.indicatorId, t.userId), index("indicator_grants_user_idx").on(t.userId)],
+);
+
+/** Built-in engines, "script:<user_scripts.id>" for a user's own script, or "catalog:<indicators.id>" for one an admin published. */
+export type SignalIndicator = "pob" | "scalper" | "fib" | `script:${string}` | `catalog:${string}`;
 /** win = target, loss = stop, exit = a script's exit condition, expired = time limit, replaced = a newer signal. */
 export type SignalStatus = "open" | "win" | "loss" | "exit" | "expired" | "replaced";
 

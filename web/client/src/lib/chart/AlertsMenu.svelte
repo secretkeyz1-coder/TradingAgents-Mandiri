@@ -6,7 +6,7 @@
   // watched on the venue the chart shows (the Bursa menu): its own bars. On
   // Creator, an alert can be made public: its live signals go on the account's
   // track record at /c/<username> (server/src/creators.ts).
-  import { indicatorName, SIGNAL_STATUS, TIMEFRAME_LABELS } from '../alertLabels';
+  import { indicatorName, SIGNAL_STATUS, TIMEFRAME_LABELS, UNAVAILABLE_NOTE } from '../alertLabels';
   import { api, type SignalAlert, type SignalAlerts } from '../api';
   import { auth } from '../auth.svelte';
   import PriceLevels from '../PriceLevels.svelte';
@@ -184,6 +184,7 @@
                       Pengaturan Scalper baru menyusul
                     </span>
                   {/if}
+                  {#if !a.available}<span class="block text-warning">{UNAVAILABLE_NOTE}</span>{/if}
                 </span>
                 {#if creator || a.public}
                   <label class="flex shrink-0 cursor-pointer items-center gap-1" title="Tampilkan sinyal baru alert ini di halaman rekam jejak publik Anda">

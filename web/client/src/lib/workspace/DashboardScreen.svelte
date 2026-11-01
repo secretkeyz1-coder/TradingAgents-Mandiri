@@ -54,7 +54,8 @@
 
   const s = $derived(data?.summary);
   const period = $derived(PERIODS.find((p) => p.days === days)?.label ?? `${days} hari`);
-  const name = (indicator: string) => INDICATOR_NAMES[indicator] ?? data?.scriptNames[indicator] ?? 'Skrip yang sudah dihapus';
+  const name = (indicator: string) =>
+    INDICATOR_NAMES[indicator] ?? data?.scriptNames[indicator] ?? (indicator.startsWith('catalog:') ? 'Indikator yang sudah dihapus' : 'Skrip yang sudah dihapus');
   const tf = (t: string) => TIMEFRAME_LABELS[t as keyof typeof TIMEFRAME_LABELS] ?? t;
   const R = (v: number | null) => (v == null ? '–' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2).replace('.', ',')}R`);
   const pct = (v: number | null) => (v == null ? '–' : `${Math.round(v * 100)}%`);

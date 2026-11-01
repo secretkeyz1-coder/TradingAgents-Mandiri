@@ -1,6 +1,7 @@
 // Signal notifications: each user picks symbols and indicators (PoB BYSTRA on
 // 15m or 1h, Scalper Pro+ on 15m) and gets a Telegram message when a new signal
-// appears and again when it hits its target, its stop or expires.
+// appears and again when it hits its target, its stop or expires. Which
+// indicators an account may watch is set in the admin's catalog (indicators.ts).
 //
 // Accuracy rules: the worker runs the same engines the chart and the agent use,
 // on closed bars only, so a sent signal never changes or disappears; each signal
@@ -22,6 +23,7 @@ import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
 import { openCreatorSignals, recordCreatorSignal, scoreCreatorSignal } from "./creators";
 import { recordError } from "./errors";
+import { canUse, CATALOG_KEY, catalogScripts, keyOf, usableKeys, usableRows } from "./indicators";
 import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
 import { leaderOnly } from "./locks";
 import { log } from "./log";
@@ -93,9 +95,8 @@ const when = (t: string) => `${Number(t.slice(8, 10))} ${MONTHS[Number(t.slice(5
 const price = (v: number) => v.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
 
 /** "PoB BYSTRA · OANDA:XAUUSD · 15m"; a script alert names its script. */
-function head(a: Alert, scriptName?: string) {
-  const name = scriptName ? `Skrip ${scriptName}` : (NAMES[a.indicator] ?? a.indicator);
-  return `${name} · ${a.tvSymbol} · ${TF_LABEL[a.timeframe] ?? a.timeframe}`;
+function head(a: Alert, name?: string) {
+  return `${name ?? NAMES[a.indicator] ?? a.indicator} · ${a.tvSymbol} · ${TF_LABEL[a.timeframe] ?? a.timeframe}`;
 }
 
 function link(a: Alert) {
@@ -114,10 +115,10 @@ function dataNote(a: Alert) {
   return a.symbol.endsWith("=F") ? `Data Yahoo, harga futures ${a.symbol}, bisa beda beberapa poin dari spot` : "Data Yahoo";
 }
 
-function openMessage(a: Alert, s: ScanSignal, scriptName?: string) {
+function openMessage(a: Alert, s: ScanSignal, name?: string) {
   return [
     `<b>🔔 ${escape(s.label)}</b>`,
-    escape(head(a, scriptName)),
+    escape(head(a, name)),
     s.time.length > 10 ? `Candle ${when(s.time)} (jam bursa), sudah tutup` : `Candle harian ${when(s.time)}, sudah tutup`,
     `Entry <b>${price(s.entry)}</b> · SL ${price(s.stop_loss)} · TP ${price(s.take_profit)}`,
     link(a),
@@ -132,7 +133,7 @@ function closeMessage(
   e: { label: string; signalTime: string; entry: number; stopLoss: number; takeProfit: number },
   status: SignalStatus,
   exit: string | null,
-  scriptName?: string,
+  name?: string,
 ) {
   const risk = Math.abs(e.entry - e.stopLoss);
   const what: Record<string, string> = {
@@ -144,7 +145,7 @@ function closeMessage(
   };
   return [
     `<b>${what[status] ?? status}</b>`,
-    escape(head(a, scriptName)),
+    escape(head(a, name)),
     `${escape(e.label)} dari ${when(e.signalTime)} · entry ${price(e.entry)}${exit ? ` · selesai ${when(exit)}` : ""}`,
     link(a),
   ]
@@ -177,11 +178,13 @@ async function workerScan(pairs: ScanPair[]): Promise<ScanResult[]> {
 
 let runEngines = workerScan;
 let send = sendTelegram;
+let runScriptOn = runOnSymbol;
 
-/** Tests: answer the scan without Python, and catch its Telegram messages instead of sending them. */
-export function useSignalScan(engines: typeof workerScan = workerScan, sender: typeof sendTelegram = sendTelegram) {
+/** Tests: answer the scan without Python, run scripts on given bars, and catch its Telegram messages instead of sending them. */
+export function useSignalScan(engines: typeof workerScan = workerScan, sender: typeof sendTelegram = sendTelegram, scripts: typeof runOnSymbol = runOnSymbol) {
   runEngines = engines;
   send = sender;
+  runScriptOn = scripts;
 }
 
 let running = false;
@@ -201,9 +204,13 @@ async function scan(only?: string[], withHourly = true) {
       .innerJoin(users, eq(signalAlerts.userId, users.id))
       .where(and(eq(users.disabled, false), only?.length ? inArray(signalAlerts.id, only) : undefined))
       .orderBy(asc(signalAlerts.createdAt));
-    // Each account is watched for as many alerts as its plan allows, oldest first: a lapsed plan pauses the rest.
+    // An indicator the admin no longer opens to an account (indicators.ts) pauses its alerts until it does, without
+    // taking a place in the plan's allowance. Each account is then watched for as many alerts as its plan allows,
+    // oldest first: a lapsed plan pauses the rest.
+    const usable = await usableKeys([...new Map(rows.map((r) => [r.alert.userId!, { id: r.alert.userId!, ...r.owner }])).values()]);
     const held = new Map<string, number>();
     const allowed = rows.filter((r) => {
+      if (!SCRIPT_ID.test(r.alert.indicator) && !usable.get(r.alert.userId!)?.has(r.alert.indicator)) return false;
       const n = (held.get(r.alert.userId!) ?? 0) + 1;
       held.set(r.alert.userId!, n);
       return n <= limitsOf(r.owner).alerts;
@@ -254,7 +261,7 @@ async function scan(only?: string[], withHourly = true) {
       for (const i of p.indicators) pair.requests.set(i, i);
     }
     for (const { alert } of wanted) {
-      if (SCRIPT_ID.test(alert.indicator)) continue;
+      if (SCRIPT_ID.test(alert.indicator) || CATALOG_KEY.test(alert.indicator)) continue;
       const settings = inputs.get(alert.id) ?? null;
       const variant = variantOf(settings);
       pairOf(alert.symbol, alert.timeframe, alert.venue, 10).requests.set(
@@ -283,17 +290,25 @@ async function scan(only?: string[], withHourly = true) {
       for (const r of await runEngines(jobPairs)) found.set(resultKey(r.symbol, r.timeframe, r.venue, r.indicator, r.variant), r.signals);
     }
 
-    // Users' own scripts run here, in the same sandbox and on the same candles as the chart.
-    const scriptNames = new Map<string, string>();
+    // Scripts run here, in the same sandbox and on the same candles as the chart: a user's own, or one the admin
+    // published (indicators.ts), which runs once per pair however many accounts watch it.
+    const names = new Map<string, string>();
+    const catalog = wanted.some((r) => CATALOG_KEY.test(r.alert.indicator)) ? await catalogScripts() : new Map<string, { name: string; code: string }>();
+    const tried = new Set<string>();
     for (const { alert } of wanted) {
-      const id = alert.indicator.match(SCRIPT_ID)?.[1];
+      const own = alert.indicator.match(SCRIPT_ID)?.[1];
       const key = resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator);
-      if (!id || found.has(key)) continue;
-      const [script] = await db.select().from(userScripts).where(and(eq(userScripts.id, id), eq(userScripts.userId, alert.userId!)));
-      if (!script) continue;
-      scriptNames.set(alert.indicator, script.name);
+      if ((!own && !CATALOG_KEY.test(alert.indicator)) || tried.has(key)) continue;
+      tried.add(key);
+      let script = catalog.get(alert.indicator);
+      if (own) {
+        const [mine] = await db.select().from(userScripts).where(and(eq(userScripts.id, own), eq(userScripts.userId, alert.userId!)));
+        script = mine && { name: `Skrip ${mine.name}`, code: mine.code };
+      }
+      if (!script?.code) continue;
+      names.set(alert.indicator, script.name);
       try {
-        const run = await runOnSymbol(script.code, alert.symbol, alert.timeframe as ScriptTimeframe, undefined, (alert.venue || undefined) as VenueId | undefined);
+        const run = await runScriptOn(script.code, alert.symbol, alert.timeframe as ScriptTimeframe, undefined, (alert.venue || undefined) as VenueId | undefined);
         if (!run.ok) {
           log.warn("script_alert_failed", { script: script.name, symbol: alert.symbol, timeframe: alert.timeframe, error: run.error });
           continue;
@@ -320,10 +335,10 @@ async function scan(only?: string[], withHourly = true) {
     }
 
     for (const { alert, chat, owner } of wanted) {
-      const scriptName = scriptNames.get(alert.indicator);
+      const scriptName = names.get(alert.indicator);
       // A Creator's published alert also feeds their public record (creators.ts).
       const publicRecord = alert.public && planOf(owner) === "creator";
-      const strategy = scriptName ? `Skrip ${scriptName}` : (NAMES[alert.indicator] ?? alert.indicator);
+      const strategy = scriptName ?? NAMES[alert.indicator] ?? alert.indicator;
       const settings = inputs.get(alert.id) ?? null;
       const signals = found.get(resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator, variantOf(settings)));
       if (!signals) continue; // this pair failed; try again next slot
@@ -430,9 +445,16 @@ export const alertsApi = new Hono<AppEnv>();
 alertsApi.get("/alerts", async (c) => {
   const user = c.get("user");
   const chart = variantOf(chartSettings(user.preferences));
-  const items = await db.select().from(signalAlerts).where(eq(signalAlerts.userId, user.id)).orderBy(asc(signalAlerts.createdAt));
+  const [items, open, scripts, catalog] = await Promise.all([
+    db.select().from(signalAlerts).where(eq(signalAlerts.userId, user.id)).orderBy(asc(signalAlerts.createdAt)),
+    usableRows(user),
+    db.select().from(userScripts).where(eq(userScripts.userId, user.id)).orderBy(asc(userScripts.name)),
+    catalogScripts(),
+  ]);
+  const usable = new Set(open.map(keyOf));
   const ids = items.map((a) => a.id);
   const events = ids.length ? await db.select().from(signalEvents).where(inArray(signalEvents.alertId, ids)).orderBy(desc(signalEvents.signalTime)) : [];
+  const own = new Map(scripts.map((s) => [`script:${s.id}`, `Skrip ${s.name}`]));
   return c.json({
     items: items.map((a) => {
       const last = events.find((e) => e.alertId === a.id);
@@ -441,6 +463,10 @@ alertsApi.get("/alerts", async (c) => {
         symbol: a.symbol,
         tvSymbol: a.tvSymbol,
         indicator: a.indicator,
+        /** What lists call it; a removed script has none. */
+        name: NAMES[a.indicator] ?? own.get(a.indicator) ?? catalog.get(a.indicator)?.name ?? null,
+        /** False while the admin keeps its indicator from this account: the scan skips it until that changes. */
+        available: SCRIPT_ID.test(a.indicator) || usable.has(a.indicator),
         timeframe: a.timeframe,
         venue: a.venue,
         primed: a.primed,
@@ -454,11 +480,11 @@ alertsApi.get("/alerts", async (c) => {
     max: limitsOf(user).alerts,
     /** Signal alerts plus active price levels: they share the plan's allowance. */
     used: await notificationsInUse(user.id),
+    // The built-in engines and published scripts this account may use, then its own scripts.
     combos: [
-      ...COMBOS,
-      ...(await db.select().from(userScripts).where(eq(userScripts.userId, user.id)).orderBy(asc(userScripts.name))).flatMap((s) =>
-        SCRIPT_TFS.map((tf) => ({ indicator: `script:${s.id}`, timeframe: tf, label: `Skrip ${s.name} ${TF_LABEL[tf]}` })),
-      ),
+      ...COMBOS.filter((x) => usable.has(x.indicator)),
+      ...open.filter((r) => !r.builtin).flatMap((r) => SCRIPT_TFS.map((tf) => ({ indicator: keyOf(r), timeframe: tf, label: `${r.name} ${TF_LABEL[tf]}` }))),
+      ...scripts.flatMap((s) => SCRIPT_TFS.map((tf) => ({ indicator: `script:${s.id}`, timeframe: tf, label: `Skrip ${s.name} ${TF_LABEL[tf]}` }))),
     ],
     telegram: { bot: telegramBot(), chat: Boolean(user.telegramChatId), configured: telegramBot() && Boolean(user.telegramChatId) },
   });
@@ -502,7 +528,7 @@ alertsApi.get("/alerts/history", async (c) => {
   );
   const join = eq(signalEvents.alertId, signalAlerts.id);
   const day = sql<string>`to_char(${signalEvents.createdAt} at time zone 'Asia/Jakarta', 'YYYY-MM-DD')`;
-  const [[totals], byIndicator, bySymbol, daily, calls, scripts, [held]] = await Promise.all([
+  const [[totals], byIndicator, bySymbol, daily, calls, scripts, catalog, [held]] = await Promise.all([
     db
       .select({
         ...tally,
@@ -555,6 +581,7 @@ alertsApi.get("/alerts/history", async (c) => {
       .orderBy(desc(signalEvents.createdAt))
       .limit(200),
     db.select({ id: userScripts.id, name: userScripts.name }).from(userScripts).where(eq(userScripts.userId, user.id)),
+    catalogScripts(),
     db.select({ n: sql<number>`count(*)::int` }).from(signalAlerts).where(eq(signalAlerts.userId, user.id)),
   ]);
   const decided = totals.win + totals.loss;
@@ -565,8 +592,11 @@ alertsApi.get("/alerts/history", async (c) => {
     bySymbol,
     daily,
     calls,
-    /** Names for `script:<id>` indicators; a removed script has none. */
-    scriptNames: Object.fromEntries(scripts.map((s) => [`script:${s.id}`, s.name])),
+    /** Names for `script:<id>` indicators and the published `catalog:<id>` ones shown here; a removed one has none. */
+    scriptNames: Object.fromEntries([
+      ...scripts.map((s) => [`script:${s.id}`, s.name]),
+      ...[...catalog].filter(([key]) => byIndicator.some((i) => i.indicator === key)).map(([key, s]) => [key, s.name]),
+    ]),
     telegram: telegramBot() && Boolean(user.telegramChatId),
   });
 });
@@ -574,7 +604,7 @@ alertsApi.get("/alerts/history", async (c) => {
 export const alertSchema = z.object({
   symbol: z.string().regex(SYMBOL_PATTERN),
   tvSymbol: z.string().min(1).max(40),
-  indicator: z.union([z.enum(["pob", "scalper", "fib"]), z.string().regex(SCRIPT_ID)]),
+  indicator: z.union([z.enum(["pob", "scalper", "fib"]), z.string().regex(SCRIPT_ID), z.string().regex(CATALOG_KEY)]),
   timeframe: z.enum(["15m", "1h", "4h", "1d"]),
 });
 
@@ -587,7 +617,9 @@ alertsApi.post("/alerts", async (c) => {
   if (scriptId) {
     const [mine] = await db.select({ id: userScripts.id }).from(userScripts).where(and(eq(userScripts.id, scriptId), eq(userScripts.userId, user.id)));
     if (!mine) return c.json({ error: "Skrip tidak ditemukan" }, 404);
-  } else if (!COMBOS.some((x) => x.indicator === indicator && x.timeframe === timeframe)) {
+  } else if (!(await canUse(user, indicator))) {
+    return c.json({ error: "Indikator ini tidak tersedia di paketmu" }, 403);
+  } else if (!CATALOG_KEY.test(indicator) && !COMBOS.some((x) => x.indicator === indicator && x.timeframe === timeframe)) {
     return c.json({ error: "Kombinasi indikator dan timeframe ini belum didukung" }, 400);
   }
   // The venue comes from the chart's symbol: BYBIT:BTCUSDT watches Bybit's bars, BINANCE:… the default source.

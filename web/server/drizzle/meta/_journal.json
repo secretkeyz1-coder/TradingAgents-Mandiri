@@ -183,6 +183,13 @@
       "when": 1793561214625,
       "tag": "0025_signal_history",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793563874611,
+      "tag": "0026_indicator_catalog",
+      "breakpoints": true
     }
   ]
 }

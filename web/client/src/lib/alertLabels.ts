@@ -16,7 +16,10 @@ export const SIGNAL_STATUS: Record<NonNullable<SignalAlert['last']>['status'], s
   replaced: 'diganti',
 };
 
-/** An alert's indicator by name: a built-in engine, else its combo label without the timeframe, else "Skrip". */
-export function indicatorName(alert: Pick<SignalAlert, 'indicator'>, combos: { indicator: string; label: string }[]): string {
-  return INDICATOR_NAMES[alert.indicator] ?? combos.find((c) => c.indicator === alert.indicator)?.label.replace(/ \S+$/, '') ?? 'Skrip';
+/** An alert's indicator by name: the server's, else a built-in engine, else its combo label without the timeframe, else "Skrip". */
+export function indicatorName(alert: Pick<SignalAlert, 'indicator'> & { name?: string | null }, combos: { indicator: string; label: string }[]): string {
+  return alert.name ?? INDICATOR_NAMES[alert.indicator] ?? combos.find((c) => c.indicator === alert.indicator)?.label.replace(/ \S+$/, '') ?? 'Skrip';
 }
+
+/** Shown on an alert whose indicator the admin no longer opens to this account. */
+export const UNAVAILABLE_NOTE = 'Indikator ini tidak tersedia di paketmu, jadi notifikasinya dijeda.';

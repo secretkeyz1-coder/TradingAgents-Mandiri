@@ -16,6 +16,7 @@ import { config } from "./config";
 import { couponsApi } from "./coupons";
 import { creatorsApi, creatorsPublicApi } from "./creators";
 import { errorCode, recordError } from "./errors";
+import { indicatorsApi, indicatorsPublicApi } from "./indicators";
 import { labApi } from "./lab";
 import { ledgerApi } from "./ledger";
 import { log } from "./log";
@@ -108,6 +109,8 @@ app.route("/api", authApi);
 app.route("/api", siteApi);
 app.route("/api", statusApi);
 app.route("/api", creatorsPublicApi);
+// The pricing page lists which plans open which chart indicators.
+app.route("/api", indicatorsPublicApi);
 app.use("/api/*", requireAuth);
 app.route("/api", meApi);
 app.route("/api", usersApi);
@@ -124,6 +127,7 @@ app.route("/api", ledgerApi);
 app.route("/api", labApi);
 app.route("/api", venuesApi);
 app.route("/api", scriptsApi);
+app.route("/api", indicatorsApi);
 // An order's invoice page opens from its signed link, without a session.
 app.route("/", invoicePages);
 

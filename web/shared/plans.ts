@@ -1,7 +1,8 @@
 // Subscription plans, shared by the server (what each account may use) and the
-// site and app (what it costs). The tiers differ in capacity, not in locked
-// features. The prices are the starting hypothesis, tested with founding members
-// before they are final.
+// site and app (what it costs). The tiers differ in capacity; which chart
+// indicators each one opens is the admin's catalog (server/src/indicators.ts),
+// changed at run time rather than fixed here. The prices are the starting
+// hypothesis, tested with founding members before they are final.
 
 export const PLAN_IDS = ["free", "pro", "creator"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];

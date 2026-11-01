@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The strategy lab (server/src/lab.ts): test a built-in engine or one of your scripts on a long
-  // history with costs, and see whether it holds on the part of the data it was not shaped on.
+  // The strategy lab (server/src/lab.ts): test a built-in engine, an indicator the admin published
+  // or one of your scripts on a long history with costs, and see whether it holds on the part of
+  // the data it was not shaped on. The list holds only what the account's plan opens.
   import { ColorType, createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
   import { api, type LabConfig, type LabRun, type LabRunSummary, type LabStats } from '../../api';
   import { formatDateTime } from '../../format';
@@ -42,6 +43,14 @@
   }
   load();
 
+  /** Every strategy on offer, in the list's order. */
+  const choices = $derived(
+    meta ? [...Object.keys(meta.engines).map((k) => `engine:${k}`), ...meta.catalog.map((c) => `catalog:${c.id}`), ...meta.scripts.map((s) => `script:${s.id}`)] : [],
+  );
+  $effect(() => {
+    // One the plan no longer opens (or a removed script) gives way to the first on offer.
+    if (choices.length && !choices.includes(strategy)) strategy = choices[0];
+  });
   const engine = $derived(strategy.startsWith('engine:') ? meta?.engines[strategy.slice(7)] : null);
   const timeframes = $derived(TF.filter((t) => !engine || engine.timeframes.includes(t.value)));
   $effect(() => {
@@ -61,8 +70,8 @@
     busy = true;
     error = '';
     try {
-      const [kind, id] = strategy.split(':') as ['engine' | 'script', string];
-      const strategyConfig: LabConfig['strategy'] = kind === 'engine' ? { kind: 'engine', name: id } : { kind: 'script', id };
+      const [kind, id] = strategy.split(':') as ['engine' | 'script' | 'catalog', string];
+      const strategyConfig: LabConfig['strategy'] = kind === 'engine' ? { kind: 'engine', name: id } : { kind, id };
       result = await api.labRun({ strategy: strategyConfig, symbols, timeframe, days, costs, split, expiry, venue: venue === 'binance' ? undefined : venue });
       runs = await api.labRuns();
     } catch (e) {
@@ -154,9 +163,16 @@
     <label class="flex flex-col gap-1 text-sm">
       Strategi
       <select class="select select-sm w-full" bind:value={strategy}>
-        <optgroup label="Mesin bawaan">
-          {#each Object.entries(meta?.engines ?? {}) as [key, e] (key)}<option value="engine:{key}">{e.label}</option>{/each}
-        </optgroup>
+        {#if Object.keys(meta?.engines ?? {}).length}
+          <optgroup label="Mesin bawaan">
+            {#each Object.entries(meta?.engines ?? {}) as [key, e] (key)}<option value="engine:{key}">{e.label}</option>{/each}
+          </optgroup>
+        {/if}
+        {#if meta?.catalog.length}
+          <optgroup label="Indikator tambahan">
+            {#each meta.catalog as c (c.id)}<option value="catalog:{c.id}">{c.name}</option>{/each}
+          </optgroup>
+        {/if}
         {#if meta?.scripts.length}
           <optgroup label="Skrip saya">
             {#each meta.scripts as s (s.id)}<option value="script:{s.id}">{s.name}</option>{/each}

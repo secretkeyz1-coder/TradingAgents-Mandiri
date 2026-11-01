@@ -180,6 +180,32 @@ export type AdminOverview = {
 /** What a coupon takes off each plan for one period, or why it does not apply (server/src/billing.ts). */
 export type CouponQuote = { code: string; plans: Partial<Record<'pro' | 'creator', { discount: number; total: number } | { error: string }>> };
 /** A discount code, with how often it was used (server/src/coupons.ts). */
+/** A chart indicator this account may draw: a built-in engine, or a script the admin published (with its code, for the sandbox). */
+export type CatalogIndicator = {
+  key: string;
+  builtin: 'scalper' | 'pob' | 'fib' | null;
+  name: string;
+  description: string;
+  /** On in the chart of an account that has not chosen its indicators yet. */
+  defaultOn: boolean;
+  /** False only in the admin's own menu: hidden from members. */
+  active: boolean;
+  code: string | null;
+};
+/** What the admin sets on a catalog indicator. */
+export type IndicatorFields = { name: string; description: string; plans: PlanId[]; defaultOn: boolean; active: boolean; sortOrder: number };
+export type AdminIndicator = IndicatorFields & {
+  id: string;
+  key: string;
+  builtin: CatalogIndicator['builtin'];
+  code: string | null;
+  updatedAt: string;
+  /** Accounts that may use it whatever their plan. */
+  grants: { id: string; username: string; email: string | null }[];
+  /** Signal notifications set on it. */
+  alerts: number;
+};
+
 export type Coupon = {
   id: string;
   code: string;
@@ -284,8 +310,12 @@ export type SignalAlert = {
   id: string;
   symbol: string;
   tvSymbol: string;
-  /** A built-in engine, or `script:<id>` for a user's script. */
+  /** A built-in engine, `script:<id>` for a user's script, or `catalog:<id>` for one the admin published. */
   indicator: string;
+  /** What lists call it; null for a removed script. */
+  name: string | null;
+  /** False while the admin keeps its indicator from this account: it sends nothing until that changes. */
+  available: boolean;
   timeframe: '15m' | '1h' | '4h' | '1d';
   /** The crypto venue whose bars it watches; "" = the default source (Binance, or Yahoo). */
   venue: string;
@@ -573,7 +603,7 @@ export type Ledger = {
 /** Results of some lab trades (server/src/lab.ts), in R; net is after costs. */
 export type LabStats = { n: number; win: number | null; gross: number | null; cost: number | null; net: number | null; pf: number | null; total: number; maxDrawdown: number };
 export type LabConfig = {
-  strategy: { kind: 'engine'; name: string } | { kind: 'script'; id: string };
+  strategy: { kind: 'engine'; name: string } | { kind: 'script'; id: string } | { kind: 'catalog'; id: string };
   symbols: string[];
   timeframe: '15m' | '1h' | '4h' | '1d';
   days: number;
@@ -655,6 +685,15 @@ export const api = {
   createCoupon: (body: NewCoupon) => request<Coupon>('/admin/coupons', { method: 'POST', body: JSON.stringify(body) }),
   setCouponActive: (id: string, active: boolean) => request<Coupon>(`/admin/coupons/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   adminBusiness: () => request<BusinessReport>('/admin/business'),
+  /** The chart indicators this account may draw (server/src/indicators.ts). */
+  indicators: () => request<{ items: CatalogIndicator[] }>('/indicators'),
+  adminIndicators: () => request<AdminIndicator[]>('/admin/indicators'),
+  createIndicator: (body: IndicatorFields & { code: string }) => request<AdminIndicator>('/admin/indicators', { method: 'POST', body: JSON.stringify(body) }),
+  updateIndicator: (id: string, body: Partial<IndicatorFields> & { code?: string }) =>
+    request<AdminIndicator>(`/admin/indicators/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteIndicator: (id: string) => request<{ ok: true; alerts: number }>(`/admin/indicators/${id}`, { method: 'DELETE' }),
+  setIndicatorGrants: (id: string, userIds: string[]) =>
+    request<{ grants: AdminIndicator['grants'] }>(`/admin/indicators/${id}/grants`, { method: 'PUT', body: JSON.stringify({ userIds }) }),
   /** How the server is set up (switches and states, never secrets), for the admin console. */
   adminConfig: () => request<AdminConfig>('/admin/config'),
   adminErrors: () => request<{ items: ServerError[]; lastDay: number }>('/admin/errors'),
@@ -725,8 +764,15 @@ export const api = {
   priceLevelAdd: (body: { symbol: string; tvSymbol: string; price: number; label?: string }) =>
     request<PriceLevel>('/price-alerts', { method: 'POST', body: JSON.stringify(body) }),
   priceLevelRemove: (id: string) => request<{ ok: true }>(`/price-alerts/${id}`, { method: 'DELETE' }),
+  /** The engines and published indicators this account may test, its own scripts, and the history each timeframe allows. */
   lab: () =>
-    request<{ engines: Record<string, { label: string; timeframes: string[] }>; scripts: { id: string; name: string }[]; maxDays: Record<string, number>; busy: boolean }>('/lab'),
+    request<{
+      engines: Record<string, { label: string; timeframes: string[] }>;
+      catalog: { id: string; name: string }[];
+      scripts: { id: string; name: string }[];
+      maxDays: Record<string, number>;
+      busy: boolean;
+    }>('/lab'),
   labRun: (config: LabConfig) => request<LabRun>('/lab/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(config) }),
   labRuns: () => request<LabRunSummary[]>('/lab/runs'),
   labRunGet: (id: string) => request<LabRun>(`/lab/runs/${id}`),

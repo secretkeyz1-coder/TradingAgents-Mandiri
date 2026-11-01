@@ -143,7 +143,7 @@ export function limits(): string {
     <tbody>${rows}${page}</tbody>
   </table>
 </div>
-<p class="mt-3 text-sm text-base-content/70">Semua paket memakai alat riset yang sama: ${shared.map(esc).join(', ')}. Bedanya kapasitas, dan Creator juga bisa membagikan rekam jejak sinyalnya di halaman publik. Kuota harian kembali penuh pukul 00.00 WIB.</p>`;
+<p class="mt-3 text-sm text-base-content/70">Semua paket memakai alat riset yang sama: ${shared.map(esc).join(', ')}. Bedanya kapasitas, dan Creator juga bisa membagikan rekam jejak sinyalnya di halaman publik; indikator chart yang terbuka untuk tiap paket ada di bawah. Kuota harian kembali penuh pukul 00.00 WIB.</p>`;
 }
 
 export const PARTS: Record<string, () => string> = { header, footer, pricing, limits, contact: contactText };

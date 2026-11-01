@@ -45,7 +45,7 @@ flowchart TB
 | HTTP | `app.ts` (route, middleware, error), `index.ts` (proses app), `runner.ts` (proses worker), `migrate.ts` |
 | Akun dan sesi | `auth.ts`, `totp.ts`, `plans.ts`, `usage.ts`, `models.ts` |
 | Analisa | `routes.ts` (rute), `jobs.ts` (antrean di Postgres), `worker.ts` (spawn engine), `tokens.ts` |
-| Agen chart, Lab, skrip | `agent.ts`, `lab.ts`, `scripts.ts`, `script-run.ts` |
+| Agen chart, Lab, skrip, katalog indikator | `agent.ts`, `lab.ts`, `scripts.ts`, `script-run.ts`, `indicators.ts` |
 | Data pasar | `market.ts`, `binance.ts`, `venues.ts` |
 | Notifikasi | `alerts.ts` (sinyal), `price-alerts.ts`, `watch.ts` (watchlist, Telegram), `ledger.ts` |
 | Bisnis | `billing.ts`, `coupons.ts`, `invoice.ts`, `reminders.ts`, `business.ts`, `mail.ts` |

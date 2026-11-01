@@ -1,7 +1,10 @@
 <script lang="ts">
-  // The chart toolbar's "Indikator" menu: the built-in signal engines, each
-  // with a line on what it draws and, when the timeframe rules it out, why.
-  // Scalper Pro+ keeps its own settings panel (IndicatorPanel), opened from here.
+  // The chart toolbar's "Indikator" menu: what the admin's catalog opens to this
+  // account (stores/indicators.svelte.ts), the built-in signal engines and the
+  // scripts the admin published, each with a line on what it draws and, when the
+  // timeframe rules a built-in out, why. Scalper Pro+ keeps its own settings panel
+  // (IndicatorPanel), opened from here.
+  import type { CatalogIndicator } from '../api';
   import { indicators } from '../stores/indicators.svelte';
   import { keepPlaced, placeMenu } from './menuSide';
 
@@ -11,7 +14,25 @@
   let place = $state({ left: 0, width: 0, maxHeight: 0 });
   let root: HTMLDivElement | undefined = $state();
 
-  const active = $derived(Number(indicators.scalperOn) + Number(indicators.pobOn) + Number(indicators.fibOn));
+  const active = $derived(Number(indicators.showScalper) + Number(indicators.showPob) + Number(indicators.showFib) + indicators.published.length);
+  /** Why a built-in is off on this timeframe. */
+  const TIMEFRAMES: Record<string, string> = { pob: 'Hanya di timeframe 15m dan 1j.', fib: 'Hanya di timeframe 15m, 1j dan 1h.' };
+
+  const usable = (item: CatalogIndicator) => (item.builtin === 'pob' ? pobOk : item.builtin === 'fib' ? fibOk : true);
+  const isOn = (item: CatalogIndicator) =>
+    item.builtin === 'scalper'
+      ? indicators.scalperOn
+      : item.builtin === 'pob'
+        ? indicators.pobOn
+        : item.builtin === 'fib'
+          ? indicators.fibOn
+          : indicators.catalogIds.includes(item.key);
+  function flip(item: CatalogIndicator) {
+    if (item.builtin === 'scalper') indicators.toggle();
+    else if (item.builtin === 'pob') indicators.togglePob();
+    else if (item.builtin === 'fib') indicators.toggleFib();
+    else indicators.toggleCatalog(item.key);
+  }
 
   $effect(() => {
     if (open && root) return keepPlaced(root, 20, (p) => (place = p));
@@ -57,36 +78,32 @@
       role="dialog"
       aria-label="Indikator"
     >
-      <div class="flex items-start gap-2 rounded-field p-2">
-        <label class="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-          <input type="checkbox" class="toggle toggle-sm mt-0.5" checked={indicators.scalperOn} onchange={() => indicators.toggle()} />
-          <span class="flex min-w-0 flex-col">
-            <span class="font-medium">Scalper Pro+</span>
-            <span class="text-xs text-base-content/70">Sinyal beli dan jual cepat dari arah tren dan momentum.</span>
-          </span>
-        </label>
-        {#if indicators.scalperOn}
-          <button class="btn btn-ghost btn-xs" aria-expanded={indicators.settingsOpen} onclick={() => (indicators.settingsOpen = !indicators.settingsOpen)}>Atur</button>
-        {/if}
-      </div>
-      <label class="flex items-start gap-3 rounded-field p-2" class:cursor-pointer={pobOk} class:opacity-60={!pobOk}>
-        <input type="checkbox" class="toggle toggle-sm mt-0.5" checked={indicators.pobOn} disabled={!pobOk} onchange={() => indicators.togglePob()} />
-        <span class="flex min-w-0 flex-col">
-          <span class="font-medium">PoB BYSTRA</span>
-          <span class="text-xs text-base-content/70">
-            {pobOk ? 'Zona tempat harga sering berbalik (SNR, QM, CK2/CK3).' : 'Hanya di timeframe 15m dan 1j.'}
-          </span>
-        </span>
-      </label>
-      <label class="flex items-start gap-3 rounded-field p-2" class:cursor-pointer={fibOk} class:opacity-60={!fibOk}>
-        <input type="checkbox" class="toggle toggle-sm mt-0.5" checked={indicators.fibOn} disabled={!fibOk} onchange={() => indicators.toggleFib()} />
-        <span class="flex min-w-0 flex-col">
-          <span class="font-medium">Fib GZ</span>
-          <span class="text-xs text-base-content/70">
-            {fibOk ? 'Area pullback Fibonacci 0,5–0,618 setelah harga bergerak jauh.' : 'Hanya di timeframe 15m, 1j dan 1h.'}
-          </span>
-        </span>
-      </label>
+      {#each indicators.catalog as item (item.key)}
+        {@const ok = usable(item)}
+        <div class="flex items-start gap-2 rounded-field p-2" class:opacity-60={!ok}>
+          <label class="flex min-w-0 flex-1 items-start gap-3" class:cursor-pointer={ok}>
+            <input type="checkbox" class="toggle toggle-sm mt-0.5" checked={isOn(item)} disabled={!ok} onchange={() => flip(item)} />
+            <span class="flex min-w-0 flex-col">
+              <span class="font-medium">{item.name}</span>
+              {#if !ok}
+                <span class="text-xs text-base-content/70">{TIMEFRAMES[item.builtin ?? '']}</span>
+              {:else if item.description}
+                <span class="text-xs text-base-content/70">{item.description}</span>
+              {/if}
+              {#if !item.active}
+                <span class="text-xs text-warning">Disembunyikan dari member (atur di Konsol admin → Indikator).</span>
+              {/if}
+            </span>
+          </label>
+          {#if item.builtin === 'scalper' && indicators.scalperOn}
+            <button class="btn btn-ghost btn-xs" aria-expanded={indicators.settingsOpen} onclick={() => (indicators.settingsOpen = !indicators.settingsOpen)}>Atur</button>
+          {/if}
+        </div>
+      {:else}
+        <p class="p-2 text-xs text-base-content/70">
+          {indicators.failed ? 'Daftar indikator gagal dimuat. Muat ulang halaman.' : indicators.loaded ? 'Belum ada indikator untuk paketmu.' : 'Memuat…'}
+        </p>
+      {/each}
     </div>
   {/if}
 </div>

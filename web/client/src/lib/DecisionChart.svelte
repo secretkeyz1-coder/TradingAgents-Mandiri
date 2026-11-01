@@ -292,7 +292,7 @@
 
   // --- Scalper Pro+ (indicators/scalper.ts), drawn from the same candles.
   const band = new BandPrimitive();
-  const ind = $derived(tools && indicators.scalperOn && candles.length ? scalper(candles, indicators.scalper) : null);
+  const ind = $derived(tools && indicators.showScalper && candles.length ? scalper(candles, indicators.scalper) : null);
   let indSeries: ISeriesApi<'Line'>[] = [];
   let indLines: IPriceLine[] = [];
   $effect(() => {
@@ -351,7 +351,7 @@
   });
   // --- PoB BYSTRA (indicators/pob.ts): every signal marked, the latest one's levels and zone drawn.
   const pobTf = $derived(timeframe === '15m' || timeframe === '1h' ? timeframe : null);
-  const pobRes = $derived(tools && indicators.pobOn && pobTf && candles.length ? pob(candles, pobTf) : null);
+  const pobRes = $derived(tools && indicators.showPob && pobTf && candles.length ? pob(candles, pobTf) : null);
   const pobLast = $derived(pobRes?.signals.at(-1) ?? null);
   const pobActive = $derived(pobLast?.outcome === 'open' ? pobLast : null);
   const pobBand = new BandPrimitive();
@@ -409,7 +409,7 @@
   });
   // --- Fib golden zone (indicators/fib.ts): the leg waiting for its pullback, the running signal, recent ones as segments.
   const fibOk = $derived(timeframe === '15m' || timeframe === '1h' || timeframe === '1d');
-  const fibRes = $derived(tools && indicators.fibOn && fibOk && candles.length ? fib(candles) : null);
+  const fibRes = $derived(tools && indicators.showFib && fibOk && candles.length ? fib(candles) : null);
   const fibLast = $derived(fibRes?.signals.at(-1) ?? null);
   const fibOpen = $derived(fibLast?.outcome === 'open' ? fibLast : null);
   const fibBand = new BandPrimitive();
@@ -493,7 +493,15 @@
   });
   /** Bars the chart shows, so script marks land only where a candle is drawn. */
   const shownTimes = $derived(new Set(candles.map((c) => c.time)));
-  const enabledScripts = $derived(tools ? scripts.items.filter((s) => indicators.scriptIds.includes(s.id)) : []);
+  /** The user's own scripts and the published ones it turned on (no editor for those: the admin keeps their code). */
+  const enabledScripts = $derived<{ id: string; name: string; code: string; published: boolean }[]>(
+    tools
+      ? [
+          ...scripts.items.filter((s) => indicators.scriptIds.includes(s.id)).map((s) => ({ id: s.id, name: s.name, code: s.code, published: false })),
+          ...indicators.published.map((c) => ({ id: c.key, name: c.name, code: c.code ?? '', published: true })),
+        ]
+      : [],
+  );
   let scriptRuns = $state<Record<string, ScriptRun>>({});
   $effect(() => {
     const list = enabledScripts.map((s) => ({ id: s.id, code: s.code }));
@@ -557,10 +565,11 @@
   const scriptCards = $derived(
     enabledScripts.map((s) => {
       const run = scriptRuns[s.id];
-      if (!run) return { id: s.id, name: s.name, loading: true as const };
-      if (!run.ok) return { id: s.id, name: s.name, error: run.error };
+      const card = { id: s.id, name: s.name, published: s.published };
+      if (!run) return { ...card, loading: true as const };
+      if (!run.ok) return { ...card, error: run.error };
       const signals = run.result.signals;
-      return { id: s.id, name: s.name, open: signals.findLast((x) => x.outcome === 'open') ?? null, last: signals.at(-1) ?? null, stats: run.result.stats };
+      return { ...card, open: signals.findLast((x) => x.outcome === 'open') ?? null, last: signals.at(-1) ?? null, stats: run.result.stats };
     }),
   );
 
@@ -840,10 +849,17 @@
     {#if pobRes || fibRes || scriptCards.length}
       <div class="pointer-events-auto col-start-1 row-start-2 flex max-h-full w-72 max-w-full flex-col gap-2 self-end justify-self-start overflow-x-hidden overflow-y-auto @min-[26rem]:row-start-1 @min-[26rem]:max-h-[75%]">
       {#each scriptCards as card (card.id)}
-        <section class="flex w-full shrink-0 flex-col gap-1 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Skrip {card.name}">
+        <section
+          class="flex w-full shrink-0 flex-col gap-1 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm"
+          aria-label={card.published ? card.name : `Skrip ${card.name}`}
+        >
           <div class="flex items-center gap-2">
-            <span class="truncate font-semibold">Skrip · {card.name}</span>
-            <button class="btn btn-ghost btn-xs ml-auto" onclick={() => scripts.open(card.id)}>Edit</button>
+            {#if card.published}
+              <span class="truncate font-semibold">{card.name}</span>
+            {:else}
+              <span class="truncate font-semibold">Skrip · {card.name}</span>
+              <button class="btn btn-ghost btn-xs ml-auto" onclick={() => scripts.open(card.id)}>Edit</button>
+            {/if}
           </div>
           {#if 'loading' in card}
             <p class="text-base-content/70">Menjalankan…</p>
@@ -947,7 +963,7 @@
     </div>
     </div>
     {/if}
-    {#if tools && indicators.scalperOn && indicators.settingsOpen}
+    {#if tools && indicators.showScalper && indicators.settingsOpen}
       <div class="absolute top-2 left-2 z-20"><IndicatorPanel onclose={() => (indicators.settingsOpen = false)} /></div>
     {/if}
     {#if tools && jumpOpen}

@@ -1,4 +1,4 @@
-// The strategy lab: test a built-in engine or one of the user's scripts on a long history, per
+// The strategy lab: test a built-in engine, a published indicator or one of the user's scripts on a long history, per
 // symbol, with trading costs, and judge it on data it was not tuned on. The first part of the
 // history (in-sample) is where a strategy is shaped; the rest (out-of-sample) is the check. A
 // strategy passes only when it stays positive after costs on the part it never saw.
@@ -11,6 +11,7 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { labRuns, userScripts } from "./db/schema";
+import { canUse, catalogScripts, keyOf, usableRows } from "./indicators";
 import { holdLease, leaseHeld } from "./locks";
 import { capMessage, limitsOf } from "./plans";
 import { tradeCost } from "./ledger";
@@ -38,6 +39,8 @@ export const runSchema = z.object({
   strategy: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("engine"), name: z.enum(["pob", "scalper", "fib"]) }),
     z.object({ kind: z.literal("script"), id: z.uuid() }),
+    // An indicator the admin published (indicators.ts).
+    z.object({ kind: z.literal("catalog"), id: z.uuid() }),
   ]),
   symbols: z.array(z.string().trim().toUpperCase().regex(SYMBOL_PATTERN)).min(1).max(5),
   timeframe: z.enum(["15m", "1h", "4h", "1d"]),
@@ -165,10 +168,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export const labApi = new Hono<AppEnv>();
 
+/** The engines and published scripts this account may test, the same ones its chart offers (indicators.ts). */
 labApi.get("/lab", async (c) => {
   const user = c.get("user");
-  const scripts = await db.select({ id: userScripts.id, name: userScripts.name }).from(userScripts).where(eq(userScripts.userId, user.id));
-  return c.json({ engines: LAB_ENGINES, scripts, maxDays: LAB_MAX_DAYS, busy: await leaseHeld(RUN_LEASE) });
+  const [scripts, open] = await Promise.all([
+    db.select({ id: userScripts.id, name: userScripts.name }).from(userScripts).where(eq(userScripts.userId, user.id)),
+    usableRows(user),
+  ]);
+  const usable = new Set<string>(open.map(keyOf));
+  return c.json({
+    engines: Object.fromEntries(Object.entries(LAB_ENGINES).filter(([key]) => usable.has(key))),
+    catalog: open.filter((r) => !r.builtin).map((r) => ({ id: r.id, name: r.name })),
+    scripts,
+    maxDays: LAB_MAX_DAYS,
+    busy: await leaseHeld(RUN_LEASE),
+  });
 });
 
 labApi.post("/lab/run", async (c) => {
@@ -178,10 +192,18 @@ labApi.post("/lab/run", async (c) => {
   const config = body.data;
   let name: string;
   let code: string | null = null;
+  if (config.strategy.kind !== "script" && !(await canUse(user, config.strategy.kind === "engine" ? config.strategy.name : `catalog:${config.strategy.id}`))) {
+    return c.json({ error: "Indikator ini tidak tersedia di paketmu" }, 403);
+  }
   if (config.strategy.kind === "engine") {
     const engine = LAB_ENGINES[config.strategy.name];
     if (!engine.timeframes.includes(config.timeframe)) return c.json({ error: `${engine.label} hanya untuk ${engine.timeframes.join(", ")}` }, 400);
     name = engine.label;
+  } else if (config.strategy.kind === "catalog") {
+    const published = (await catalogScripts()).get(`catalog:${config.strategy.id}`);
+    if (!published?.code) return c.json({ error: "Indikator tidak ditemukan" }, 404);
+    name = published.name;
+    code = published.code;
   } else {
     const [script] = await db
       .select()

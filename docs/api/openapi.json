@@ -225,6 +225,203 @@
         }
       }
     },
+    "/api/admin/indicators": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      }
+    },
+    "/api/admin/indicators/{id}": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      }
+    },
+    "/api/admin/indicators/{id}/grants": {
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      }
+    },
     "/api/admin/overview": {
       "get": {
         "tags": [
@@ -816,6 +1013,10 @@
                       {
                         "type": "string",
                         "pattern": "^script:([0-9a-f-]{36})$"
+                      },
+                      {
+                        "type": "string",
+                        "pattern": "^catalog:([0-9a-f-]{36})$"
                       }
                     ]
                   },
@@ -1804,6 +2005,29 @@
         }
       }
     },
+    "/api/indicators": {
+      "get": {
+        "tags": [
+          "indicators"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
     "/api/lab": {
       "get": {
         "tags": [
@@ -1877,6 +2101,24 @@
                           "kind": {
                             "type": "string",
                             "const": "script"
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "catalog"
                           },
                           "id": {
                             "type": "string",
@@ -2805,6 +3047,19 @@
       }
     },
     "/api/public/crypto-map": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          }
+        }
+      }
+    },
+    "/api/public/indicators": {
       "get": {
         "tags": [
           "public"

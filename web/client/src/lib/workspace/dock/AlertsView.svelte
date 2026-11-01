@@ -4,7 +4,7 @@
   // signals of an indicator, server/src/alerts.ts), each removable; on Creator a signal alert
   // can be made public. New ones are set from the chart's Notifikasi menu, where the symbol's
   // price and indicators are at hand, so this list only points there.
-  import { indicatorName, SIGNAL_STATUS, TIMEFRAME_LABELS } from '../../alertLabels';
+  import { indicatorName, SIGNAL_STATUS, TIMEFRAME_LABELS, UNAVAILABLE_NOTE } from '../../alertLabels';
   import { api, type PriceLevel, type PriceLevels, type SignalAlerts } from '../../api';
   import { auth } from '../../auth.svelte';
   import { ws } from '../../stores/workspace.svelte';
@@ -180,6 +180,7 @@
                       Pengaturan Scalper baru menyusul
                     </span>
                   {/if}
+                  {#if !a.available}<span class="block text-xs text-warning">{UNAVAILABLE_NOTE}</span>{/if}
                 </td>
                 <td class="text-xs">
                   {#if a.last}
