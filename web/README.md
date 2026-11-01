@@ -224,13 +224,16 @@ Buka http://localhost:5180. Vite meneruskan `/api` ke server Bun di port 3080. M
 ### Tes
 
 ```bash
-cd web/server && bun run test
+cd web/server && bun run test   # server: API, login, notifikasi, keamanan
+cd web/client && bun run test   # paritas indikator: grafik vs notifikasi
 ```
 
-- Butuh Postgres lokal (`bun run db:up` dari `web/`) dan Python venv di root repo (katalog model dibaca lewat worker).
+- Tes server butuh Postgres lokal (`bun run db:up` dari `web/`) dan Python venv di root repo (katalog model dibaca lewat worker).
 - Setiap run membuat ulang database `tradingagents_test`, dan nama database yang tidak berakhiran `_test` ditolak, jadi data dev aman. Untuk database lain, set `TEST_DATABASE_URL` (tetap harus berakhiran `_test`).
 - Tes memanggil app langsung (`app.request` pada `server/src/app.ts`), tanpa port dan tanpa scheduler. Harga untuk notifikasi harga juga tiruan, jadi tidak ada panggilan ke bursa.
 - Satu run sekitar satu menit; sebagian besar menunggu langkah TOTP 30 detik di tes verifikasi dua langkah.
+- Tes paritas menjalankan PoB, Fib, dan Scalper Pro+ dua kali pada candle asli yang disimpan di `client/test/fixtures`: versi TypeScript yang digambar grafik (`client/src/lib/indicators`) dan versi Python yang dipakai notifikasi (`worker/pob.py`, `fib.py`, `chart_agent.py` lewat `signals.py`). Setiap sinyal dibandingkan: bar, arah, entry, stop, target, dan hasilnya. Mengubah satu mesin tanpa yang lain membuat tes ini gagal dan menampilkan sinyal yang berbeda.
+- Tes paritas butuh Python 3.11+ dengan pandas (`PYTHON` memilih interpreter; bawaannya `.venv` di root repo), tanpa database dan tanpa jaringan. Sekitar 20 detik.
 
 ### Mode demo (tanpa API key, tanpa biaya)
 
