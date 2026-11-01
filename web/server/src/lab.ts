@@ -8,6 +8,7 @@
 import { and, desc, eq, gte, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { track } from "./activity";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { labRuns, userScripts } from "./db/schema";
@@ -222,6 +223,7 @@ labApi.post("/lab/run", async (c) => {
   const lease = await holdLease(RUN_LEASE, RUN_LEASE_MS);
   if (!lease) return c.json({ error: "Lab sedang menjalankan uji lain. Coba lagi sebentar lagi." }, 429);
   try {
+    await track(user, "lab", config.symbols.length === 1 ? config.symbols[0] : null, { strategy: name, timeframe: config.timeframe, symbols: config.symbols.length });
     const result = await runLab(config, code);
     const [saved] = await db.insert(labRuns).values({ userId: user.id, name, config, result }).returning({ id: labRuns.id, createdAt: labRuns.createdAt });
     // Keep the newest runs only.

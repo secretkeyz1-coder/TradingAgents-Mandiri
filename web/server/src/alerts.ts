@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { track } from "./activity";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
@@ -634,6 +635,7 @@ alertsApi.post("/alerts", async (c) => {
     .returning();
   // Record what already exists now, silently, so the first message is a truly new signal.
   if (row) scan([row.id]).catch((err) => recordError("scan", err));
+  if (row) await track(user, "alert", row.tvSymbol, { indicator, timeframe });
   return c.json({ ok: true, id: row?.id ?? null }, row ? 201 : 200);
 });
 

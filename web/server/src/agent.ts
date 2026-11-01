@@ -7,6 +7,7 @@ import { and, asc, desc, eq, gt, isNull, max, ne, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { track } from "./activity";
 import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
 import { modelsFor } from "./models";
@@ -271,6 +272,7 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
     await lease.release();
     return c.json({ error: quota }, 429);
   }
+  await track(user, "chat", session.symbol);
 
   try {
     // The context the worker needs: recent turns, what to fold into the summary, memories, drawings.

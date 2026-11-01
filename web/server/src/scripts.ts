@@ -5,6 +5,7 @@ import { and, asc, eq, like } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { SCRIPT_LIMITS, SCRIPT_REFERENCE, SCRIPT_TEMPLATES } from "../../shared/script";
+import { track } from "./activity";
 import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
 import { modelsFor } from "./models";
@@ -40,6 +41,7 @@ scriptsApi.post("/scripts", async (c) => {
     .values({ userId, name: body.data.name, code: body.data.code, pine: body.data.pine ?? null })
     .onConflictDoNothing()
     .returning();
+  if (row) await track(user, "script", null, { name: row.name });
   return row ? c.json(row, 201) : c.json({ error: "Nama skrip sudah dipakai" }, 409);
 });
 

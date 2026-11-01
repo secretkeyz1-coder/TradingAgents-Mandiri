@@ -11,6 +11,7 @@
 import { and, asc, count, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { track } from "./activity";
 import type { AppEnv } from "./auth";
 import { binancePerpetual } from "./binance";
 import { db } from "./db";
@@ -227,6 +228,7 @@ priceAlertsApi.post("/price-alerts", async (c) => {
     .insert(priceAlerts)
     .values({ userId: user.id, symbol, tvSymbol, label: body.data.label ?? null, venue, direction, price: body.data.price, armedBar: last.time })
     .returning();
+  await track(user, "price_alert", tvSymbol, { price: body.data.price });
   return c.json(view(row), 201);
 });
 

@@ -5,7 +5,9 @@
   // the workspace store (URL hash), and old page links are translated there, so the
   // shell only draws the frame. Loaded only once the user is signed in: the workspace
   // store calls the API as soon as it is imported.
+  import { untrack } from 'svelte';
   import { PLANS } from '../../../shared/plans';
+  import { trackActivity } from './activity';
   import { api } from './api';
   import BillingDialog from './account/BillingDialog.svelte';
   import ProfileDialog from './account/ProfileDialog.svelte';
@@ -22,6 +24,20 @@
 
   const narrow = $derived(layoutOf(viewport) === 'narrow');
   const pro = $derived(mode.value === 'pro');
+
+  // A member's minutes in the app, for the admin's activity pages (lib/activity.ts). The place is
+  // read at each beat, so the effect depends on the account only.
+  $effect(() => {
+    if (!auth.user || auth.user.role === 'admin') return;
+    return untrack(() =>
+      trackActivity(() => ({
+        screen: pro ? ws.screen : 'pemula',
+        // Pasar's one tab is its bottom panel; the member is on the chart there.
+        tab: pro && ws.screen !== 'beranda' && ws.screen !== 'pasar' ? ws.dock : null,
+        symbol: !pro || isChartScreen(ws.screen) ? ws.symbol : null,
+      })),
+    );
+  });
   // Focus mode gives a Pro chart screen the whole window; phones and Pemula have no focus mode.
   const framed = $derived(!pro || !layout.focus || narrow || !isChartScreen(ws.screen));
 

@@ -10,6 +10,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { track } from "./activity";
 import type { AppEnv, User } from "./auth";
 import { db } from "./db";
 import { analyses, users, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
@@ -283,6 +284,7 @@ watchApi.post("/watchlist", async (c) => {
     .insert(watchlist)
     .values({ userId: user.id, symbol: body.data.symbol.toUpperCase(), tvSymbol: body.data.tvSymbol.toUpperCase() })
     .onConflictDoNothing();
+  await track(user, "watch", body.data.tvSymbol.toUpperCase());
   return c.json({ ok: true }, 201);
 });
 

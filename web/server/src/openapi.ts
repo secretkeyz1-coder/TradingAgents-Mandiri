@@ -7,6 +7,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 import { alertSchema } from "./alerts";
+import { beatSchema } from "./analytics";
 import { app } from "./app";
 import { loginSchema, signupSchema } from "./auth";
 import { config } from "./config";
@@ -26,6 +27,7 @@ const BODIES: Record<string, { summary: string; schema: z.ZodType }> = {
   "POST /api/alerts": { summary: "Buat notifikasi sinyal", schema: alertSchema },
   "POST /api/price-alerts": { summary: "Buat notifikasi harga", schema: levelSchema },
   "POST /api/lab/run": { summary: "Jalankan uji Lab", schema: runSchema },
+  "POST /api/activity": { summary: "Detak aktivitas halaman: menit ini dipakai, di layar dan simbol ini", schema: beatSchema },
 };
 
 const METHODS = ["get", "post", "put", "patch", "delete"];

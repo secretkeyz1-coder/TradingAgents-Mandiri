@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { track } from "./activity";
 import { isAdmin, type AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
 import { db } from "./db";
@@ -155,6 +156,7 @@ api.post("/backtests", async (c) => {
     })
     .returning({ id: analyses.id });
   enqueue(row!.id);
+  await track(c.get("user"), "backtest", request.tickers.length === 1 ? request.tickers[0].toUpperCase() : null, { cells });
   return c.json({ id: row!.id, cells }, 201);
 });
 
@@ -259,6 +261,7 @@ api.post("/analyses", async (c) => {
     .values({ userId: c.get("user").id, ticker: request.ticker.toUpperCase(), tradeDate: request.date, request })
     .returning({ id: analyses.id });
   enqueue(row!.id);
+  await track(c.get("user"), "analysis", request.ticker.toUpperCase());
   return c.json({ id: row!.id }, 201);
 });
 

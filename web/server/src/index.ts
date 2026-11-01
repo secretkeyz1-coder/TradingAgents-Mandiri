@@ -3,6 +3,7 @@
 // the background schedulers, and serve the HTTP app (app.ts) with Bun. Every
 // instance starts the schedulers' timers; only the one holding the scheduler lock
 // runs them (locks.ts).
+import { startActivityPruning } from "./activity";
 import { startAlertScheduler } from "./alerts";
 import { app } from "./app";
 import { ensureAccounts } from "./auth";
@@ -40,6 +41,7 @@ startReminders();
 startStatusChecks();
 startErrorPruning();
 startLimitPruning();
+startActivityPruning();
 startOpsAlerts();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => recordError("catalog", err));

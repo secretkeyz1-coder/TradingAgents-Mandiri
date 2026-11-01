@@ -1,11 +1,12 @@
 <script lang="ts">
-  // The admin console (#/admin, App.svelte): the business, accounts, payments,
+  // The admin console (#/admin, App.svelte): the business, accounts and their activity, payments,
   // coupons, chart indicators, service status and server settings, on their own pages apart from
   // the trading workspace, so members never see this menu and admins never
   // work in a modal over a chart. #/admin/<page> picks the page.
   import { api } from '../api';
   import { auth } from '../auth.svelte';
   import Logo from '../Logo.svelte';
+  import ActivityPage from './ActivityPage.svelte';
   import BusinessPage from './BusinessPage.svelte';
   import ConfigPage from './ConfigPage.svelte';
   import CouponsPage from './CouponsPage.svelte';
@@ -17,6 +18,7 @@
   const PAGES = [
     { key: 'ringkasan', label: 'Ringkasan', icon: 'M4 4h7v9H4zM15 4h5v5h-5zM15 13h5v7h-5zM4 17h7v3H4z' },
     { key: 'pengguna', label: 'Pengguna', icon: 'M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5' },
+    { key: 'aktivitas', label: 'Aktivitas', icon: 'M5 20V11M12 20V5M19 20v-6M3 20h18' },
     { key: 'pembayaran', label: 'Pembayaran', icon: 'M2.5 7a2 2 0 0 1 2-2h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2zM2.5 10h19' },
     { key: 'kupon', label: 'Kupon', icon: 'M3 7h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4zM14 7v12' },
     { key: 'indikator', label: 'Indikator', icon: 'M3 17c3 0 3-10 6-10s3 10 6 10 3-6 6-6' },
@@ -88,6 +90,8 @@
           <BusinessPage />
         {:else if page === 'pengguna'}
           <UsersPage />
+        {:else if page === 'aktivitas'}
+          <ActivityPage />
         {:else if page === 'pembayaran'}
           <PaymentsPage />
         {:else if page === 'kupon'}

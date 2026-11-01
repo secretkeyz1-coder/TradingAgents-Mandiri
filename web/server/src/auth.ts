@@ -11,6 +11,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { z } from "zod";
+import { track } from "./activity";
 import { config } from "./config";
 import { db } from "./db";
 import { agentMemories, agentSessions, agentSkills, analyses, authTokens, chartDrawings, payments, users, watchlist, watchRuns } from "./db/schema";
@@ -96,6 +97,7 @@ const failed = (key: string) => recordFailure(`fail:${key}`, FAILURE_WINDOW_MS);
 const succeeded = (key: string) => clearFailures(`fail:${key}`);
 
 async function startSession(c: Context, user: User) {
+  await track(user, "login");
   const expires = Date.now() + SESSION_DAYS * 86_400_000;
   await setSignedCookie(c, COOKIE, `${user.id}|${user.sessionVersion}|${expires}`, secret, {
     httpOnly: true,

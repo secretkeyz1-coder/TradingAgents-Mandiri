@@ -31,6 +31,155 @@
     }
   },
   "paths": {
+    "/api/activity": {
+      "post": {
+        "tags": [
+          "activity"
+        ],
+        "summary": "Detak aktivitas halaman: menit ini dipakai, di layar dan simbol ini",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "screen": {
+                    "type": "string",
+                    "enum": [
+                      "beranda",
+                      "pasar",
+                      "riset",
+                      "pantau",
+                      "uji",
+                      "pemula"
+                    ]
+                  },
+                  "tab": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "history",
+                          "report",
+                          "log",
+                          "backtest",
+                          "lab",
+                          "signals",
+                          "watch",
+                          "alerts",
+                          "screener"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "symbol": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9:._!^&=-]{1,40}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "screen"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
+    "/api/admin/activity": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      }
+    },
+    "/api/admin/activity/users/{id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "x-admin": true,
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          },
+          "403": {
+            "description": "Khusus admin"
+          }
+        }
+      }
+    },
     "/api/admin/business": {
       "get": {
         "tags": [

@@ -746,3 +746,39 @@ export const rateLimits = pgTable(
   },
   (t) => [index("rate_limits_reset_at_idx").on(t.resetAt)],
 );
+
+/** The places a member can be in the app, as the activity beat names them (analytics.ts). */
+export type ActivityScreen = "beranda" | "pasar" | "riset" | "pantau" | "uji" | "pemula";
+/** Things a member did that the server records where they happen (activity.ts track). */
+export type ActivityKind = "login" | "analysis" | "backtest" | "chat" | "lab" | "alert" | "price_alert" | "watch" | "script";
+
+/**
+ * One row per minute a member was using the app (activity.ts): sent by the page while its tab is
+ * in front and someone touched it in the last five minutes, with the screen, its tab and the
+ * symbol open then. Admin accounts are not recorded; rows go after 90 days.
+ */
+export const activityMinutes = pgTable(
+  "activity_minutes",
+  {
+    userId: owner().notNull(),
+    minute: timestamp("minute", { withTimezone: true }).notNull(),
+    screen: text("screen").$type<ActivityScreen>().notNull(),
+    tab: text("tab"),
+    symbol: text("symbol"),
+  },
+  (t) => [uniqueIndex("activity_minutes_user_minute_idx").on(t.userId, t.minute), index("activity_minutes_minute_idx").on(t.minute)],
+);
+
+/** What a member did, recorded by the server where it happens (activity.ts); rows go after 90 days. */
+export const activityEvents = pgTable(
+  "activity_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: owner().notNull(),
+    kind: text("kind").$type<ActivityKind>().notNull(),
+    symbol: text("symbol"),
+    detail: jsonb("detail").$type<Record<string, string | number>>(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("activity_events_user_at_idx").on(t.userId, t.at), index("activity_events_at_idx").on(t.at)],
+);

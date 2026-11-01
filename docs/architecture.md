@@ -43,7 +43,7 @@ flowchart TB
 | Area | Modul |
 | --- | --- |
 | HTTP | `app.ts` (route, middleware, error), `index.ts` (proses app), `runner.ts` (proses worker), `migrate.ts` |
-| Akun dan sesi | `auth.ts`, `totp.ts`, `plans.ts`, `usage.ts`, `models.ts` |
+| Akun dan sesi | `auth.ts`, `totp.ts`, `plans.ts`, `usage.ts`, `models.ts`, `activity.ts` dan `analytics.ts` (aktivitas member) |
 | Analisa | `routes.ts` (rute), `jobs.ts` (antrean di Postgres), `worker.ts` (spawn engine), `tokens.ts` |
 | Agen chart, Lab, skrip, katalog indikator | `agent.ts`, `lab.ts`, `scripts.ts`, `script-run.ts`, `indicators.ts` |
 | Data pasar | `market.ts`, `binance.ts`, `venues.ts` |

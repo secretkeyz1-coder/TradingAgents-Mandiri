@@ -9,6 +9,7 @@ import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { agentApi } from "./agent";
 import { alertsApi } from "./alerts";
+import { analyticsApi } from "./analytics";
 import { authApi, meApi, requireAuth, usersApi, type AppEnv } from "./auth";
 import { billingApi, invoicePages } from "./billing";
 import { businessApi } from "./business";
@@ -128,6 +129,7 @@ app.route("/api", labApi);
 app.route("/api", venuesApi);
 app.route("/api", scriptsApi);
 app.route("/api", indicatorsApi);
+app.route("/api", analyticsApi);
 // An order's invoice page opens from its signed link, without a session.
 app.route("/", invoicePages);
 

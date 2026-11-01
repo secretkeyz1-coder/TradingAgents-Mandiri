@@ -180,6 +180,50 @@ export type AdminOverview = {
 /** What a coupon takes off each plan for one period, or why it does not apply (server/src/billing.ts). */
 export type CouponQuote = { code: string; plans: Partial<Record<'pro' | 'creator', { discount: number; total: number } | { error: string }>> };
 /** A discount code, with how often it was used (server/src/coupons.ts). */
+/** Where a member was in the app when a minute was counted (server/src/activity.ts). */
+export type ActivityScreen = 'beranda' | 'pasar' | 'riset' | 'pantau' | 'uji' | 'pemula';
+/** Things a member did that the server records. */
+export type ActivityKind = 'login' | 'analysis' | 'backtest' | 'chat' | 'lab' | 'alert' | 'price_alert' | 'watch' | 'script';
+/** Active minutes in one hour of the week, WIB (dow 1 = Monday). */
+export type ActivityHeat = { dow: number; hour: number; minutes: number };
+/** GET /api/admin/activity: members' use of the app over the last `days` days. */
+export type ActivityOverview = {
+  days: number;
+  keepDays: number;
+  online: { id: string; username: string; at: string; screen: ActivityScreen; tab: string | null; symbol: string | null }[];
+  summary: { members: number; active: number; today: number; minutes: number; perDay: number };
+  daily: { day: string; people: number; minutes: number }[];
+  heatmap: ActivityHeat[];
+  screens: { screen: ActivityScreen; tab: string | null; minutes: number; people: number }[];
+  symbols: { symbol: string; minutes: number; people: number }[];
+  features: { kind: ActivityKind; count: number; people: number }[];
+  users: {
+    id: string;
+    username: string;
+    email: string | null;
+    plan: PlanId;
+    createdAt: string;
+    lastSeen: string | null;
+    online: boolean;
+    minutes: number;
+    days: number;
+    topScreen: ActivityScreen | null;
+    events: number;
+  }[];
+};
+/** GET /api/admin/activity/users/:id: one member's use of the app. */
+export type ActivityDetail = {
+  days: number;
+  user: { id: string; username: string; email: string | null; role: string; plan: PlanId; createdAt: string; lastSeen: string | null; online: boolean };
+  daily: { day: string; minutes: number }[];
+  heatmap: ActivityHeat[];
+  screens: { screen: ActivityScreen; tab: string | null; minutes: number }[];
+  symbols: { symbol: string; minutes: number }[];
+  features: { kind: ActivityKind; count: number }[];
+  sessions: { start: string; end: string; minutes: number; screens: ActivityScreen[] }[];
+  events: { at: string; kind: ActivityKind; symbol: string | null; detail: Record<string, string | number> | null }[];
+};
+
 /** A chart indicator this account may draw: a built-in engine, or a script the admin published (with its code, for the sandbox). */
 export type CatalogIndicator = {
   key: string;
@@ -688,6 +732,11 @@ export const api = {
   /** The chart indicators this account may draw (server/src/indicators.ts). */
   indicators: () => request<{ items: CatalogIndicator[] }>('/indicators'),
   adminIndicators: () => request<AdminIndicator[]>('/admin/indicators'),
+  /** This tab is being used now (lib/activity.ts); the server counts one minute however often it beats. */
+  activity: (place: { screen: ActivityScreen; tab: string | null; symbol: string | null }) =>
+    request<Record<string, never>>('/activity', { method: 'POST', body: JSON.stringify(place) }),
+  adminActivity: (days: number) => request<ActivityOverview>(`/admin/activity?days=${days}`),
+  adminActivityUser: (id: string, days: number) => request<ActivityDetail>(`/admin/activity/users/${id}?days=${days}`),
   createIndicator: (body: IndicatorFields & { code: string }) => request<AdminIndicator>('/admin/indicators', { method: 'POST', body: JSON.stringify(body) }),
   updateIndicator: (id: string, body: Partial<IndicatorFields> & { code?: string }) =>
     request<AdminIndicator>(`/admin/indicators/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
