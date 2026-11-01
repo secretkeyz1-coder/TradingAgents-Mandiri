@@ -46,6 +46,8 @@ Actions, Deploy, Run workflow, pilih cabang, ketik `deploy`. Urutannya:
 
 Baris terakhir log job "deploy to production" berbunyi `deploy: ok: <commit> runs on port ...` atau `deploy: FAILED: <sebab>; bringing the previous release back`.
 
+`deploy.sh` berjalan di VPS dalam sesinya sendiri dan menulis ke `~/tradingagents/releases/<rilis>/deploy.log`; isi log itulah yang tampil di job selama koneksi tersambung. Kalau koneksi putus atau job dibatalkan, deploy tetap selesai atau rollback sendiri. Jadi job yang berhenti tanpa baris terakhir di atas belum tentu gagal: lihat baris terakhir `deploy.log` rilis terbaru di VPS. Selama satu deploy berjalan, deploy berikutnya ditolak dengan `another deploy holds ...`.
+
 Tanpa Actions, dari laptop dengan akses SSH biasa. `core.autocrlf=false` perlu di Windows: tanpa itu Git menulis CRLF ke Dockerfile, compose, dan kode di arsip.
 ```bash
 git -c core.autocrlf=false archive --format=tar.gz HEAD | ssh <user>@<host> /usr/local/bin/tradingagents-deploy "$(git rev-parse HEAD)"
@@ -60,6 +62,7 @@ sudo docker compose ps                                       # app dan worker ru
 sudo docker compose logs migrate | tail -1                   # migrations_applied, total N
 sudo docker compose logs app --since 10m | grep '"level":"error"'   # kosong
 cat ~/tradingagents/src/REVISION                             # commit yang berjalan
+tail -n 1 ~/tradingagents/src/deploy.log                     # deploy: ok: <commit> runs on port ...
 ```
 
 ## Rollback

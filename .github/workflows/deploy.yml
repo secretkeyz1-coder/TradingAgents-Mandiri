@@ -5,7 +5,10 @@ name: Deploy
 # packs the repository at it, and hands the pack over SSH to the server's deploy
 # command (web/deploy/receive-release.sh, the deploy key's only command), which
 # builds, migrates, replaces the app and the worker, waits for health, and rolls
-# back on failure. A staging server would get an automatic job here once it exists.
+# back on failure. The deploy runs on the server in a session of its own: if this
+# job is cancelled or loses its connection, the deploy still finishes or rolls
+# back, and its log stays in <release>/deploy.log there. A staging server would
+# get an automatic job here once it exists.
 #
 # Secrets (docs/runbooks/deploy.md): DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY (the
 # private key whose only command on the server is the deploy) and
@@ -51,4 +54,7 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "$DEPLOY_USER@$DEPLOY_HOST" "$GITHUB_SHA" < release.tar.gz
+          # Keepalives end the job within two minutes of a connection that died silently.
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$GITHUB_SHA" < release.tar.gz
