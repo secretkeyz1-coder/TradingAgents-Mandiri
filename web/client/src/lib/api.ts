@@ -290,6 +290,10 @@ export type SignalAlert = {
   primed: boolean;
   /** Its live signals go on the owner's public track record (Creator). */
   public: boolean;
+  /** Scalper: "custom" while it runs the owner's own chart settings. */
+  settings: 'default' | 'custom';
+  /** Scalper: newer chart settings wait until the signal it announced has finished. */
+  settingsPending: boolean;
   last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced' } | null;
 };
 export type SignalAlerts = {

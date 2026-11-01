@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Period, PlanId } from "../../../shared/plans";
+import type { ScalperSignalSettings } from "../../../shared/scalper";
 
 export type AnalysisStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -371,6 +372,12 @@ export const signalAlerts = pgTable(
     venue: text("venue").notNull().default(""),
     /** A Creator's live signals from this alert go on their public record (creator_signals). */
     public: boolean("public").notNull().default(false),
+    /**
+     * The Scalper Pro+ inputs this alert's signals come from, where they differ from the defaults
+     * (shared/scalper.ts); null = the defaults. They follow the owner's chart settings, moving only
+     * when no signal the alert announced is still running (alerts.ts).
+     */
+    settings: jsonb("settings").$type<ScalperSignalSettings>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("signal_alerts_user_pair_idx").on(t.userId, t.symbol, t.indicator, t.timeframe, t.venue)],

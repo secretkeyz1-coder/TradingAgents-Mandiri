@@ -5,59 +5,12 @@
 // the chart and the agent find the same signal.
 //
 // Signals come only from closed bars: the newest bar may still be forming,
-// which the script expresses with barstate.isconfirmed.
+// which the script expresses with barstate.isconfirmed. The inputs and their
+// defaults live in shared/scalper.ts, which the notifications read too.
+import { scalperLength, type ScalperSettings } from '../../../../shared/scalper';
 import type { Candle } from '../api';
 
-export type ScalperSettings = {
-  sensitivity: number;
-  atrPeriod: number;
-  useHeikinAshi: boolean;
-  useTrendFilter: boolean;
-  useRsiFilter: boolean;
-  useSweep: boolean;
-  emaFast: number;
-  emaSlow: number;
-  rsiPeriod: number;
-  rsiBuyMin: number;
-  rsiSellMax: number;
-  pivotLen: number;
-  atrRisk: number;
-  slAtr: number;
-  riskReward: number;
-  extendBars: number;
-  entryZoneAtr: number;
-  showTrail: boolean;
-  showEmas: boolean;
-  showZone: boolean;
-  showTrendlines: boolean;
-  showDashboard: boolean;
-};
-
-/** The script's own defaults. */
-export const SCALPER_DEFAULTS: ScalperSettings = {
-  sensitivity: 1,
-  atrPeriod: 10,
-  useHeikinAshi: false,
-  useTrendFilter: true,
-  useRsiFilter: true,
-  useSweep: false,
-  emaFast: 20,
-  emaSlow: 50,
-  rsiPeriod: 14,
-  rsiBuyMin: 50,
-  rsiSellMax: 50,
-  pivotLen: 5,
-  atrRisk: 14,
-  slAtr: 1.5,
-  riskReward: 2,
-  extendBars: 20,
-  entryZoneAtr: 0.25,
-  showTrail: true,
-  showEmas: true,
-  showZone: true,
-  showTrendlines: true,
-  showDashboard: true,
-};
+export { SCALPER_DEFAULTS, type ScalperSettings } from '../../../../shared/scalper';
 
 export type Side = 'BUY' | 'SELL';
 
@@ -104,8 +57,14 @@ export function scalper(candles: Candle[], s: ScalperSettings): ScalperResult | 
   // A field cleared mid-edit arrives as null; draw nothing rather than NaN.
   const inputs = [s.sensitivity, s.atrPeriod, s.emaFast, s.emaSlow, s.rsiPeriod, s.pivotLen, s.atrRisk, s.slAtr, s.riskReward, s.entryZoneAtr];
   if (inputs.some((v) => typeof v !== 'number' || !Number.isFinite(v) || v <= 0)) return null;
+  // Whole bars, rounded as the notifications round them (shared/scalper.ts).
+  const atrLen = scalperLength(s.atrPeriod);
+  const riskLen = scalperLength(s.atrRisk);
+  const fastLen = scalperLength(s.emaFast);
+  const slowLen = scalperLength(s.emaSlow);
+  const rsiLen = scalperLength(s.rsiPeriod);
   const n = candles.length;
-  if (n < Math.max(s.emaSlow, s.atrRisk) + 5) return null;
+  if (n < Math.max(slowLen, riskLen) + 5) return null;
   const o = candles.map((c) => c.open);
   const h = candles.map((c) => c.high);
   const lo = candles.map((c) => c.low);
@@ -113,8 +72,8 @@ export function scalper(candles: Candle[], s: ScalperSettings): ScalperResult | 
   const src = s.useHeikinAshi ? candles.map((x) => (x.open + x.high + x.low + x.close) / 4) : c;
 
   const tr = h.map((_, i) => (i === 0 ? h[0] - lo[0] : Math.max(h[i] - lo[i], Math.abs(h[i] - c[i - 1]), Math.abs(lo[i] - c[i - 1]))));
-  const atrUt = rma(tr, s.atrPeriod);
-  const atrRisk = rma(tr, s.atrRisk);
+  const atrUt = rma(tr, atrLen);
+  const atrRisk = rma(tr, riskLen);
   const trail = [src[0] - s.sensitivity * atrUt[0]];
   for (let i = 1; i < n; i++) {
     const prev = trail[i - 1];
@@ -123,12 +82,12 @@ export function scalper(candles: Candle[], s: ScalperSettings): ScalperResult | 
     else if (src[i] < prev && src[i - 1] < prev) trail.push(Math.min(prev, src[i] + loss));
     else trail.push(src[i] > prev ? src[i] - loss : src[i] + loss);
   }
-  const fast = ema(c, s.emaFast);
-  const slow = ema(c, s.emaSlow);
-  const gain = rma(c.map((v, i) => (i ? Math.max(v - c[i - 1], 0) : 0)), s.rsiPeriod);
-  const drop = rma(c.map((v, i) => (i ? Math.max(c[i - 1] - v, 0) : 0)), s.rsiPeriod);
+  const fast = ema(c, fastLen);
+  const slow = ema(c, slowLen);
+  const gain = rma(c.map((v, i) => (i ? Math.max(v - c[i - 1], 0) : 0)), rsiLen);
+  const drop = rma(c.map((v, i) => (i ? Math.max(c[i - 1] - v, 0) : 0)), rsiLen);
   const rsi = gain.map((g, i) => (drop[i] === 0 ? 100 : 100 - 100 / (1 + g / drop[i])));
-  const L = Math.max(2, Math.round(s.pivotLen));
+  const L = scalperLength(s.pivotLen, 2);
 
   const bull = (i: number) => fast[i] > slow[i] && c[i] > slow[i];
   const bear = (i: number) => fast[i] < slow[i] && c[i] < slow[i];

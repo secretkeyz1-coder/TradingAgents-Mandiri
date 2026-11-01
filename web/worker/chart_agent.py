@@ -320,6 +320,11 @@ def _scalper_bars(m: Market, timeframe: str) -> pd.DataFrame:
     return df.copy()
 
 
+def _length(value: float, least: int = 1) -> int:
+    """A length in bars as scalper.ts reads it (scalperLength, shared/scalper.ts): rounded half up, at least `least`."""
+    return max(least, int(float(value) + 0.5))
+
+
 def scalper_signal(
     m: Market,
     timeframe: str = "15m",
@@ -350,7 +355,7 @@ def scalper_signal(
     many bars to its stop, target or the next signal (for notifications)."""
     df = _scalper_bars(m, timeframe)
     n = len(df)
-    if n < max(int(ema_slow), int(atr_risk)) + 5:
+    if n < max(_length(ema_slow), _length(atr_risk)) + 5:
         return {"timeframe": timeframe, "error": f"baru {n} candle {timeframe}, kurang untuk menghitung"}
     o, h, lo, c = (df[k].astype(float).tolist() for k in ("Open", "High", "Low", "Close"))
     src = [(o[i] + h[i] + lo[i] + c[i]) / 4 for i in range(n)] if use_heikin_ashi else c
@@ -369,7 +374,7 @@ def scalper_signal(
         return out
 
     tr = [h[0] - lo[0]] + [max(h[i] - lo[i], abs(h[i] - c[i - 1]), abs(lo[i] - c[i - 1])) for i in range(1, n)]
-    atr_ut, atr_rk = rma(tr, int(atr_period)), rma(tr, int(atr_risk))
+    atr_ut, atr_rk = rma(tr, _length(atr_period)), rma(tr, _length(atr_risk))
     trail = [src[0] - float(sensitivity) * atr_ut[0]]
     for i in range(1, n):
         prev, s, s1, loss = trail[-1], src[i], src[i - 1], float(sensitivity) * atr_ut[i]
@@ -379,11 +384,11 @@ def scalper_signal(
             trail.append(min(prev, s + loss))
         else:
             trail.append(s - loss if s > prev else s + loss)
-    fast, slow = ema(c, int(ema_fast)), ema(c, int(ema_slow))
-    gain = rma([0.0] + [max(c[i] - c[i - 1], 0.0) for i in range(1, n)], int(rsi_period))
-    drop = rma([0.0] + [max(c[i - 1] - c[i], 0.0) for i in range(1, n)], int(rsi_period))
+    fast, slow = ema(c, _length(ema_fast)), ema(c, _length(ema_slow))
+    gain = rma([0.0] + [max(c[i] - c[i - 1], 0.0) for i in range(1, n)], _length(rsi_period))
+    drop = rma([0.0] + [max(c[i - 1] - c[i], 0.0) for i in range(1, n)], _length(rsi_period))
     rsi = [100.0 if d == 0 else 100 - 100 / (1 + g / d) for g, d in zip(gain, drop, strict=True)]
-    L = max(2, int(pivot_len))
+    L = _length(pivot_len, 2)
 
     def bull(i: int) -> bool:
         return fast[i] > slow[i] and c[i] > slow[i]

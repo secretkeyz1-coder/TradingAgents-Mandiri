@@ -1,0 +1,1 @@
+ALTER TABLE "signal_alerts" ADD COLUMN "settings" jsonb;

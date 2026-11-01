@@ -79,8 +79,9 @@ export const LEDGER_VENUES: ("" | VenueId)[] = (() => {
 /** Every symbol and venue the ledger records. */
 const ledgerFeeds = (): { symbol: string; venue: "" | VenueId }[] =>
   LEDGER_SYMBOLS.flatMap((symbol) => (cryptoBase(symbol) ? LEDGER_VENUES : [""] as const).map((venue) => ({ symbol, venue })));
-/** How a scan's results are keyed: symbol, timeframe, venue ("" = default source) and engine. */
-export const resultKey = (symbol: string, timeframe: string, venue: string, source: string) => `${symbol}|${timeframe}|${venue}|${source}`;
+/** How a scan's results are keyed: symbol, timeframe, venue ("" = default source), engine, and a user's own Scalper inputs (alerts.ts; "" = the defaults). */
+export const resultKey = (symbol: string, timeframe: string, venue: string, source: string, variant = "") =>
+  `${symbol}|${timeframe}|${venue}|${source}${variant ? `#${variant}` : ""}`;
 const START_BALANCE = Number(process.env.SIGNAL_PAPER_BALANCE ?? 10_000);
 const RISK_PCT = Number(process.env.SIGNAL_PAPER_RISK_PCT ?? 1);
 const RISK_USD = (START_BALANCE * RISK_PCT) / 100;

@@ -17,3 +17,5 @@ PoB, Fib Golden Zone, dan Scalper Pro+ digambar di grafik (TypeScript, di browse
 - Selisih langsung ketahuan di CI. Pertama kali dijalankan, 706 sinyal per sisi identik, dan pekerjaan ini menemukan bug tanggal candle harian emas dan forex (`market.ts`).
 - Alternatifnya (menghitung di server dan mengirim hasilnya ke grafik) ditunda: grafik butuh hitungan instan saat pengguna mengubah pengaturan.
 - Celah yang tercatat: pengaturan Scalper milik pengguna hanya dipakai grafik; notifikasi memakai pengaturan bawaan.
+
+Pembaruan: celah pengaturan Scalper ditutup oleh [ADR 0009](0009-notifikasi-scalper-ikut-pengaturan.md).

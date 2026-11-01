@@ -112,6 +112,9 @@
       <button class="btn btn-sm flex-1" disabled={installing} onclick={makeSkill}>Jadikan skill AI</button>
     </div>
     {#if skillNote}<p class="text-xs text-base-content/80" role="status">{skillNote}</p>{/if}
+    <p class="text-xs text-base-content/70">
+      Notifikasi Scalper Pro+ memakai pengaturan ini; sinyal yang sudah dikirim dipantau sampai selesai dengan pengaturan lama.
+    </p>
     <p class="text-xs text-base-content/70">Sinyal hanya dari candle yang sudah tutup. Untuk riset, bukan saran investasi.</p>
   </div>
 </section>

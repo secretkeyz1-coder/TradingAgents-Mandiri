@@ -169,6 +169,13 @@
       "when": 1793533213421,
       "tag": "0023_queued_index",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793546996853,
+      "tag": "0024_scalper_settings",
+      "breakpoints": true
     }
   ]
 }

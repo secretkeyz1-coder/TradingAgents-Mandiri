@@ -4,6 +4,7 @@ names, for indicators-parity.test.ts: the chart draws the TypeScript engines,
 the notifications come from these, and the test checks that both agree.
 
 stdin:  {"engine": "pob" | "fib" | "scalper", "timeframe": "15m" | "1h" | "1d", "candles": [Candle, ...]}
+        a scalper job may add "settings": a user's own inputs, as the server passes them (shared/scalper.ts)
         {"engine": "defaults"} for the settings each engine runs with on the server
 stdout: {"signals": [...]} or {"defaults": {...}}
 
@@ -57,15 +58,16 @@ def run_fib(candles: list[dict], timeframe: str) -> list[dict]:
     return [camel_keys(x) for x in (result or {}).get("signals", [])]
 
 
-def run_scalper(candles: list[dict], timeframe: str) -> list[dict]:
-    """signals._scalper, the scan's own call (history_bars=EXPIRY_BARS), on these bars, with every signal kept."""
+def run_scalper(candles: list[dict], timeframe: str, settings: dict | None = None) -> list[dict]:
+    """signals._scalper, the scan's own call (history_bars=EXPIRY_BARS), on these bars, with every signal kept,
+    and with a user's own inputs when the job has them."""
     import signals as scan
 
     frame = scan._frame(candles)
     market = scan.ca.Market.__new__(scan.ca.Market)  # as scan() builds it for bars the server sends
     market.symbol = "PARITY"
     with scan._given(frame):
-        _, history = scan._scalper(market, timeframe, len(candles))
+        _, history = scan._scalper(market, timeframe, len(candles), settings)
     last = len(frame) - 1
     row_of = {t: k for k, t in enumerate(frame["Date"])}
     out = []
@@ -95,6 +97,8 @@ def main() -> int:
     job = json.loads(sys.stdin.buffer.read())
     if job["engine"] == "defaults":
         out = {"defaults": defaults()}
+    elif job["engine"] == "scalper":
+        out = {"signals": run_scalper(job["candles"], job["timeframe"], job.get("settings"))}
     else:
         out = {"signals": ENGINES[job["engine"]](job["candles"], job["timeframe"])}
     sys.stdout.write(json.dumps(out, allow_nan=False) + "\n")

@@ -8,7 +8,13 @@
 // server instances; a new alert's first scan records what already exists
 // without sending it; a signal first seen more than STALE_BARS late (server
 // down, data gap) is recorded but not sent as if it were fresh.
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+//
+// A Scalper alert runs its owner's chart settings (shared/scalper.ts) and moves to
+// new ones only when no signal it announced is still running: the old inputs follow
+// that signal to its end, and what the new inputs fired before the move is recorded
+// as history, never sent as if it were fresh.
+import { createHash } from "node:crypto";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "./auth";
@@ -22,6 +28,7 @@ import { log } from "./log";
 import { capMessage, limitsOf, planOf } from "./plans";
 import { checkPrices, notificationsInUse } from "./price-alerts";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
+import { scalperSignalSettings, type ScalperSignalSettings } from "../../shared/scalper";
 import { toScriptBars } from "../../shared/script";
 import { binancePair, binancePerpetual } from "./binance";
 import { cryptoBase, storedVenue, VENUES, venueOfTv, type VenueId } from "./venues";
@@ -51,7 +58,7 @@ const TF_LABEL: Record<string, string> = { "15m": "15m", "1h": "1j", "4h": "4j",
 const SCRIPT_TFS = ["15m", "1h", "4h", "1d"] as const;
 const SCRIPT_ID = /^script:([0-9a-f-]{36})$/;
 
-type ScanSignal = {
+export type ScanSignal = {
   time: string;
   side: "BUY" | "SELL";
   label: string;
@@ -64,6 +71,21 @@ type ScanSignal = {
   r?: number | null;
 };
 type Alert = typeof signalAlerts.$inferSelect;
+/** What the scan asks of a pair: an engine's name runs its defaults; a Scalper variant runs a user's own inputs. */
+type EngineRequest = string | { indicator: string; variant: string; settings: ScalperSignalSettings };
+export type ScanPair = { symbol: string; timeframe: string; venue: string; indicators: EngineRequest[]; recent: number; bars?: ReturnType<typeof toScriptBars> };
+/** One engine's answer for one pair, under its variant ("" = the defaults). */
+export type ScanResult = { symbol: string; timeframe: string; venue: string; indicator: string; variant: string; signals: ScanSignal[] };
+
+/** The same inputs give the same variant, in whatever order they were saved; "" = the defaults. */
+const variantOf = (settings: ScalperSignalSettings | null | undefined) =>
+  settings && Object.keys(settings).length
+    ? createHash("sha256").update(JSON.stringify(Object.entries(settings).sort(([a], [b]) => (a < b ? -1 : 1)))).digest("hex").slice(0, 12)
+    : "";
+
+/** The Scalper inputs an account saved on its chart (client stores/indicators.svelte.ts), as the scan runs them. */
+const chartSettings = (preferences: Record<string, unknown> | null | undefined) =>
+  scalperSignalSettings((preferences?.indicators as { scalper?: unknown } | undefined)?.scalper);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 /** "2026-10-30 11:30" → "30 Okt 11:30"; a daily bar "2026-10-30" → "30 Okt 2026". */
@@ -130,6 +152,38 @@ function closeMessage(
     .join("\n");
 }
 
+/** The engines in Python (web/worker/signals.py), on every pair at once. */
+async function workerScan(pairs: ScanPair[]): Promise<ScanResult[]> {
+  const out: ScanResult[] = [];
+  const handle = runCommand("signals", { pairs }, null, async (e) => {
+    if (e.type === "signals") {
+      out.push({
+        symbol: String(e.symbol),
+        timeframe: String(e.timeframe),
+        venue: String(e.venue ?? ""),
+        indicator: String(e.indicator),
+        variant: String(e.variant ?? ""),
+        signals: e.signals as ScanSignal[],
+      });
+    } else if (e.type === "signals_error") {
+      log.warn("signals_indicator_failed", { symbol: e.symbol, timeframe: e.timeframe, venue: e.venue, indicator: e.indicator, variant: e.variant, error: e.message });
+    }
+  });
+  const timer = setTimeout(() => handle.kill(), SCAN_TIMEOUT_MS);
+  const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
+  if (exitCode !== 0) log.error("signal_scan_exit", { exitCode, stderr: stderrTail.trim().split("\n").slice(-2).join(" ") });
+  return out;
+}
+
+let runEngines = workerScan;
+let send = sendTelegram;
+
+/** Tests: answer the scan without Python, and catch its Telegram messages instead of sending them. */
+export function useSignalScan(engines: typeof workerScan = workerScan, sender: typeof sendTelegram = sendTelegram) {
+  runEngines = engines;
+  send = sender;
+}
+
 let running = false;
 
 /** When the last full scan finished and whether it threw, for the status page (status.ts) on any instance. */
@@ -142,7 +196,7 @@ async function scan(only?: string[], withHourly = true) {
   let failed = false;
   try {
     const rows = await db
-      .select({ alert: signalAlerts, chat: users.telegramChatId, owner: { role: users.role, plan: users.plan, planUntil: users.planUntil } })
+      .select({ alert: signalAlerts, chat: users.telegramChatId, preferences: users.preferences, owner: { role: users.role, plan: users.plan, planUntil: users.planUntil } })
       .from(signalAlerts)
       .innerJoin(users, eq(signalAlerts.userId, users.id))
       .where(and(eq(users.disabled, false), only?.length ? inArray(signalAlerts.id, only) : undefined))
@@ -160,27 +214,58 @@ async function scan(only?: string[], withHourly = true) {
     const ledger = only ? [] : await ledgerPairs(withHourly);
     if (!wanted.length && !ledger.length) return;
 
-    // One pair per symbol, timeframe and venue ("" = the default source), with every indicator asked of it.
-    const pairs = new Map<string, { symbol: string; timeframe: string; venue: string; indicators: Set<string>; recent: number }>();
+    // A Scalper alert runs its owner's chart settings, but moves to new ones only when no
+    // signal it announced is still running: until then its old inputs follow that signal.
+    const scalperIds = wanted.filter((r) => r.alert.indicator === "scalper").map((r) => r.alert.id);
+    const following = new Set(
+      scalperIds.length
+        ? (
+            await db
+              .selectDistinct({ id: signalEvents.alertId })
+              .from(signalEvents)
+              .where(and(inArray(signalEvents.alertId, scalperIds), eq(signalEvents.status, "open"), isNull(signalEvents.closeNotifiedAt)))
+          ).map((r) => r.id)
+        : [],
+    );
+    const inputs = new Map<string, ScalperSignalSettings | null>();
+    const moving = new Set<string>();
+    for (const { alert, preferences } of wanted) {
+      if (alert.indicator !== "scalper") continue;
+      const chart = chartSettings(preferences);
+      if (variantOf(chart) === variantOf(alert.settings) || following.has(alert.id)) {
+        inputs.set(alert.id, alert.settings ?? null);
+      } else {
+        inputs.set(alert.id, chart);
+        moving.add(alert.id);
+      }
+    }
+
+    // One pair per symbol, timeframe and venue ("" = the default source), with every engine run asked of it.
+    const pairs = new Map<string, { symbol: string; timeframe: string; venue: string; requests: Map<string, EngineRequest>; recent: number }>();
     const pairOf = (symbol: string, timeframe: string, venue: string, recent: number) => {
       const key = `${symbol}|${timeframe}|${venue}`;
-      if (!pairs.has(key)) pairs.set(key, { symbol, timeframe, venue, indicators: new Set(), recent: 10 });
+      if (!pairs.has(key)) pairs.set(key, { symbol, timeframe, venue, requests: new Map(), recent: 10 });
       const pair = pairs.get(key)!;
       pair.recent = Math.max(pair.recent, recent);
       return pair;
     };
     for (const p of ledger) {
       const pair = pairOf(p.symbol, p.timeframe, p.venue, p.recent);
-      for (const i of p.indicators) pair.indicators.add(i);
+      for (const i of p.indicators) pair.requests.set(i, i);
     }
     for (const { alert } of wanted) {
       if (SCRIPT_ID.test(alert.indicator)) continue;
-      pairOf(alert.symbol, alert.timeframe, alert.venue, 10).indicators.add(alert.indicator);
+      const settings = inputs.get(alert.id) ?? null;
+      const variant = variantOf(settings);
+      pairOf(alert.symbol, alert.timeframe, alert.venue, 10).requests.set(
+        variant ? `${alert.indicator}#${variant}` : alert.indicator,
+        settings && variant ? { indicator: alert.indicator, variant, settings } : alert.indicator,
+      );
     }
     // A pair on another venue carries its bars, the same candles the chart shows (venues.ts); default pairs fetch their own.
-    const jobPairs = [];
+    const jobPairs: ScanPair[] = [];
     for (const p of pairs.values()) {
-      const job = { symbol: p.symbol, timeframe: p.timeframe, venue: p.venue, indicators: [...p.indicators], recent: p.recent };
+      const job: ScanPair = { symbol: p.symbol, timeframe: p.timeframe, venue: p.venue, indicators: [...p.requests.values()], recent: p.recent };
       if (!p.venue) {
         jobPairs.push(job);
         continue;
@@ -195,13 +280,7 @@ async function scan(only?: string[], withHourly = true) {
     }
     const found = new Map<string, ScanSignal[]>();
     if (jobPairs.length) {
-      const handle = runCommand("signals", { pairs: jobPairs }, null, async (e) => {
-        if (e.type === "signals") found.set(resultKey(String(e.symbol), String(e.timeframe), String(e.venue ?? ""), String(e.indicator)), e.signals as ScanSignal[]);
-        else if (e.type === "signals_error") log.warn("signals_indicator_failed", { symbol: e.symbol, timeframe: e.timeframe, venue: e.venue, indicator: e.indicator, error: e.message });
-      });
-      const timer = setTimeout(() => handle.kill(), SCAN_TIMEOUT_MS);
-      const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
-      if (exitCode !== 0) log.error("signal_scan_exit", { exitCode, stderr: stderrTail.trim().split("\n").slice(-2).join(" ") });
+      for (const r of await runEngines(jobPairs)) found.set(resultKey(r.symbol, r.timeframe, r.venue, r.indicator, r.variant), r.signals);
     }
 
     // Users' own scripts run here, in the same sandbox and on the same candles as the chart.
@@ -245,8 +324,12 @@ async function scan(only?: string[], withHourly = true) {
       // A Creator's published alert also feeds their public record (creators.ts).
       const publicRecord = alert.public && planOf(owner) === "creator";
       const strategy = scriptName ? `Skrip ${scriptName}` : (NAMES[alert.indicator] ?? alert.indicator);
-      const signals = found.get(resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator));
+      const settings = inputs.get(alert.id) ?? null;
+      const signals = found.get(resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator, variantOf(settings)));
       if (!signals) continue; // this pair failed; try again next slot
+      const moves = moving.has(alert.id);
+      // The old inputs' recorded-only signals would stay open for good: the new inputs never report them.
+      if (moves) await db.update(signalEvents).set({ status: "replaced" }).where(and(eq(signalEvents.alertId, alert.id), eq(signalEvents.status, "open")));
       const known = new Map(
         (await db.select().from(signalEvents).where(eq(signalEvents.alertId, alert.id))).map((e) => [e.signalTime, e]),
       );
@@ -254,7 +337,8 @@ async function scan(only?: string[], withHourly = true) {
       for (const s of signals.slice(-10)) {
         const seen = known.get(s.time);
         if (!seen) {
-          const fresh = alert.primed && s.bars_ago <= STALE_BARS;
+          // What new inputs fired before the move is history, as on a new alert's first scan.
+          const fresh = alert.primed && !moves && s.bars_ago <= STALE_BARS;
           const [row] = await db
             .insert(signalEvents)
             .values({
@@ -275,25 +359,26 @@ async function scan(only?: string[], withHourly = true) {
           if (!row || !fresh) continue;
           // On the record the moment it fires, whether or not the Telegram message gets through.
           if (publicRecord) await recordCreatorSignal(alert, row, s, strategy).catch((err) => recordError("creator", err));
-          const sent = await sendTelegram(chat, openMessage(alert, s, scriptName));
+          const sent = await send(chat, openMessage(alert, s, scriptName));
           if (!sent.ok) {
             log.warn("signal_alert_not_sent", { alert: alert.id, error: sent.error });
             continue;
           }
           await db.update(signalEvents).set({ notifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
           // Seen for the first time already finished (it fired and ended between scans).
-          if (s.outcome !== "open" && (await sendTelegram(chat, closeMessage(alert, row, s.outcome, s.exit_time, scriptName))).ok) {
+          if (s.outcome !== "open" && (await send(chat, closeMessage(alert, row, s.outcome, s.exit_time, scriptName))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
           }
         } else if (seen.status === "open" && s.outcome !== "open") {
           await db.update(signalEvents).set({ status: s.outcome, exitTime: s.exit_time }).where(eq(signalEvents.id, seen.id));
           // Scored on the public record too, if it went there when it fired (even if the alert is private now).
           await scoreCreatorSignal(seen.id, s).catch((err) => recordError("creator", err));
-          if (seen.notifiedAt && !seen.closeNotifiedAt && (await sendTelegram(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName))).ok) {
+          if (seen.notifiedAt && !seen.closeNotifiedAt && (await send(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, seen.id));
           }
         }
       }
+      if (moves) await db.update(signalAlerts).set({ settings }).where(eq(signalAlerts.id, alert.id));
       if (!alert.primed) await db.update(signalAlerts).set({ primed: true }).where(eq(signalAlerts.id, alert.id));
     }
     if (ledger.length) await recordLedger(found).catch((err) => recordError("ledger", err));
@@ -307,6 +392,12 @@ async function scan(only?: string[], withHourly = true) {
     // A new alert's own first scan (only) is not the scheduled one.
     if (!only) await writeShared("scan:last", { at: Date.now(), ok: !failed }).catch((err) => recordError("scan", err));
   }
+}
+
+/** One scan now, of these alerts only when given, after any scan already in flight (tests). */
+export async function scanAlerts(only?: string[]) {
+  while (running) await new Promise((done) => setTimeout(done, 50));
+  await scan(only);
 }
 
 let lastSlot = -1;
@@ -331,6 +422,7 @@ export const alertsApi = new Hono<AppEnv>();
 
 alertsApi.get("/alerts", async (c) => {
   const user = c.get("user");
+  const chart = variantOf(chartSettings(user.preferences));
   const items = await db.select().from(signalAlerts).where(eq(signalAlerts.userId, user.id)).orderBy(asc(signalAlerts.createdAt));
   const ids = items.map((a) => a.id);
   const events = ids.length ? await db.select().from(signalEvents).where(inArray(signalEvents.alertId, ids)).orderBy(desc(signalEvents.signalTime)) : [];
@@ -346,6 +438,9 @@ alertsApi.get("/alerts", async (c) => {
         venue: a.venue,
         primed: a.primed,
         public: a.public,
+        // Scalper: whether it runs the owner's own inputs, and whether newer chart settings still wait to take over.
+        settings: a.settings ? "custom" : "default",
+        settingsPending: a.indicator === "scalper" && variantOf(a.settings) !== chart,
         last: last ? { signalTime: last.signalTime, label: last.label, status: last.status } : null,
       };
     }),

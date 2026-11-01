@@ -7,7 +7,9 @@
 //
 // Every fixture in test/fixtures (real candles, saved once) runs through each engine the server
 // scans its timeframe with (COMBOS in web/server/src/alerts.ts), on both sides with the
-// server's settings; test/parity_runner.py runs the Python side. From web/client:
+// server's settings; test/parity_runner.py runs the Python side. The scalper runs once more
+// with a user's own inputs (CUSTOM): as typed on the chart, and as the scan passes them on
+// through shared/scalper.ts. From web/client:
 //   bun test test/
 // Python is $PYTHON, else the repo's .venv, else python3. The scalper needs pandas
 // (chart_agent imports it); pob.py and fib.py need only the standard library.
@@ -17,7 +19,8 @@ import { join } from 'node:path';
 import type { Candle } from '../src/lib/api';
 import { fib, FIB_DEFAULTS } from '../src/lib/indicators/fib';
 import { pob, POB_DEFAULTS } from '../src/lib/indicators/pob';
-import { scalper, SCALPER_DEFAULTS } from '../src/lib/indicators/scalper';
+import { scalper, SCALPER_DEFAULTS, type ScalperSettings } from '../src/lib/indicators/scalper';
+import { SCALPER_SIGNAL_KEYS, scalperSignalSettings } from '../../shared/scalper';
 
 const FIXTURES = join(import.meta.dir, 'fixtures');
 const RUNNER = join(import.meta.dir, 'parity_runner.py');
@@ -53,7 +56,21 @@ const FIELDS: Record<Engine, { exact: string[]; close: string[] }> = {
 };
 
 /** Chart-only scalper settings: they change the drawing, not the signals, and the server has no such input. */
-const DRAWING_ONLY = new Set(['extendBars', 'showTrail', 'showEmas', 'showZone', 'showTrendlines', 'showDashboard']);
+const DRAWING_ONLY = new Set(Object.keys(SCALPER_DEFAULTS).filter((k) => !(SCALPER_SIGNAL_KEYS as readonly string[]).includes(k)));
+
+/** Inputs a user might save on the chart, fractions included: the chart reads them as typed. */
+const CUSTOM: Partial<ScalperSettings> = {
+  sensitivity: 1.2,
+  atrPeriod: 7.4,
+  emaFast: 12.5,
+  emaSlow: 34,
+  rsiPeriod: 9,
+  pivotLen: 3.5,
+  atrRisk: 10,
+  slAtr: 1.2,
+  riskReward: 2.5,
+  entryZoneAtr: 0.3,
+};
 
 /** A bar's time as the scan prints it ("2026-10-31 12:15"), so both sides name a bar alike. */
 const scanTime = (t: string) => t.replace('T', ' ').slice(0, 16);
@@ -77,15 +94,15 @@ function runPython(job: object): Record<string, unknown> {
   return JSON.parse(lines[lines.length - 1]);
 }
 
-/** The chart's signals: what the TypeScript engine draws, with the server's settings. */
-function chartSignals(engine: Engine, candles: Candle[], tf: Timeframe): Sig[] {
+/** The chart's signals: what the TypeScript engine draws, with the server's settings or a user's own. */
+function chartSignals(engine: Engine, candles: Candle[], tf: Timeframe, settings: ScalperSettings = SCALPER_DEFAULTS): Sig[] {
   const at = (index: number) => scanTime(candles[index].time);
   if (engine === 'pob') return (pob(candles, tf as '15m' | '1h')?.signals ?? []).map((x) => ({ ...x, time: at(x.index) }));
   if (engine === 'fib') return (fib(candles)?.signals ?? []).map((x) => ({ ...x, time: at(x.index) }));
-  return (scalper(candles, SCALPER_DEFAULTS)?.signals ?? []).map(({ index, side }) => {
+  return (scalper(candles, settings)?.signals ?? []).map(({ index, side }) => {
     // The chart draws levels for the newest signal only: these are the ones it drew while this signal
     // was the newest, from the bars up to it plus the forming one. Too few bars there gives none.
-    const setup = scalper(candles.slice(0, index + 2), SCALPER_DEFAULTS)?.setup;
+    const setup = scalper(candles.slice(0, index + 2), settings)?.setup;
     if (!setup) return { index, time: at(index), side, noLevels: true };
     if (setup.index !== index || setup.side !== side) {
       fail(`scalper.ts repaints: on the bars up to ${at(index)} its newest signal is ${setup.side} at ${at(setup.index)}, not ${side}`);
@@ -95,8 +112,8 @@ function chartSignals(engine: Engine, candles: Candle[], tf: Timeframe): Sig[] {
 }
 
 /** The notifications' signals: what parity_runner.py gets from web/worker, under the TypeScript names. */
-function serverSignals(engine: Engine, candles: Candle[], tf: Timeframe): Sig[] {
-  return runPython({ engine, timeframe: tf, candles }).signals as Sig[];
+function serverSignals(engine: Engine, candles: Candle[], tf: Timeframe, settings?: object | null): Sig[] {
+  return runPython({ engine, timeframe: tf, candles, ...(settings ? { settings } : {}) }).signals as Sig[];
 }
 
 const near = (a: Value, b: Value) =>
@@ -144,6 +161,14 @@ function compare(engine: Engine, chart: Sig[], server: Sig[]) {
   return { rows, identical, levelsCompared };
 }
 
+/** Logs the counts, and fails with the first differences. */
+function report(head: string, rows: { text: string }[]) {
+  console.log(head);
+  if (!rows.length) return;
+  const more = rows.length > SHOW ? `\n  … and ${rows.length - SHOW} more` : '';
+  fail(`${head}, ${rows.length} differ (values: chart | notifications)\n  ${rows.slice(0, SHOW).map((r) => r.text).join('\n  ')}${more}`);
+}
+
 const fixtures: Fixture[] = readdirSync(FIXTURES)
   .filter((f) => f.endsWith('.json'))
   .sort()
@@ -155,7 +180,7 @@ describe('indicator parity: chart (TypeScript) vs notifications (Python)', () =>
   });
 
   test('the server runs each engine with the chart defaults', () => {
-    // A user may change the scalper's settings on the chart; the notifications always use these defaults.
+    // An account that never changed the scalper's settings runs these; changed ones arrive through shared/scalper.ts.
     const server = runPython({ engine: 'defaults' }).defaults as Record<Engine, Record<string, unknown>>;
     const chart: Record<Engine, Record<string, unknown>> = { pob: POB_DEFAULTS, fib: FIB_DEFAULTS, scalper: SCALPER_DEFAULTS };
     const problems: string[] = [];
@@ -181,15 +206,30 @@ describe('indicator parity: chart (TypeScript) vs notifications (Python)', () =>
           const server = serverSignals(engine, fx.candles, fx.interval);
           const { rows, identical, levelsCompared } = compare(engine, chart, server);
           const levels = engine === 'scalper' ? `, levels compared on ${levelsCompared}` : '';
-          const head = `${engine} ${fx.interval} on ${fx.name}: chart ${chart.length} signals, notifications ${server.length}; ${identical} identical${levels}`;
-          console.log(head);
-          if (rows.length) {
-            const more = rows.length > SHOW ? `\n  … and ${rows.length - SHOW} more` : '';
-            fail(`${head}, ${rows.length} differ (values: chart | notifications)\n  ${rows.slice(0, SHOW).map((r) => r.text).join('\n  ')}${more}`);
-          }
+          report(`${engine} ${fx.interval} on ${fx.name}: chart ${chart.length} signals, notifications ${server.length}; ${identical} identical${levels}`, rows);
         },
         TIMEOUT_MS,
       );
     }
+  }
+
+  for (const fx of fixtures.filter((f) => SCANNED.scalper.includes(f.interval))) {
+    test(
+      `scalper ${fx.interval} on ${fx.name} with a user's own settings`,
+      () => {
+        const mine = { ...SCALPER_DEFAULTS, ...CUSTOM };
+        const passed = scalperSignalSettings(mine);
+        if (passed?.atrPeriod !== 7 || passed.emaFast !== 13 || passed.pivotLen !== 4) {
+          fail(`shared/scalper.ts passes ${JSON.stringify(passed)}: lengths must arrive rounded (atrPeriod 7, emaFast 13, pivotLen 4)`);
+        }
+        const chart = chartSignals('scalper', fx.candles, fx.interval, mine);
+        const server = serverSignals('scalper', fx.candles, fx.interval, passed);
+        const { rows, identical, levelsCompared } = compare('scalper', chart, server);
+        const head = `scalper ${fx.interval} on ${fx.name}, own settings: chart ${chart.length} signals, notifications ${server.length}; ${identical} identical, levels compared on ${levelsCompared}`;
+        if (!chart.length) fail(`${head}: no signals, so nothing was compared; change CUSTOM to inputs that fire here`);
+        report(head, rows);
+      },
+      TIMEOUT_MS,
+    );
   }
 });

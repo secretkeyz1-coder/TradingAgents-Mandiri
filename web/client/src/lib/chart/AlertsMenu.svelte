@@ -160,8 +160,8 @@
           {/each}
         </div>
         <p class="text-xs text-base-content/70">
-          Dicek tiap 5 menit (1j: tiap 15 menit), hanya dari candle yang sudah tutup, dengan mesin yang sama dengan chart. Sinyal yang sudah ada saat
-          notifikasi dinyalakan tidak dikirim.
+          Dicek tiap 5 menit (1j: tiap 15 menit), hanya dari candle yang sudah tutup, dengan mesin yang sama dengan chart. Scalper Pro+ memakai
+          pengaturan Scalper Anda di chart. Sinyal yang sudah ada saat notifikasi dinyalakan tidak dikirim.
           {#if venueLabel}Memakai candle {venueLabel} (real-time); ganti bursa di menu Bursa untuk notifikasi dari bursa lain.{:else}Harga Yahoo bisa tertunda beberapa menit.{/if}
         </p>
         {#if data.items.length}
@@ -177,6 +177,11 @@
                 <span class="min-w-0 flex-1 truncate">
                   <span class="font-mono">{a.tvSymbol}</span> · {NAME[a.indicator] ?? data.combos.find((x) => x.indicator === a.indicator)?.label.replace(/ \S+$/, '') ?? 'Skrip'} {TF[a.timeframe] ?? a.timeframe}
                   {#if a.last}<span class="block truncate text-base-content/70">{a.last.label} · {STATUS[a.last.status]}</span>{:else if !a.primed}<span class="block text-base-content/70">menyiapkan…</span>{/if}
+                  {#if a.settingsPending}
+                    <span class="block truncate text-base-content/70" title="Sinyal yang sudah dikirim dipantau sampai selesai dengan pengaturan lama, lalu notifikasi memakai pengaturan Scalper yang baru.">
+                      Pengaturan Scalper baru menyusul
+                    </span>
+                  {/if}
                 </span>
                 {#if creator || a.public}
                   <label class="flex shrink-0 cursor-pointer items-center gap-1" title="Tampilkan sinyal baru alert ini di halaman rekam jejak publik Anda">

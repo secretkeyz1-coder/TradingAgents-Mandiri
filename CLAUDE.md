@@ -44,7 +44,8 @@ Two products live in this repo:
   the URL hash (`stores/workspace.svelte.ts`); every request goes through `lib/api.ts` (typed).
 - UI: daisyUI components first, colours from theme tokens only, no text under 12px, one primary action per area.
 - The indicator engines exist twice (TypeScript in `client/src/lib/indicators`, Python in `web/worker`): change both
-  in the same commit and say so; the parity test (`cd client && bun run test`) must still pass.
+  in the same commit and say so; the parity test (`cd client && bun run test`) must still pass. Scalper's inputs and
+  defaults live once, in `shared/scalper.ts`, which the chart and the signal notifications both read.
 
 ## Where things live
 | Need | Look at |
