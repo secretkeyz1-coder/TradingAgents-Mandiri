@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { googleEnabled, requireAdmin, signupOpen, type AppEnv } from "./auth";
 import { config } from "./config";
 import { db } from "./db";
+import { recentErrors } from "./errors";
 import { payments, users } from "./db/schema";
 import { mailEnabled } from "./mail";
 import { tokenSummary } from "./tokens";
@@ -125,6 +126,9 @@ businessApi.get("/admin/business", async (c) => {
  * states only, never a key, a password or a backend address. They are changed in
  * web/deploy/.env and take effect when the container restarts.
  */
+/** The server's recent errors: requests that ended in a 500 and background jobs that broke (errors.ts). */
+businessApi.get("/admin/errors", async (c) => c.json(await recentErrors()));
+
 businessApi.get("/admin/config", async (c) => {
   const catalog = await getCatalog().catch(() => null);
   return c.json({

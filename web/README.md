@@ -221,6 +221,17 @@ bun run dev
 
 Buka http://localhost:5180. Vite meneruskan `/api` ke server Bun di port 3080. Migrasi database jalan otomatis saat server start.
 
+### Tes
+
+```bash
+cd web/server && bun run test
+```
+
+- Butuh Postgres lokal (`bun run db:up` dari `web/`) dan Python venv di root repo (katalog model dibaca lewat worker).
+- Setiap run membuat ulang database `tradingagents_test`, dan nama database yang tidak berakhiran `_test` ditolak, jadi data dev aman. Untuk database lain, set `TEST_DATABASE_URL` (tetap harus berakhiran `_test`).
+- Tes memanggil app langsung (`app.request` pada `server/src/app.ts`), tanpa port dan tanpa scheduler. Harga untuk notifikasi harga juga tiruan, jadi tidak ada panggilan ke bursa.
+- Satu run sekitar satu menit; sebagian besar menunggu langkah TOTP 30 detik di tes verifikasi dua langkah.
+
 ### Mode demo (tanpa API key, tanpa biaya)
 
 ```bash
@@ -327,6 +338,14 @@ docker exec -i tradingagents-db-1 pg_restore -U tradingagents -d tradingagents -
 
 Backup ini masih di disk VPS yang sama; kalau disk atau VPS-nya hilang, backup ikut hilang. Salin berkala ke tempat lain (laptop, object storage) untuk perlindungan penuh.
 
+### Keamanan, log, dan error
+
+- **Header keamanan** di setiap respons: HSTS 180 hari, `X-Frame-Options: SAMEORIGIN`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, COOP, dan CORP.
+- **CSP** masih mode laporan (`Content-Security-Policy-Report-Only`). Browser mengirim pelanggarannya ke `POST /api/csp-report`, dan server mencatatnya di log (maksimal 30 per menit). Kebijakan diberlakukan setelah laporannya bersih, karena widget TradingView memuat skrip dan frame dari domainnya sendiri.
+- **Log:** satu objek JSON per baris (`t`, `level`, `event`, lalu isi peristiwanya), jadi bisa dicari dengan `grep '"level":"error"'` atau dikirim apa adanya ke layanan log. Tiap request API menjadi satu baris berisi id, method, path tanpa query string (bisa memuat token sekali pakai), status, durasi, dan user.
+- **Kode error:** setiap respons membawa `X-Request-Id`. Error 500 hanya menampilkan pesan umum dengan kode itu; pesan aslinya dan stack masuk log serta tabel `server_errors` (disimpan 30 hari).
+- **Konsol admin → Status layanan** menampilkan error itu, termasuk kegagalan kerja latar (pemindaian sinyal, cek harga, analisa, watchlist, ringkasan AI, rekap, pengingat). Jumlah 24 jam terakhir muncul di "Perlu tindakan" (`GET /api/admin/errors`).
+
 ## Konfigurasi server
 
 Semua opsional, lewat environment variable:
@@ -354,11 +373,14 @@ Semua opsional, lewat environment variable:
 ` untuk baris baru); kosong = pemesanan paket belum dibuka |
 | `REMINDERS` | `on` | `off` menghentikan pengingat perpanjangan paket dan tagihan |
 | `LLM_COST_IDR_PER_MTOK` | kosong | Harga token model dalam rupiah per sejuta token, `masuk,keluar` (mis. `15000,60000`), untuk perkiraan biaya di dashboard bisnis |
-| `SESSION_SECRET` | dari `APP_PASSWORD` | Kunci tanda tangan cookie sesi dan tautan tagihan; menggantinya mengeluarkan semua orang dan membatalkan tautan tagihan lama |
+| `SESSION_SECRET` | dari `APP_PASSWORD` (lokal saja) | Kunci tanda tangan cookie sesi dan tautan tagihan, minimal 32 karakter. Wajib saat server terbuka ke jaringan dengan login (`HOST` bukan loopback dan `APP_PASSWORD` terisi). Menggantinya mengeluarkan semua orang dan membatalkan tautan tagihan lama |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, atau `silent` |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |
 
 API key LLM tetap dibaca engine dari `.env` di root repo, tidak lewat web.
+
+Pengaturan dicek saat server start (`readSettings` di `server/src/config.ts`). Angka, URL, `LOG_LEVEL`, atau `SESSION_SECRET` yang salah menghentikan server dengan daftar semua masalahnya, bukan baru ketahuan saat fiturnya dipakai.
 
 Setiap analisa yang berjalan mengirim *heartbeat* ke barisnya tiap 30 detik. Saat boot dan tiap 2 menit, server hanya menggagalkan baris yang heartbeat-nya basi (servernya mati), jadi dua instance di database yang sama tidak saling menggagalkan; baris antre diklaim atomik supaya tidak dijalankan dua kali. Kalau sebuah baris selesai di tempat lain (misalnya dibatalkan), worker-nya di instance ini ikut dihentikan.
 

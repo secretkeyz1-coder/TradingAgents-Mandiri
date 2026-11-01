@@ -2,9 +2,11 @@
 // (smtps://user:pass@host:465, from any provider: Resend, Brevo, Amazon SES,
 // Postmark, Google Workspace) and MAIL_FROM set the sender. Without SMTP_URL
 // nothing is sent: the log names the recipient and subject, and with MAIL_LOG=1
-// the whole message, links included (development only: links sign people in).
+// the whole message, links included, also kept in `outbox` for the tests
+// (development only: links sign people in).
 import nodemailer from "nodemailer";
 import { BRAND } from "../../shared/brand";
+import { log } from "./log";
 
 const SMTP_URL = process.env.SMTP_URL ?? "";
 const FROM = process.env.MAIL_FROM || `${BRAND.name} <noreply@localhost>`;
@@ -13,16 +15,20 @@ export const mailEnabled = () => Boolean(transport);
 
 export type Mail = { to: string; subject: string; text: string; html: string };
 
+/** With MAIL_LOG=1 and no SMTP: the last messages "sent", newest last, for the test suite to read links from. */
+export const outbox: Mail[] = [];
+
 export async function sendMail(mail: Mail): Promise<{ ok: boolean; error?: string }> {
   if (!transport) {
-    console.log(`mail not sent (no SMTP_URL) to ${mail.to}: ${mail.subject}${process.env.MAIL_LOG === "1" ? `\n${mail.text}` : ""}`);
+    log.info("mail_not_sent", { to: mail.to, subject: mail.subject, ...(process.env.MAIL_LOG === "1" ? { text: mail.text } : {}) });
+    if (process.env.MAIL_LOG === "1" && outbox.push(mail) > 50) outbox.shift();
     return { ok: false, error: "Pengiriman email belum diatur" };
   }
   try {
     await transport.sendMail({ from: FROM, ...mail });
     return { ok: true };
   } catch (e) {
-    console.error(`mail to ${mail.to}: ${(e as Error).message}`);
+    log.error("mail_failed", { to: mail.to, error: (e as Error).message });
     return { ok: false, error: (e as Error).message };
   }
 }

@@ -253,6 +253,19 @@ export type AdminConfig = {
 };
 
 export type ServiceState = 'ok' | 'degraded' | 'down' | 'off';
+/** A request that ended in a 500, or a background job that broke (server/src/errors.ts); kept 30 days. */
+export type ServerError = {
+  id: string;
+  code: string;
+  source: string;
+  method: string | null;
+  path: string | null;
+  userId: string | null;
+  message: string;
+  stack: string | null;
+  createdAt: string;
+};
+
 export type ServiceStatus = {
   checkedAt: string;
   overall: Exclude<ServiceState, 'off'>;
@@ -598,6 +611,7 @@ export const api = {
   adminBusiness: () => request<BusinessReport>('/admin/business'),
   /** How the server is set up (switches and states, never secrets), for the admin console. */
   adminConfig: () => request<AdminConfig>('/admin/config'),
+  adminErrors: () => request<{ items: ServerError[]; lastDay: number }>('/admin/errors'),
   /** The public status page's data (server/src/status.ts). */
   serviceStatus: () => request<ServiceStatus>('/public/status'),
   claimOrder: (id: string, note: string) => request<Payment>(`/billing/orders/${id}/claim`, { method: 'POST', body: JSON.stringify({ note }) }),

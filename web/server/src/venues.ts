@@ -13,6 +13,7 @@ import ccxt from "ccxt";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { AppEnv } from "./auth";
+import { log } from "./log";
 import type { Candle, Interval } from "./market";
 
 export const VENUE_IDS = ["binance", "bybit", "okx", "coinbase", "kraken", "bitget", "kucoin", "gate", "indodax"] as const;
@@ -71,7 +72,7 @@ function exchange(venue: VenueId): Promise<Exchange> {
   const loading: Promise<Exchange> = ex.loadMarkets().then(() => ex);
   // A venue that failed to load is tried again a minute later, not on every request meanwhile.
   loading.catch((e: Error) => {
-    console.error(`venue ${venue}: ${e.message.slice(0, 200)}`);
+    log.warn("venue_failed", { venue, error: e.message.slice(0, 200) });
     setTimeout(() => exchanges.delete(venue), 60_000);
   });
   exchanges.set(venue, loading);

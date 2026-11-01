@@ -7,6 +7,7 @@ import { and, eq, gt, isNotNull, lt, ne } from "drizzle-orm";
 import { label, ORDER_DAYS } from "./billing";
 import { db } from "./db";
 import { notices, payments, users } from "./db/schema";
+import { recordError } from "./errors";
 import { invoiceLink } from "./invoice";
 import { composeMail, sendMail } from "./mail";
 import { escape, publicUrl, sendTelegram } from "./watch";
@@ -139,7 +140,7 @@ export async function sendReminders(now = new Date()): Promise<void> {
 
 export function startReminders() {
   if (process.env.REMINDERS === "off") return;
-  const tick = () => sendReminders().catch((err) => console.error("reminders:", err));
+  const tick = () => sendReminders().catch((err) => recordError("reminders", err));
   setTimeout(tick, 60_000);
   setInterval(tick, HOUR_MS);
 }

@@ -27,6 +27,12 @@ type PriceAlert = typeof priceAlerts.$inferSelect;
 export type Quote = (symbol: string, venue: string) => Promise<{ candles: Candle[]; source?: string } | null>;
 
 const liveQuote: Quote = (symbol, venue) => getCandles(symbol, "6mo", "15m", (venue || undefined) as VenueId | undefined).catch(() => null);
+let readQuote: Quote = liveQuote;
+
+/** Read prices from somewhere else (the test suite's fixed candles); without an argument, back to the live candles. */
+export function useQuotes(quote: Quote = liveQuote) {
+  readQuote = quote;
+}
 
 const price = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : Math.abs(v) >= 0.01 ? 5 : 8 });
 
@@ -80,7 +86,7 @@ async function notify(
 let checking = false;
 
 /** Fire every active level the price has crossed. `quote` reads the prices; a test passes its own. */
-export async function checkPrices(quote: Quote = liveQuote) {
+export async function checkPrices(quote: Quote = readQuote) {
   if (checking) return;
   checking = true;
   try {
@@ -200,7 +206,7 @@ priceAlertsApi.post("/price-alerts", async (c) => {
   const max = limitsOf(user).alerts;
   if ((await notificationsInUse(user.id)) >= max) return c.json({ error: capMessage(user, max, "notifikasi") }, 409);
   // The direction follows the price now: a level above it waits for a rise, one below for a fall.
-  const last = (await liveQuote(symbol, venue))?.candles.at(-1);
+  const last = (await readQuote(symbol, venue))?.candles.at(-1);
   if (!last) return c.json({ error: "Harga aset ini belum bisa dibaca. Coba lagi sebentar lagi." }, 503);
   if (body.data.price === last.close) return c.json({ error: `Harganya memang ${price(last.close)} sekarang. Pilih harga di atas atau di bawahnya.` }, 400);
   const direction: PriceDirection = body.data.price > last.close ? "above" : "below";

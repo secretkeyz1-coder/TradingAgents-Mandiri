@@ -14,6 +14,7 @@ import { z } from "zod";
 import { config } from "./config";
 import { db } from "./db";
 import { agentMemories, agentSessions, agentSkills, analyses, authTokens, chartDrawings, payments, users, watchlist, watchRuns } from "./db/schema";
+import { log } from "./log";
 import { composeMail, mailEnabled, sendMail } from "./mail";
 import { limitsOf, onTrial, planOf, trialEnd } from "./plans";
 import { hashRecovery, matchStep, newRecoveryCodes, newSecret, otpauthUri } from "./totp";
@@ -22,7 +23,7 @@ import { PLAN_IDS, TRIAL_DAYS } from "../../shared/plans";
 
 export type User = typeof users.$inferSelect;
 /** Every authenticated route reads the signed-in user with c.get("user"). */
-export type AppEnv = { Variables: { user: User } };
+export type AppEnv = { Variables: { user: User; requestId: string } };
 
 const COOKIE = "ta_session";
 const SESSION_DAYS = 30;
@@ -35,7 +36,7 @@ export const authEnabled = () => Boolean(config.appPassword);
 export const isAdmin = (u: User) => u.role === "admin";
 
 // Signs the cookie. Sessions survive restarts; SESSION_SECRET (or APP_PASSWORD) changing ends them all.
-const secret = process.env.SESSION_SECRET || createHmac("sha256", config.appPassword || "local").update("tradingagents-session").digest("hex");
+const secret = config.sessionSecret;
 /** A signature for a value carried in a link (an invoice page); `purpose` keeps one link's signature from passing for another's. */
 export const sign = (purpose: string, value: string) => createHmac("sha256", secret).update(`${purpose}:${value}`).digest("base64url").slice(0, 32);
 
@@ -69,7 +70,7 @@ export async function ensureAccounts(): Promise<User> {
       role: "admin",
       telegramChatId: process.env.TELEGRAM_CHAT_ID || null,
     });
-    console.log(`account: first admin "${username}" created from APP_USER / APP_PASSWORD`);
+    log.info("first_admin_created", { username });
   }
   const [admin] = await db
     .select()

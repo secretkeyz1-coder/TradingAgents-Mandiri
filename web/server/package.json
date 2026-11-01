@@ -7,7 +7,8 @@
     "start": "bun src/index.ts",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "dev:demo": "TA_WORKER_SCRIPT=web/worker/demo_worker.py bun --watch src/index.ts"
+    "dev:demo": "TA_WORKER_SCRIPT=web/worker/demo_worker.py bun --watch src/index.ts",
+    "test": "bun test --timeout 30000"
   },
   "dependencies": {
     "@jitl/quickjs-singlefile-mjs-release-sync": "^0.32.0",

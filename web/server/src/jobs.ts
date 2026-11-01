@@ -2,6 +2,7 @@ import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { config } from "./config";
 import { db } from "./db";
 import { analyses, analysisEvents, type AnalysisStatus, type BacktestResult, type RunStats } from "./db/schema";
+import { recordError } from "./errors";
 import { runJob, type WorkerEvent, type WorkerHandle } from "./worker";
 
 /** What subscribers receive: a persisted worker event, or the run's end. */
@@ -44,7 +45,7 @@ export function enqueue(id: string) {
 function pump() {
   while (running.size < config.maxConcurrent && queue.length > 0) {
     const id = queue.shift()!;
-    start(id).catch((err) => console.error(`analysis ${id} crashed`, err));
+    start(id).catch((err) => recordError("analysis", err));
   }
 }
 
@@ -228,7 +229,7 @@ async function failOrphans() {
  */
 export async function recover() {
   await failOrphans();
-  setInterval(() => failOrphans().catch((err) => console.error("orphan sweep failed", err)), config.jobStaleMs);
+  setInterval(() => failOrphans().catch((err) => recordError("jobs", err)), config.jobStaleMs);
   const queued = await db
     .select({ id: analyses.id })
     .from(analyses)

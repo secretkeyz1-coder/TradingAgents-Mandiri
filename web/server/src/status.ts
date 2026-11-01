@@ -10,6 +10,7 @@ import { scanHealth } from "./alerts";
 import { BINANCE_HOSTS } from "./binance";
 import { db } from "./db";
 import { marketBriefs, statusDays } from "./db/schema";
+import { recordError } from "./errors";
 import { mailEnabled } from "./mail";
 import { telegramHealth } from "./watch";
 import { catalogHealth } from "./worker";
@@ -133,7 +134,7 @@ async function sample() {
 }
 
 export function startStatusChecks() {
-  const run = () => sample().catch((err) => console.error("status check:", err));
+  const run = () => sample().catch((err) => recordError("status", err));
   // After boot settles: the engine catalog and the first scan need a moment.
   setTimeout(run, 90_000);
   setInterval(run, 5 * MINUTE);

@@ -639,3 +639,25 @@ export const analysisEvents = pgTable(
   },
   (t) => [index("analysis_events_analysis_seq_idx").on(t.analysisId, t.seq)],
 );
+
+/**
+ * Errors the server hit, kept 30 days for the admin console (errors.ts): a failed
+ * request under the code its answer showed, or a background job that broke.
+ */
+export const serverErrors = pgTable(
+  "server_errors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** The short code in the 500 answer and on the request's log line. */
+    code: text("code").notNull(),
+    /** "request", or the background job that broke ("prices", "scan", …). */
+    source: text("source").notNull(),
+    method: text("method"),
+    path: text("path"),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    message: text("message").notNull(),
+    stack: text("stack"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("server_errors_created_at_idx").on(t.createdAt)],
+);

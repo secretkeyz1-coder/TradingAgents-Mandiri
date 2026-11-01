@@ -1,0 +1,3 @@
+# `bun test` from web/server: a fresh test database and the test settings first (test/setup.ts).
+[test]
+preload = ["./test/setup.ts"]

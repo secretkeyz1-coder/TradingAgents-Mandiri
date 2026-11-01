@@ -1,5 +1,6 @@
 import { config } from "./config";
 import type { AnalysisRequest, BacktestRequest, JobKind } from "./db/schema";
+import { recordError } from "./errors";
 import { recordTokens, type Meter } from "./tokens";
 
 /** One line of the Python worker's protocol (see web/worker/ta_worker.py). */
@@ -85,7 +86,7 @@ export function runCommand(
         continue; // not protocol; the worker keeps stdout clean, so this is noise
       }
       if (event.type === "usage") {
-        if (meter) await recordTokens(meter, event.models).catch((err) => console.error("token meter:", err));
+        if (meter) await recordTokens(meter, event.models).catch((err) => recordError("tokens", err));
         continue;
       }
       await onEvent(event);
@@ -151,6 +152,6 @@ function refreshCatalog(): Promise<Catalog> {
  */
 export async function getCatalog(): Promise<Catalog> {
   if (!cached) return refreshCatalog();
-  if (Date.now() - cached.at > CATALOG_TTL_MS) refreshCatalog().catch((err) => console.error(err));
+  if (Date.now() - cached.at > CATALOG_TTL_MS) refreshCatalog().catch((err) => recordError("catalog", err));
   return cached.value;
 }

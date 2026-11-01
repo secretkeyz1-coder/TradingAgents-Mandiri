@@ -15,7 +15,9 @@ import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
 import { openCreatorSignals, recordCreatorSignal, scoreCreatorSignal } from "./creators";
+import { recordError } from "./errors";
 import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
+import { log } from "./log";
 import { capMessage, limitsOf, planOf } from "./plans";
 import { checkPrices, notificationsInUse } from "./price-alerts";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
@@ -187,18 +189,18 @@ async function scan(only?: string[], withHourly = true) {
         const series = await getCandles(p.symbol, p.timeframe === "1d" ? "2y" : "1y", p.timeframe as Interval, p.venue as VenueId);
         jobPairs.push({ ...job, bars: toScriptBars(series.candles) });
       } catch (err) {
-        console.error(`signals ${p.symbol} ${p.timeframe} ${p.venue}: ${(err as Error).message}`);
+        log.warn("signals_pair_failed", { symbol: p.symbol, timeframe: p.timeframe, venue: p.venue, error: (err as Error).message });
       }
     }
     const found = new Map<string, ScanSignal[]>();
     if (jobPairs.length) {
       const handle = runCommand("signals", { pairs: jobPairs }, null, async (e) => {
         if (e.type === "signals") found.set(resultKey(String(e.symbol), String(e.timeframe), String(e.venue ?? ""), String(e.indicator)), e.signals as ScanSignal[]);
-        else if (e.type === "signals_error") console.error(`signals ${e.symbol} ${e.timeframe} ${e.venue ?? ""} ${e.indicator}: ${e.message}`);
+        else if (e.type === "signals_error") log.warn("signals_indicator_failed", { symbol: e.symbol, timeframe: e.timeframe, venue: e.venue, indicator: e.indicator, error: e.message });
       });
       const timer = setTimeout(() => handle.kill(), SCAN_TIMEOUT_MS);
       const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
-      if (exitCode !== 0) console.error(`signal scan exited ${exitCode}: ${stderrTail.trim().split("\n").slice(-2).join(" ")}`);
+      if (exitCode !== 0) log.error("signal_scan_exit", { exitCode, stderr: stderrTail.trim().split("\n").slice(-2).join(" ") });
     }
 
     // Users' own scripts run here, in the same sandbox and on the same candles as the chart.
@@ -213,7 +215,7 @@ async function scan(only?: string[], withHourly = true) {
       try {
         const run = await runOnSymbol(script.code, alert.symbol, alert.timeframe as ScriptTimeframe, undefined, (alert.venue || undefined) as VenueId | undefined);
         if (!run.ok) {
-          console.error(`script ${script.name} on ${alert.symbol} ${alert.timeframe}: ${run.error}`);
+          log.warn("script_alert_failed", { script: script.name, symbol: alert.symbol, timeframe: alert.timeframe, error: run.error });
           continue;
         }
         const last = run.bars.length - 1;
@@ -233,7 +235,7 @@ async function scan(only?: string[], withHourly = true) {
           })),
         );
       } catch (e) {
-        console.error(`script ${script.name} on ${alert.symbol}: ${(e as Error).message}`);
+        log.warn("script_alert_failed", { script: script.name, symbol: alert.symbol, error: (e as Error).message });
       }
     }
 
@@ -271,10 +273,10 @@ async function scan(only?: string[], withHourly = true) {
             .returning();
           if (!row || !fresh) continue;
           // On the record the moment it fires, whether or not the Telegram message gets through.
-          if (publicRecord) await recordCreatorSignal(alert, row, s, strategy).catch((err) => console.error(`creator record ${alert.id}:`, err));
+          if (publicRecord) await recordCreatorSignal(alert, row, s, strategy).catch((err) => recordError("creator", err));
           const sent = await sendTelegram(chat, openMessage(alert, s, scriptName));
           if (!sent.ok) {
-            console.error(`signal alert ${alert.id}: ${sent.error}`);
+            log.warn("signal_alert_not_sent", { alert: alert.id, error: sent.error });
             continue;
           }
           await db.update(signalEvents).set({ notifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
@@ -285,7 +287,7 @@ async function scan(only?: string[], withHourly = true) {
         } else if (seen.status === "open" && s.outcome !== "open") {
           await db.update(signalEvents).set({ status: s.outcome, exitTime: s.exit_time }).where(eq(signalEvents.id, seen.id));
           // Scored on the public record too, if it went there when it fired (even if the alert is private now).
-          await scoreCreatorSignal(seen.id, s).catch((err) => console.error(`creator score ${alert.id}:`, err));
+          await scoreCreatorSignal(seen.id, s).catch((err) => recordError("creator", err));
           if (seen.notifiedAt && !seen.closeNotifiedAt && (await sendTelegram(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, seen.id));
           }
@@ -293,9 +295,9 @@ async function scan(only?: string[], withHourly = true) {
       }
       if (!alert.primed) await db.update(signalAlerts).set({ primed: true }).where(eq(signalAlerts.id, alert.id));
     }
-    if (ledger.length) await recordLedger(found).catch((err) => console.error("signal ledger", err));
+    if (ledger.length) await recordLedger(found).catch((err) => recordError("ledger", err));
     // Daily strategies from the lab: their bars close once a day, so the hourly slots are enough.
-    if (ledger.length && withHourly) await recordLedger(await ledgerScriptSignals()).catch((err) => console.error("signal ledger scripts", err));
+    if (ledger.length && withHourly) await recordLedger(await ledgerScriptSignals()).catch((err) => recordError("ledger", err));
   } catch (err) {
     failed = true;
     throw err;
@@ -314,12 +316,12 @@ export function startAlertScheduler() {
     const minute = Math.floor(Date.now() / 60_000);
     if (minute !== lastMinute) {
       lastMinute = minute;
-      checkPrices().catch((err) => console.error("price check failed", err));
+      checkPrices().catch((err) => recordError("prices", err));
     }
     const slot = Math.floor((Date.now() - SCAN_DELAY_MS) / (SLOT_MINUTES * 60_000));
     if (slot === lastSlot) return;
     lastSlot = slot;
-    scan(undefined, slot % 3 === 0).catch((err) => console.error("signal scan failed", err));
+    scan(undefined, slot % 3 === 0).catch((err) => recordError("scan", err));
   };
   setInterval(tick, 20_000);
 }
@@ -389,7 +391,7 @@ alertsApi.post("/alerts", async (c) => {
     .onConflictDoNothing()
     .returning();
   // Record what already exists now, silently, so the first message is a truly new signal.
-  if (row) scan([row.id]).catch((err) => console.error("signal priming failed", err));
+  if (row) scan([row.id]).catch((err) => recordError("scan", err));
   return c.json({ ok: true, id: row?.id ?? null }, row ? 201 : 200);
 });
 

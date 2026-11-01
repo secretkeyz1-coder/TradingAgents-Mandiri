@@ -5,6 +5,7 @@
 // Crypto comes from Binance instead (binance.ts): real time, the bars the BINANCE: chart shows;
 // so do gold's intraday bars (the XAUUSDT perpetual, outside spot gold's closed hours).
 import { barsFor, binanceCandles, binancePair, binancePerpetual } from "./binance";
+import { log } from "./log";
 import { cryptoBase, VENUES, venueCandles, venueTimeframe, type VenueId } from "./venues";
 
 /** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's own time zone for intraday. */
@@ -93,7 +94,7 @@ export async function getCandles(symbol: string, range: (typeof RANGES)[number],
       cache.set(key, { at: Date.now(), value });
       return value;
     } catch (e) {
-      console.error(`binance ${pair} ${interval}: ${(e as Error).message}; falling back to Yahoo`);
+      log.warn("binance_fallback", { pair, interval, error: (e as Error).message });
     }
   }
 
@@ -182,7 +183,7 @@ export async function getLabCandles(symbol: string, interval: Interval, days: nu
       const candles = await binanceCandles(pair, interval, barsFor(interval, days), !crypto);
       return { symbol, currency: "USD", exchangeTimezone: "UTC", interval, candles, source: "binance" };
     } catch (e) {
-      console.error(`lab: binance ${pair} ${interval}: ${(e as Error).message}; falling back to Yahoo`);
+      log.warn("binance_fallback", { pair, interval, lab: true, error: (e as Error).message });
     }
   }
   const series = await getCandles(symbol, days > 365 ? "5y" : "1y", interval);

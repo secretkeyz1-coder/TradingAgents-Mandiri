@@ -1,14 +1,18 @@
 <script lang="ts">
-  // The console's "needs doing" list: payments waiting for a check, and parts
-  // of the service that are down, struggling or not set up yet (server/src/status.ts).
+  // The console's "needs doing" list: payments waiting for a check, server errors
+  // of the last 24 hours (server/src/errors.ts), and parts of the service that are
+  // down, struggling or not set up yet (server/src/status.ts).
   import { api, type ServiceStatus } from '../api';
 
   let waiting = $state<number | null>(null);
+  let errors = $state(0);
   let status = $state<ServiceStatus | null>(null);
   let loaded = $state(false);
-  Promise.allSettled([api.adminPayments('open').then((r) => (waiting = r.length)), api.serviceStatus().then((s) => (status = s))]).then(
-    () => (loaded = true),
-  );
+  Promise.allSettled([
+    api.adminPayments('open').then((r) => (waiting = r.length)),
+    api.adminErrors().then((r) => (errors = r.lastDay)),
+    api.serviceStatus().then((s) => (status = s)),
+  ]).then(() => (loaded = true));
 
   const TONE = { warning: 'status-warning', error: 'status-error', info: 'status-info' } as const;
   type Item = { text: string; detail: string; href: string; action: string; tone: keyof typeof TONE };
@@ -16,6 +20,9 @@
     const out: Item[] = [];
     if (waiting) {
       out.push({ text: `${waiting} pembayaran menunggu konfirmasi`, detail: 'Cocokkan jumlahnya dengan mutasi rekening.', href: '#/admin/pembayaran', action: 'Periksa', tone: 'warning' });
+    }
+    if (errors) {
+      out.push({ text: `${errors} error server dalam 24 jam`, detail: 'Tiap error punya kode yang juga dilihat pengguna saat melapor.', href: '#/admin/status', action: 'Lihat error', tone: 'error' });
     }
     for (const p of status?.parts ?? []) {
       if (p.state === 'down') out.push({ text: `${p.name} sedang gangguan`, detail: p.detail, href: '#/admin/status', action: 'Lihat status', tone: 'error' });

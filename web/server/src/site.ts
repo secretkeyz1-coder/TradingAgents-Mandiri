@@ -10,7 +10,9 @@ import { z } from "zod";
 import { BINANCE_HOSTS } from "./binance";
 import { db } from "./db";
 import { marketBriefs } from "./db/schema";
+import { recordError } from "./errors";
 import { publicLedger } from "./ledger";
+import { log } from "./log";
 import { getCandles } from "./market";
 import { getCatalog, runCommand } from "./worker";
 
@@ -32,6 +34,9 @@ const BRIEF_HOURS = 6;
 
 const cache = new Map<string, { at: number; value: unknown }>();
 const loading = new Map<string, Promise<unknown>>();
+
+/** Drop every cached answer: the tests write rows a fresh cache would otherwise hide for up to a minute. */
+export const forgetCache = () => cache.clear();
 
 /** The cached answer while it is fresh, one load at a time, and the stale answer when a refresh fails. */
 function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
@@ -189,13 +194,13 @@ async function writeBrief() {
     await handle.done;
     const parsed = briefSchema.safeParse(content);
     if (!parsed.success) {
-      console.error(`market brief not written: ${error || "the model's answer did not fit the format"}`);
+      log.warn("brief_not_written", { reason: error || "the model's answer did not fit the format" });
       return;
     }
     await db.insert(marketBriefs).values({ model: quickModel, content: parsed.data, data });
     cache.delete("brief");
   } catch (err) {
-    console.error("market brief", err);
+    void recordError("brief", err);
   } finally {
     briefing = false;
   }

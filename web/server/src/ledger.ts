@@ -25,6 +25,8 @@ import { isAdmin, type AppEnv } from "./auth";
 import { binancePair, binancePerpetual } from "./binance";
 import { db } from "./db";
 import { ledgerRecaps, ledgerSignals, signalAlerts, users, type SignalStatus } from "./db/schema";
+import { recordError } from "./errors";
+import { log } from "./log";
 import { getCandles, SYMBOL_PATTERN } from "./market";
 import { quickjs } from "./script-run";
 import { runScript, SCRIPT_TEMPLATES, toScriptBars } from "../../shared/script";
@@ -92,7 +94,7 @@ const COSTS: Record<string, Cost> = (() => {
   try {
     return JSON.parse(process.env.SIGNAL_COSTS ?? "{}");
   } catch {
-    console.error("SIGNAL_COSTS is not JSON; using the defaults");
+    log.warn("setting_ignored", { setting: "SIGNAL_COSTS", reason: "not JSON; using the defaults" });
     return {};
   }
 })();
@@ -118,7 +120,7 @@ const VENUE_FEES: Record<string, number> = (() => {
     // A fraction per side: 0.002 is 0.2%. Anything from 5% up is a typo for a percent.
     return Object.fromEntries(Object.entries(given).filter((e): e is [string, number] => typeof e[1] === "number" && e[1] >= 0 && e[1] < 0.05));
   } catch {
-    console.error("SIGNAL_VENUE_FEES is not JSON; using the defaults");
+    log.warn("setting_ignored", { setting: "SIGNAL_VENUE_FEES", reason: "not JSON; using the defaults" });
     return {};
   }
 })();
@@ -219,7 +221,7 @@ export async function ledgerScriptSignals(): Promise<Map<string, LedgerSignal[]>
           })),
         );
       } catch (e) {
-        console.error(`ledger ${strategy.source} ${symbol}${venue ? ` ${venue}` : ""}: ${(e as Error).message}`);
+        log.warn("ledger_pair_failed", { strategy: strategy.source, symbol, venue: venue || undefined, error: (e as Error).message });
       }
     }
   }
@@ -525,7 +527,7 @@ async function sendRecap(kind: "daily" | "weekly", period: string, title: string
   const text = await recapText(title, from, to);
   for (const chat of await recapChats()) {
     const sent = await sendTelegram(chat, text);
-    if (!sent.ok) console.error(`ledger recap ${kind} ${period}: ${sent.error}`);
+    if (!sent.ok) log.warn("ledger_recap_not_sent", { kind, period, error: sent.error });
   }
 }
 
@@ -558,10 +560,10 @@ export function startLedgerRecaps() {
     const day = wib.toISOString().slice(0, 10);
     const label = wib.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
     const to = new Date(due);
-    sendRecap("daily", day, `Rekap sinyal harian · ${label}`, new Date(due - 86_400_000), to).catch((e) => console.error("ledger daily recap", e));
+    sendRecap("daily", day, `Rekap sinyal harian · ${label}`, new Date(due - 86_400_000), to).catch((e) => recordError("ledger", e));
     if (wib.getUTCDay() === 6) {
       sendRecap("weekly", isoWeek(wib), `Rekap sinyal mingguan · s.d. ${label}`, new Date(due - 7 * 86_400_000), to).catch((e) =>
-        console.error("ledger weekly recap", e),
+        recordError("ledger", e),
       );
     }
   };

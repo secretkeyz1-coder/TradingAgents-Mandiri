@@ -13,7 +13,9 @@ import { z } from "zod";
 import type { AppEnv, User } from "./auth";
 import { db } from "./db";
 import { analyses, users, watchlist, watchRuns, type AnalysisRequest } from "./db/schema";
+import { recordError } from "./errors";
 import { enqueue, subscribe } from "./jobs";
+import { log } from "./log";
 import { SYMBOL_PATTERN } from "./market";
 import { capMessage, limitsOf, needsVerification } from "./plans";
 import { overLimit, room } from "./usage";
@@ -142,17 +144,17 @@ function notifyWhenDone(userId: string, ids: string[], skipped: string[], title:
     // Read the chat id now, not when the run started: the user may have just set it.
     const [user] = await db.select({ chat: users.telegramChatId }).from(users).where(eq(users.id, userId));
     const sent = await sendTelegram(user?.chat ?? null, await report(userId, ids, skipped, title));
-    if (!sent.ok) console.error(`watchlist ${title} (${userId}): ${sent.error}`);
+    if (!sent.ok) log.warn("watchlist_not_sent", { title, user: userId, error: sent.error });
     if (runId && sent.ok) await db.update(watchRuns).set({ notifiedAt: new Date() }).where(eq(watchRuns.id, runId));
   };
-  if (!ids.length) return void finish().catch((err) => console.error("watchlist notify failed", err));
+  if (!ids.length) return void finish().catch((err) => recordError("watchlist", err));
   const pending = new Set(ids);
   for (const id of ids) {
     const stop = subscribe(id, (event) => {
       if (event.type !== "end") return;
       stop();
       pending.delete(id);
-      if (!pending.size) finish().catch((err) => console.error("watchlist notify failed", err));
+      if (!pending.size) finish().catch((err) => recordError("watchlist", err));
     });
   }
 }
@@ -215,13 +217,13 @@ async function tick() {
     const [claimed] = await db.insert(watchRuns).values({ userId: user.id, day }).onConflictDoNothing().returning({ id: watchRuns.id });
     if (!claimed) continue;
     const result = await startRun(user, claimed.id);
-    if ("error" in result) console.error(`watchlist ${day} ${user.username}: ${result.error}`);
-    else console.log(`watchlist ${day} ${user.username}: ${result.ids.length} analisa, ${result.skipped.length} dilewati`);
+    if ("error" in result) log.warn("watchlist_run_failed", { day, user: user.username, error: result.error });
+    else log.info("watchlist_run", { day, user: user.username, queued: result.ids.length, skipped: result.skipped.length });
   }
 }
 
 export function startWatchScheduler() {
-  const run = () => tick().catch((err) => console.error("watchlist tick failed", err));
+  const run = () => tick().catch((err) => recordError("watchlist", err));
   run();
   setInterval(run, 60_000);
 }

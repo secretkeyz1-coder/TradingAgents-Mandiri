@@ -1,19 +1,38 @@
 <script lang="ts">
   // Service status inside the console: each part now and its share of clean
-  // checks over the days on record, as the public /status page shows them.
-  import { api, type ServiceState, type ServiceStatus } from '../api';
+  // checks over the days on record, as the public /status page shows them; then
+  // the server's own errors of the last 30 days (server/src/errors.ts), each under
+  // the code the user saw, with its stack one click away.
+  import { api, type ServerError, type ServiceState, type ServiceStatus } from '../api';
 
   let status = $state<ServiceStatus | null>(null);
+  let errors = $state<{ items: ServerError[]; lastDay: number } | null>(null);
   let error = $state('');
   async function load() {
     try {
-      status = await api.serviceStatus();
+      [status, errors] = await Promise.all([api.serviceStatus(), api.adminErrors()]);
       error = '';
     } catch (e) {
       error = (e as Error).message;
     }
   }
   load();
+
+  const SOURCE: Record<string, string> = {
+    request: 'Request',
+    prices: 'Notifikasi harga',
+    scan: 'Pemindaian sinyal',
+    analysis: 'Analisa',
+    watchlist: 'Watchlist',
+    brief: 'Ringkasan AI',
+    ledger: 'Buku sinyal',
+    creator: 'Rekam jejak Creator',
+    reminders: 'Pengingat',
+    status: 'Cek status',
+    catalog: 'Katalog model',
+    tokens: 'Meter token',
+    jobs: 'Antrean job',
+  };
 
   const STATE: Record<ServiceState, [string, string]> = {
     ok: ['Normal', 'badge-success'],
@@ -56,5 +75,37 @@
         </li>
       {/each}
     </ul>
+  {/if}
+
+  {#if errors}
+    <section class="flex flex-col gap-3" aria-labelledby="errors-title">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="errors-title" class="text-lg font-semibold">Error server</h2>
+        <span class="text-sm text-base-content/70">{errors.lastDay} dalam 24 jam · disimpan 30 hari</span>
+      </div>
+      {#if !errors.items.length}
+        <p class="text-sm text-success">Belum ada error tercatat.</p>
+      {:else}
+        <ul class="divide-y divide-base-300 rounded-box border border-base-300 bg-base-100">
+          {#each errors.items as e (e.id)}
+            <li class="flex flex-col gap-1 p-4">
+              <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <span class="font-mono text-sm font-semibold">{e.code}</span>
+                <span class="badge badge-soft badge-error badge-sm">{SOURCE[e.source] ?? e.source}</span>
+                {#if e.path}<span class="font-mono text-sm text-base-content/70">{e.method} {e.path}</span>{/if}
+                <span class="ml-auto text-sm text-base-content/70">{clock(e.createdAt)}</span>
+              </div>
+              <p class="text-sm break-words">{e.message}</p>
+              {#if e.stack}
+                <details>
+                  <summary class="cursor-pointer text-sm text-base-content/70">Stack</summary>
+                  <pre class="mt-2 max-h-64 overflow-auto rounded-box bg-base-200 p-3 text-xs whitespace-pre-wrap">{e.stack}</pre>
+                </details>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
   {/if}
 </section>
