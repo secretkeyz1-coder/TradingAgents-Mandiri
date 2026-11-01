@@ -81,7 +81,7 @@ function stats(trades: Scored[]): LabStats {
 async function engineTrades(name: string, timeframe: string, symbol: string, bars: ScriptBar[], expiry: number): Promise<Trade[]> {
   let found: { index: number; side: string; entry: number; stop_loss: number; outcome: string; r: number | null }[] = [];
   let error = "";
-  const handle = runCommand("lab", { engine: name, timeframe, symbol, expiry, bars }, async (e) => {
+  const handle = runCommand("lab", { engine: name, timeframe, symbol, expiry, bars }, null, async (e) => {
     if (e.type === "lab_signals") found = e.signals as typeof found;
     else if (e.type === "error") error = String(e.message ?? "");
   });

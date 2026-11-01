@@ -35,6 +35,8 @@ export const isAdmin = (u: User) => u.role === "admin";
 
 // Signs the cookie. Sessions survive restarts; SESSION_SECRET (or APP_PASSWORD) changing ends them all.
 const secret = process.env.SESSION_SECRET || createHmac("sha256", config.appPassword || "local").update("tradingagents-session").digest("hex");
+/** A signature for a value carried in a link (an invoice page); `purpose` keeps one link's signature from passing for another's. */
+export const sign = (purpose: string, value: string) => createHmac("sha256", secret).update(`${purpose}:${value}`).digest("base64url").slice(0, 32);
 
 /** Hashed once, so a login for a name that does not exist costs the same time as a wrong password. */
 const decoyHash = Bun.password.hash("decoy-password-for-timing");

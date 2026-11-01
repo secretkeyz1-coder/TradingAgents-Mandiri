@@ -14,6 +14,7 @@ only the protocol.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -535,6 +536,17 @@ def market_brief(job: dict) -> int:
 
 
 COMMANDS = {"run": run, "backtest": backtest, "agent": agent, "signals": signals, "translate": translate, "lab": lab, "brief": market_brief}
+# The commands that call a model; each reports its tokens when it ends, per model (server/src/tokens.ts).
+METERED = {"run", "backtest", "agent", "translate", "brief"}
+
+
+def _token_meter():
+    """Totals every model call made while it is open, through LangChain's callback context."""
+    try:
+        from langchain_core.callbacks import get_usage_metadata_callback
+    except ImportError:
+        return contextlib.nullcontext()
+    return get_usage_metadata_callback()
 
 
 def main(argv: list[str]) -> int:
@@ -544,13 +556,19 @@ def main(argv: list[str]) -> int:
         _PROTOCOL.flush()
         return 0
     if command in COMMANDS:
-        try:
-            job = json.loads(sys.stdin.read())
-            return COMMANDS[command](job)
-        except Exception as exc:
-            traceback.print_exc()
-            emit("error", message=f"{type(exc).__name__}: {exc}")
-            return 1
+        with _token_meter() if command in METERED else contextlib.nullcontext() as usage:
+            try:
+                job = json.loads(sys.stdin.read())
+                return COMMANDS[command](job)
+            except Exception as exc:
+                traceback.print_exc()
+                emit("error", message=f"{type(exc).__name__}: {exc}")
+                return 1
+            finally:
+                # Tokens are spent whether the command succeeded or not.
+                if usage is not None and usage.usage_metadata:
+                    emit("usage", models={model: {"input": u.get("input_tokens", 0), "output": u.get("output_tokens", 0)}
+                                          for model, u in usage.usage_metadata.items()})
     print(__doc__)
     return 2
 

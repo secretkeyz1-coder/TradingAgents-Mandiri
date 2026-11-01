@@ -1,18 +1,22 @@
 // Subscriptions paid by bank transfer or QRIS and confirmed by an admin, until a
-// payment gateway takes over. A member picks a plan and period; the order gets
-// a reference and a unique code added to the price, so one line on the bank
-// statement matches one order. The member says when it is paid, admins hear of
-// it (Telegram and e-mail), and an admin's confirmation extends the plan: from
-// its current end when the same plan is still running, else from now.
-// PAYMENT_INSTRUCTIONS (bank, account number and name, QRIS; "\n" for a new
-// line) goes with every order; without it members cannot order yet.
+// payment gateway takes over. A member picks a plan and period, and may give a
+// coupon (coupons.ts); the order gets a reference and a unique code added to the
+// price, so one line on the bank statement matches one order. The member says
+// when it is paid, admins hear of it (Telegram and e-mail), and an admin's
+// confirmation extends the plan: from its current end when the same plan is
+// still running, else from now. A coupon that takes the whole price activates
+// the plan at once. Every order has an invoice page (invoice.ts), linked from
+// its e-mails. PAYMENT_INSTRUCTIONS (bank, account number and name, QRIS; "\n"
+// for a new line) goes with every order; without it members cannot order yet.
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAdmin, type AppEnv } from "./auth";
+import { applyCoupon } from "./coupons";
 import { db } from "./db";
 import { payments, users } from "./db/schema";
+import { invoiceLink, invoicePath, renderInvoice, verifyInvoice } from "./invoice";
 import { composeMail, sendMail } from "./mail";
 import { planOf } from "./plans";
 import { FOUNDING, PERIOD_LABEL, PLANS, rupiah, TRIAL_DAYS, type Period } from "../../shared/plans";
@@ -20,11 +24,12 @@ import { escape, publicUrl, sendTelegram } from "./watch";
 
 const INSTRUCTIONS = (process.env.PAYMENT_INSTRUCTIONS ?? "").replace(/\\n/g, "\n").trim();
 /** An order not paid within this many days lapses. */
-const ORDER_DAYS = 3;
+export const ORDER_DAYS = 3;
 const DAY_MS = 86_400_000;
 const OPEN = ["pending", "claimed"] as const;
 
 type Payment = typeof payments.$inferSelect;
+type Owner = typeof users.$inferSelect;
 const publicPayment = (p: Payment) => ({
   id: p.id,
   reference: p.reference,
@@ -33,6 +38,8 @@ const publicPayment = (p: Payment) => ({
   founding: p.founding,
   amount: p.amount,
   uniqueCode: p.uniqueCode,
+  couponCode: p.couponCode,
+  discount: p.discount,
   status: p.status,
   note: p.note,
   adminNote: p.adminNote,
@@ -41,11 +48,14 @@ const publicPayment = (p: Payment) => ({
   paidAt: p.paidAt,
   periodStart: p.periodStart,
   periodEnd: p.periodEnd,
+  invoiceUrl: invoicePath(p.id),
 });
 
 /** "Pro per bulan", "Pro founding per bulan". */
-const label = (p: Pick<Payment, "plan" | "period" | "founding">) => `${PLANS[p.plan].name}${p.founding ? " founding" : ""} per ${PERIOD_LABEL[p.period]}`;
+export const label = (p: Pick<Payment, "plan" | "period" | "founding">) => `${PLANS[p.plan].name}${p.founding ? " founding" : ""} per ${PERIOD_LABEL[p.period]}`;
 const day = (d: Date) => d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "long", year: "numeric" });
+/** An e-mail's invoice button, when the server knows its public address. */
+const invoiceButton = (p: Payment, text: string) => (invoiceLink(p.id) ? { label: text, url: invoiceLink(p.id) } : undefined);
 
 function addPeriod(from: Date, period: Period): Date {
   const d = new Date(from);
@@ -80,6 +90,36 @@ async function tellAdmins(html: string, subject: string, lines: string[]) {
   }
 }
 
+/**
+ * Mark an order paid and give its plan, from the end of the same plan still
+ * running or else from now, and tell the owner. Null when the order was
+ * settled meanwhile.
+ */
+async function activate(order: Payment, owner: Owner, by: string | null, note: string | null) {
+  const now = new Date();
+  const start = planOf(owner) === order.plan && owner.planUntil && owner.planUntil > now ? owner.planUntil : now;
+  const end = addPeriod(start, order.period);
+  const [paid] = await db
+    .update(payments)
+    .set({ status: "paid", paidAt: now, periodStart: start, periodEnd: end, confirmedBy: by, adminNote: note })
+    .where(and(eq(payments.id, order.id), inArray(payments.status, [...OPEN])))
+    .returning();
+  if (!paid) return null;
+  await db.update(users).set({ plan: order.plan, planUntil: end }).where(eq(users.id, owner.id));
+  const lines = [
+    `Halo ${owner.username},`,
+    paid.amount > 0
+      ? `Pembayaran ${rupiah(paid.amount)} untuk ${label(paid)} sudah kami terima (referensi ${paid.reference}).`
+      : `Kupon ${paid.couponCode} menanggung seluruh harga ${label(paid)} (referensi ${paid.reference}).`,
+    `Paket ${PLANS[paid.plan].name} aktif sampai ${day(end)}. Terima kasih!`,
+  ];
+  if (owner.email) await sendMail(composeMail(owner.email, `Pembayaran diterima: ${paid.reference}`, lines, invoiceButton(paid, "Lihat bukti pembayaran")));
+  if (owner.telegramChatId) {
+    await sendTelegram(owner.telegramChatId, `<b>✅ Pembayaran diterima</b>\n${escape(label(paid))} · ${rupiah(paid.amount)}\nAktif sampai ${escape(day(end))}`);
+  }
+  return paid;
+}
+
 export const billingApi = new Hono<AppEnv>();
 
 billingApi.get("/billing", async (c) => {
@@ -95,7 +135,25 @@ billingApi.get("/billing", async (c) => {
   });
 });
 
-const orderSchema = z.object({ plan: z.enum(["pro", "creator"]), period: z.enum(["month", "year"]), founding: z.boolean().optional() });
+/** What a coupon takes off each plan for the chosen period, or why it does not apply. */
+billingApi.get("/billing/coupon", async (c) => {
+  const q = z.object({ code: z.string().trim().min(1).max(40), period: z.enum(["month", "year"]) }).safeParse(c.req.query());
+  if (!q.success) return c.json({ error: "Isi kode kuponnya" }, 400);
+  const user = c.get("user");
+  const plans: Partial<Record<"pro" | "creator", { discount: number; total: number } | { error: string }>> = {};
+  for (const plan of ["pro", "creator"] as const) {
+    const r = await applyCoupon(q.data.code, user.id, plan, q.data.period);
+    plans[plan] = "error" in r ? { error: r.error } : { discount: r.discount, total: PLANS[plan].price[q.data.period] - r.discount };
+  }
+  return c.json({ code: q.data.code.toUpperCase(), plans });
+});
+
+const orderSchema = z.object({
+  plan: z.enum(["pro", "creator"]),
+  period: z.enum(["month", "year"]),
+  founding: z.boolean().optional(),
+  coupon: z.string().trim().max(40).optional(),
+});
 
 billingApi.post("/billing/orders", async (c) => {
   const user = c.get("user");
@@ -104,9 +162,19 @@ billingApi.post("/billing/orders", async (c) => {
   const body = orderSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "Pilihan paket tidak valid" }, 400);
   const { plan, period } = body.data;
+  const code = body.data.coupon ?? "";
   const seat = body.data.founding ? await founding(user.id) : null;
   if (seat && (plan !== "pro" || period !== "month")) return c.json({ error: "Harga founding hanya untuk Pro bulanan" }, 400);
   if (seat && !seat.mine && seat.left <= 0) return c.json({ error: "Kursi founding member sudah habis" }, 409);
+  if (seat && code) return c.json({ error: "Kupon tidak berlaku untuk harga founding" }, 400);
+  let discount = 0;
+  let couponCode: string | null = null;
+  if (code) {
+    const r = await applyCoupon(code, user.id, plan, period);
+    if ("error" in r) return c.json({ error: r.error }, 400);
+    discount = r.discount;
+    couponCode = r.code;
+  }
   await lapseOld();
   const open = await db
     .select()
@@ -123,18 +191,21 @@ billingApi.post("/billing/orders", async (c) => {
         open.map((p) => p.id),
       ));
   }
-  const price = seat ? FOUNDING.price : PLANS[plan].price[period];
+  const price = (seat ? FOUNDING.price : PLANS[plan].price[period]) - discount;
   // A code no other open order of the same price uses, so the amount transferred names the order.
-  const taken = new Set(
-    (
-      await db
-        .select({ code: payments.uniqueCode })
-        .from(payments)
-        .where(and(inArray(payments.status, [...OPEN]), sql`${payments.amount} - ${payments.uniqueCode} = ${price}`))
-    ).map((r) => r.code),
-  );
+  // An order the coupon pays in full needs no transfer and so no code.
   let uniqueCode = 0;
-  for (let i = 0; i < 300 && (!uniqueCode || taken.has(uniqueCode)); i++) uniqueCode = 1 + Math.floor(Math.random() * 999);
+  if (price > 0) {
+    const taken = new Set(
+      (
+        await db
+          .select({ code: payments.uniqueCode })
+          .from(payments)
+          .where(and(inArray(payments.status, [...OPEN]), sql`${payments.amount} - ${payments.uniqueCode} = ${price}`))
+      ).map((r) => r.code),
+    );
+    for (let i = 0; i < 300 && (!uniqueCode || taken.has(uniqueCode)); i++) uniqueCode = 1 + Math.floor(Math.random() * 999);
+  }
   let row: Payment | undefined;
   for (let i = 0; i < 5 && !row; i++) {
     [row] = await db
@@ -147,19 +218,30 @@ billingApi.post("/billing/orders", async (c) => {
         founding: Boolean(seat),
         amount: price + uniqueCode,
         uniqueCode,
+        couponCode,
+        discount,
       })
       .onConflictDoNothing()
       .returning();
   }
   if (!row) return c.json({ error: "Gagal membuat pesanan, coba lagi" }, 500);
+  if (price === 0) {
+    const paid = await activate(row, user, null, `Kupon ${couponCode}`);
+    return c.json(publicPayment(paid ?? row), 201);
+  }
   if (user.email) {
     await sendMail(
-      composeMail(user.email, `Pesanan ${row.reference}: ${label(row)}`, [
-        `Halo ${user.username},`,
-        `Terima kasih sudah memesan ${label(row)}. Transfer tepat ${rupiah(row.amount)} dalam ${ORDER_DAYS} hari; tiga digit terakhirnya (${row.uniqueCode}) adalah kode unik pesananmu.`,
-        ...INSTRUCTIONS.split("\n"),
-        'Setelah membayar, buka menu akun → Paket & tagihan dan tekan "Saya sudah bayar". Paket aktif setelah admin memeriksa pembayaranmu.',
-      ]),
+      composeMail(
+        user.email,
+        `Pesanan ${row.reference}: ${label(row)}`,
+        [
+          `Halo ${user.username},`,
+          `Terima kasih sudah memesan ${label(row)}.${row.discount ? ` Kupon ${row.couponCode} memotong ${rupiah(row.discount)}.` : ""} Transfer tepat ${rupiah(row.amount)} dalam ${ORDER_DAYS} hari; tiga digit terakhirnya (${row.uniqueCode}) adalah kode unik pesananmu.`,
+          ...INSTRUCTIONS.split("\n"),
+          'Setelah membayar, buka menu akun → Paket & tagihan dan tekan "Saya sudah bayar". Paket aktif setelah admin memeriksa pembayaranmu.',
+        ],
+        invoiceButton(row, "Lihat tagihan"),
+      ),
     );
   }
   return c.json(publicPayment(row), 201);
@@ -218,7 +300,6 @@ billingApi.get("/admin/payments", async (c) => {
 });
 
 billingApi.post("/admin/payments/:id/confirm", async (c) => {
-  const admin = c.get("user");
   const id = c.req.param("id");
   if (!z.uuid().safeParse(id).success) return c.json({ error: "Not found" }, 404);
   const body = z.object({ note: z.string().trim().max(300).optional() }).safeParse(await c.req.json().catch(() => ({})));
@@ -228,27 +309,8 @@ billingApi.post("/admin/payments/:id/confirm", async (c) => {
     .where(and(eq(payments.id, id), inArray(payments.status, [...OPEN])));
   const [owner] = order ? await db.select().from(users).where(eq(users.id, order.userId)) : [];
   if (!order || !owner) return c.json({ error: "Pesanan tidak ditemukan atau sudah diproses" }, 404);
-  const now = new Date();
-  // The same plan still running is extended from its end; a new or lapsed plan starts now.
-  const start = planOf(owner) === order.plan && owner.planUntil && owner.planUntil > now ? owner.planUntil : now;
-  const end = addPeriod(start, order.period);
-  const [paid] = await db
-    .update(payments)
-    .set({ status: "paid", paidAt: now, periodStart: start, periodEnd: end, confirmedBy: admin.id, adminNote: body.success ? body.data.note || null : null })
-    .where(and(eq(payments.id, order.id), inArray(payments.status, [...OPEN])))
-    .returning();
-  if (!paid) return c.json({ error: "Pesanan sudah diproses" }, 409);
-  await db.update(users).set({ plan: order.plan, planUntil: end }).where(eq(users.id, owner.id));
-  const lines = [
-    `Halo ${owner.username},`,
-    `Pembayaran ${rupiah(paid.amount)} untuk ${label(paid)} sudah kami terima (referensi ${paid.reference}).`,
-    `Paket ${PLANS[paid.plan].name} aktif sampai ${day(end)}. Terima kasih!`,
-  ];
-  if (owner.email) await sendMail(composeMail(owner.email, `Pembayaran diterima: ${paid.reference}`, lines));
-  if (owner.telegramChatId) {
-    await sendTelegram(owner.telegramChatId, `<b>✅ Pembayaran diterima</b>\n${escape(label(paid))} · ${rupiah(paid.amount)}\nAktif sampai ${escape(day(end))}`);
-  }
-  return c.json(publicPayment(paid));
+  const paid = await activate(order, owner, c.get("user").id, body.success ? body.data.note || null : null);
+  return paid ? c.json(publicPayment(paid)) : c.json({ error: "Pesanan sudah diproses" }, 409);
 });
 
 billingApi.post("/admin/payments/:id/reject", async (c) => {
@@ -300,4 +362,24 @@ billingApi.get("/admin/overview", async (c) => {
     })
     .from(payments);
   return c.json({ ...people, revenue: { month: money.month, last30: money.last30 }, orders: { open: money.open, claimed: money.claimed } });
+});
+
+// --------------------------------------------------------------------------- invoice page
+
+/** The invoice page lives outside /api: its signed link is the key, so it opens from an e-mail without signing in. */
+export const invoicePages = new Hono();
+
+invoicePages.get("/invoice/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!z.uuid().safeParse(id).success || !verifyInvoice(id, c.req.query("t") ?? "")) return c.text("Tautan tagihan tidak valid.", 404);
+  const [row] = await db
+    .select({ payment: payments, username: users.username, email: users.email, phone: users.phone })
+    .from(payments)
+    .innerJoin(users, eq(payments.userId, users.id))
+    .where(eq(payments.id, id));
+  if (!row) return c.text("Tagihan tidak ditemukan.", 404);
+  c.header("Cache-Control", "private, no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  c.header("X-Robots-Tag", "noindex");
+  return c.html(renderInvoice(row.payment, row, { orderDays: ORDER_DAYS, instructions: INSTRUCTIONS }));
 });

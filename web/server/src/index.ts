@@ -8,7 +8,10 @@ import { runMigrations } from "./db";
 import { recover } from "./jobs";
 import { agentApi } from "./agent";
 import { alertsApi, startAlertScheduler } from "./alerts";
-import { billingApi } from "./billing";
+import { billingApi, invoicePages } from "./billing";
+import { businessApi } from "./business";
+import { couponsApi } from "./coupons";
+import { startReminders } from "./reminders";
 import { labApi } from "./lab";
 import { venuesApi } from "./venues";
 import { ledgerApi, startLedgerRecaps } from "./ledger";
@@ -27,6 +30,7 @@ startWatchScheduler();
 startAlertScheduler();
 startLedgerRecaps();
 startBriefs();
+startReminders();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
@@ -45,6 +49,8 @@ app.use("/api/*", requireAuth);
 app.route("/api", meApi);
 app.route("/api", usersApi);
 app.route("/api", billingApi);
+app.route("/api", couponsApi);
+app.route("/api", businessApi);
 app.route("/api", api);
 app.route("/api", agentApi);
 app.route("/api", watchApi);
@@ -53,6 +59,8 @@ app.route("/api", ledgerApi);
 app.route("/api", labApi);
 app.route("/api", venuesApi);
 app.route("/api", scriptsApi);
+// An order's invoice page opens from its signed link, without a session.
+app.route("/", invoicePages);
 app.onError((err, c) => {
   // Middleware answers (401 with its WWW-Authenticate challenge) go out as they are.
   if (err instanceof HTTPException) return err.getResponse();

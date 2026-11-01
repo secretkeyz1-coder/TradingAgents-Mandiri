@@ -150,7 +150,7 @@ async function start(id: string) {
     publish(id, { seq, type, ...payload });
   };
 
-  const handle = runJob(row.kind, row.request, onEvent);
+  const handle = runJob(row.kind, row.request, { userId: row.userId, kind: row.kind }, onEvent);
   const entry: Running = { ...handle, cancelled: false, stuck: false, lost: false };
   running.set(id, entry);
   // The worker only shows progress through events; a quiet one is stuck and is

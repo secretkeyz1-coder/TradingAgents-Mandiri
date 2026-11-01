@@ -212,5 +212,8 @@ def agent(job: dict) -> int:
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else ""
     if command in ("run", "backtest", "agent"):
-        sys.exit({"run": run, "backtest": backtest, "agent": agent}[command](json.loads(sys.stdin.read())))
+        code = {"run": run, "backtest": backtest, "agent": agent}[command](json.loads(sys.stdin.read()))
+        # Made-up tokens, so the server's token meter can be tried without a model (server/src/tokens.ts).
+        emit("usage", models={"demo-model": {"input": 1800, "output": 400}})
+        sys.exit(code)
     sys.exit(ta_worker.main(sys.argv))

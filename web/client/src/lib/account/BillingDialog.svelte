@@ -1,9 +1,11 @@
 <script lang="ts">
-  // A member's plan and payments: pick a plan and period, get the amount to
-  // transfer (the price plus a unique code) and the bank details, say it is
-  // paid, and see past orders. An admin confirms the payment (PaymentsDialog).
+  // A member's plan and payments: pick a plan and period, and a coupon if they
+  // have one, get the amount to transfer (the price plus a unique code) and the
+  // bank details, say it is paid, and see past orders with their invoices. An
+  // admin confirms the payment (PaymentsDialog); a coupon that covers the whole
+  // price activates the plan at once.
   import { FOUNDING, PERIOD_LABEL, PLANS, rupiah, type Period } from '../../../../shared/plans';
-  import { api, type Billing, type Payment } from '../api';
+  import { api, type Billing, type CouponQuote, type Payment } from '../api';
   import { auth } from '../auth.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
@@ -13,6 +15,9 @@
   let note = $state('');
   let error = $state('');
   let busy = $state(false);
+  let code = $state('');
+  let quote = $state<CouponQuote | null>(null);
+  let couponError = $state('');
 
   const STATUS: Record<Payment['status'], string> = {
     pending: 'menunggu pembayaran',
@@ -23,7 +28,7 @@
   };
   const day = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   const open = $derived(billing?.orders.find((o) => o.status === 'pending' || o.status === 'claimed') ?? null);
-  const past = $derived(billing?.orders.filter((o) => o !== open && o.amount > 0) ?? []);
+  const past = $derived(billing?.orders.filter((o) => o !== open && (o.amount > 0 || o.discount > 0)) ?? []);
   const seats = $derived(billing && (billing.founding.mine || billing.founding.left > 0));
 
   async function load() {
@@ -50,7 +55,43 @@
     }
   }
 
-  const order = (plan: 'pro' | 'creator', founding = false) => act(() => api.order({ plan, period: founding ? 'month' : period, founding }));
+  /** What the typed code takes off each plan, for the period shown. */
+  async function check() {
+    const typed = code.trim();
+    if (!typed) return;
+    couponError = '';
+    try {
+      quote = await api.couponQuote(typed, period);
+    } catch (e) {
+      quote = null;
+      couponError = (e as Error).message;
+    }
+  }
+
+  function choose(next: Period) {
+    period = next;
+    if (quote) check();
+  }
+
+  function dropCoupon() {
+    code = '';
+    quote = null;
+    couponError = '';
+  }
+
+  /** The coupon's price for one plan, when it applies to that plan. */
+  function deal(plan: 'pro' | 'creator') {
+    const q = quote?.plans[plan];
+    return q && 'total' in q ? q : null;
+  }
+
+  function refusal(plan: 'pro' | 'creator') {
+    const q = quote?.plans[plan];
+    return q && 'error' in q ? q.error : '';
+  }
+
+  const order = (plan: 'pro' | 'creator', founding = false) =>
+    act(() => api.order({ plan, period: founding ? 'month' : period, founding, coupon: !founding && quote && deal(plan) ? quote.code : undefined }));
 </script>
 
 <div class="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="billing-title">
@@ -86,6 +127,7 @@
           <p class="text-xs text-base-content/70">
             Tiga digit terakhir ({open.uniqueCode}) adalah kode unik pesananmu, jadi transfer persis sejumlah ini. Batas bayar {day(new Date(new Date(open.createdAt).getTime() + billing.orderDays * 86_400_000).toISOString())}.
           </p>
+          {#if open.discount}<p class="text-xs text-success">Sudah dipotong kupon {open.couponCode}: {rupiah(open.discount)}.</p>{/if}
         </div>
         <p class="rounded-box bg-base-200 p-3 text-sm whitespace-pre-line">{billing.instructions}</p>
         {#if open.status === 'pending'}
@@ -93,6 +135,7 @@
             <input class="input input-sm w-full" maxlength="300" placeholder="Catatan untuk admin, mis. dari BCA a.n. Budi" bind:value={note} />
             <div class="flex flex-wrap gap-2">
               <button class="btn btn-primary btn-sm" disabled={busy} onclick={() => act(() => api.claimOrder(open!.id, note.trim()))}>Saya sudah bayar</button>
+              <a class="btn btn-ghost btn-sm" href={open.invoiceUrl} target="_blank" rel="noopener">Lihat tagihan</a>
               <button class="btn btn-ghost btn-sm" disabled={busy} onclick={() => act(() => api.cancelOrder(open!.id))}>Batalkan pesanan</button>
             </div>
           </div>
@@ -108,33 +151,49 @@
           <div class="flex flex-col gap-0.5">
             <h3 class="font-semibold">Founding member: Pro {rupiah(billing.founding.price)}/bulan</h3>
             <p class="text-sm text-base-content/70">
-              Harga terkunci selama kamu tetap berlangganan.{billing.founding.mine ? ' Kamu sudah founding member.' : ` Sisa ${billing.founding.left} dari ${FOUNDING.seats} kursi.`}
+              Harga terkunci selama kamu tetap berlangganan.{billing.founding.mine ? ' Kamu sudah founding member.' : ` Sisa ${billing.founding.left} dari ${FOUNDING.seats} kursi.`} Tidak bisa digabung dengan kupon.
             </p>
           </div>
           <button class="btn btn-primary btn-sm" disabled={busy} onclick={() => order('pro', true)}>Pesan Pro founding</button>
         </section>
       {/if}
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <h3 class="text-sm font-semibold">Pilih paket</h3>
         <div class="join" role="group" aria-label="Periode">
-          <button class="btn btn-xs join-item" class:btn-active={period === 'month'} aria-pressed={period === 'month'} onclick={() => (period = 'month')}>Bulanan</button>
-          <button class="btn btn-xs join-item" class:btn-active={period === 'year'} aria-pressed={period === 'year'} onclick={() => (period = 'year')}>Tahunan · hemat 2 bulan</button>
+          <button class="btn btn-xs join-item" class:btn-active={period === 'month'} aria-pressed={period === 'month'} onclick={() => choose('month')}>Bulanan</button>
+          <button class="btn btn-xs join-item" class:btn-active={period === 'year'} aria-pressed={period === 'year'} onclick={() => choose('year')}>Tahunan · hemat 2 bulan</button>
         </div>
       </div>
+      <form class="flex flex-wrap items-center gap-2" onsubmit={(e) => (e.preventDefault(), check())}>
+        <label class="sr-only" for="coupon-code">Kode kupon</label>
+        <input id="coupon-code" class="input input-sm w-44 uppercase" maxlength="40" autocomplete="off" placeholder="Kode kupon" bind:value={code} />
+        <button class="btn btn-sm" type="submit" disabled={busy || !code.trim()}>Pakai kupon</button>
+        {#if quote}<button class="btn btn-ghost btn-sm" type="button" onclick={dropCoupon}>Hapus kupon</button>{/if}
+        {#if couponError}<p role="alert" class="w-full text-xs text-error">{couponError}</p>{/if}
+      </form>
       <div class="grid gap-3 sm:grid-cols-2">
         {#each [PLANS.pro, PLANS.creator] as plan (plan.id)}
+          {@const id = plan.id as 'pro' | 'creator'}
+          {@const offer = deal(id)}
           <section class="flex flex-col gap-3 rounded-box border border-base-300 p-4">
             <div>
               <h4 class="font-semibold">{plan.name}</h4>
               <p class="text-sm text-base-content/70">{plan.blurb}</p>
             </div>
-            <p class="text-2xl font-semibold tracking-tight tabular-nums">
-              {rupiah(plan.price[period])}<span class="text-sm font-normal text-base-content/70">/{PERIOD_LABEL[period]}</span>
-            </p>
+            <div>
+              <p class="text-2xl font-semibold tracking-tight tabular-nums">
+                {rupiah(offer ? offer.total : plan.price[period])}<span class="text-sm font-normal text-base-content/70">/{PERIOD_LABEL[period]}</span>
+              </p>
+              {#if offer}
+                <p class="text-xs text-success">Kupon {quote?.code} memotong {rupiah(offer.discount)} dari {rupiah(plan.price[period])}.</p>
+              {:else if refusal(id)}
+                <p class="text-xs text-base-content/70">{refusal(id)}.</p>
+              {/if}
+            </div>
             <ul class="flex flex-col gap-1 text-sm">
               {#each plan.highlights as item (item)}<li>· {item}</li>{/each}
             </ul>
-            <button class="btn btn-sm mt-auto" disabled={busy} onclick={() => order(plan.id as 'pro' | 'creator')}>Pesan {plan.name}</button>
+            <button class="btn btn-sm mt-auto" disabled={busy} onclick={() => order(id)}>Pesan {plan.name}</button>
           </section>
         {/each}
       </div>
@@ -154,9 +213,11 @@
               {#each past as o (o.id)}
                 <tr>
                   <td class="whitespace-nowrap">{day(o.createdAt)}</td>
-                  <td class="font-mono text-xs">{o.reference}</td>
+                  <td><a class="link link-hover font-mono text-xs" href={o.invoiceUrl} target="_blank" rel="noopener" title={o.status === 'paid' ? 'Bukti pembayaran' : 'Tagihan'}>{o.reference}</a></td>
                   <td>{PLANS[o.plan].name}/{PERIOD_LABEL[o.period]}{o.periodEnd && o.status === 'paid' ? `, s.d. ${day(o.periodEnd)}` : ''}</td>
-                  <td class="text-right tabular-nums">{rupiah(o.amount)}</td>
+                  <td class="text-right tabular-nums">
+                    {rupiah(o.amount)}{#if o.couponCode}<span class="block text-xs text-base-content/70">kupon {o.couponCode}</span>{/if}
+                  </td>
                   <td>{STATUS[o.status]}{o.adminNote && o.status === 'rejected' ? `: ${o.adminNote}` : ''}</td>
                 </tr>
               {/each}

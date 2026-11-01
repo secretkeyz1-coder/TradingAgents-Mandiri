@@ -185,7 +185,7 @@ async function scan(only?: string[], withHourly = true) {
     }
     const found = new Map<string, ScanSignal[]>();
     if (jobPairs.length) {
-      const handle = runCommand("signals", { pairs: jobPairs }, async (e) => {
+      const handle = runCommand("signals", { pairs: jobPairs }, null, async (e) => {
         if (e.type === "signals") found.set(resultKey(String(e.symbol), String(e.timeframe), String(e.venue ?? ""), String(e.indicator)), e.signals as ScanSignal[]);
         else if (e.type === "signals_error") console.error(`signals ${e.symbol} ${e.timeframe} ${e.venue ?? ""} ${e.indicator}: ${e.message}`);
       });

@@ -114,8 +114,11 @@
                 <span class="block text-xs text-base-content/70">{p.user.email ?? ''}{p.user.phone ? ` · ${p.user.phone}` : ''}</span>
               </td>
               <td class="whitespace-nowrap">{PLANS[p.plan].name}{p.founding ? ' founding' : ''}/{PERIOD_LABEL[p.period]}</td>
-              <td class="text-right tabular-nums">{rupiah(p.amount)}{#if p.uniqueCode}<span class="block text-xs text-base-content/70">kode {p.uniqueCode}</span>{/if}</td>
-              <td class="font-mono text-xs">{p.reference}</td>
+              <td class="text-right tabular-nums">
+                {rupiah(p.amount)}{#if p.uniqueCode}<span class="block text-xs text-base-content/70">kode {p.uniqueCode}</span>{/if}
+                {#if p.couponCode}<span class="block text-xs text-base-content/70">kupon {p.couponCode}, −{rupiah(p.discount)}</span>{/if}
+              </td>
+              <td><a class="link link-hover font-mono text-xs" href={p.invoiceUrl} target="_blank" rel="noopener">{p.reference}</a></td>
               <td>
                 {STATUS[p.status]}
                 {#if p.note}<span class="block text-xs text-base-content/70">"{p.note}"</span>{/if}

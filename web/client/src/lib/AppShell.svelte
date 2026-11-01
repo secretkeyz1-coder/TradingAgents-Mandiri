@@ -6,6 +6,8 @@
   import { PLANS } from '../../../shared/plans';
   import { api } from './api';
   import BillingDialog from './account/BillingDialog.svelte';
+  import BusinessDialog from './account/BusinessDialog.svelte';
+  import CouponsDialog from './account/CouponsDialog.svelte';
   import PaymentsDialog from './account/PaymentsDialog.svelte';
   import ProfileDialog from './account/ProfileDialog.svelte';
   import UsersDialog from './account/UsersDialog.svelte';
@@ -21,9 +23,10 @@
   const framed = $derived(!layout.focus || layoutOf(viewport) === 'narrow');
 
   let menu: HTMLDetailsElement | undefined = $state();
-  let dialog = $state<'profile' | 'billing' | 'users' | 'payments' | null>(null);
+  type Dialog = 'profile' | 'billing' | 'users' | 'payments' | 'coupons' | 'business';
+  let dialog = $state<Dialog | null>(null);
 
-  function open(which: 'profile' | 'billing' | 'users' | 'payments') {
+  function open(which: Dialog) {
     if (menu) menu.open = false;
     dialog = which;
   }
@@ -60,6 +63,8 @@
           {#if !auth.isAdmin}<li><button onclick={() => open('billing')}>Paket & tagihan</button></li>{/if}
           {#if auth.isAdmin}<li><button onclick={() => open('users')}>Pengguna</button></li>{/if}
           {#if auth.isAdmin}<li><button onclick={() => open('payments')}>Pembayaran</button></li>{/if}
+          {#if auth.isAdmin}<li><button onclick={() => open('coupons')}>Kupon</button></li>{/if}
+          {#if auth.isAdmin}<li><button onclick={() => open('business')}>Dashboard bisnis</button></li>{/if}
           {#if auth.enabled}<li><button onclick={() => auth.logout()}>Keluar</button></li>{/if}
         </ul>
       </details>
@@ -94,4 +99,8 @@
   <UsersDialog onclose={() => (dialog = null)} />
 {:else if dialog === 'payments'}
   <PaymentsDialog onclose={() => (dialog = null)} />
+{:else if dialog === 'coupons'}
+  <CouponsDialog onclose={() => (dialog = null)} />
+{:else if dialog === 'business'}
+  <BusinessDialog onclose={() => (dialog = null)} />
 {/if}

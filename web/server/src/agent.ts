@@ -318,7 +318,7 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
       let seq = 0;
       const send = (event: string, data: object) => stream.writeSSE({ id: String(++seq), event, data: JSON.stringify(data) });
 
-      const handle = runCommand("agent", job, async (event) => {
+      const handle = runCommand("agent", job, { userId: c.get("user").id, kind: "agent" }, async (event) => {
         const { type, ...payload } = event;
         switch (type) {
           case "tool_call":

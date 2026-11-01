@@ -130,9 +130,12 @@ export const payments = pgTable(
     plan: text("plan").$type<PlanId>().notNull(),
     period: text("period").$type<Period>().notNull(),
     founding: boolean("founding").notNull().default(false),
-    /** Rupiah to pay: the price plus a unique code, so one bank statement line matches one order. */
+    /** Rupiah to pay: the price less any coupon, plus a unique code, so one bank statement line matches one order. */
     amount: integer("amount").notNull(),
     uniqueCode: integer("unique_code").notNull().default(0),
+    /** The coupon used (coupons.code) and the rupiah it took off the price. */
+    couponCode: text("coupon_code"),
+    discount: integer("discount").notNull().default(0),
     status: text("status").$type<PaymentStatus>().notNull().default("pending"),
     /** What the payer wrote when saying it is paid: bank, sender name. */
     note: text("note"),
@@ -464,6 +467,60 @@ export const marketBriefs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("market_briefs_created_idx").on(t.createdAt)],
+);
+
+export type CouponKind = "percent" | "amount";
+
+/** Discount codes an admin makes (server/src/coupons.ts): a share of the plan price, or rupiah off it. */
+export const coupons = pgTable("coupons", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** What members type, upper case. */
+  code: text("code").notNull().unique(),
+  kind: text("kind").$type<CouponKind>().notNull(),
+  /** Percent off (1–100) or rupiah off. */
+  value: integer("value").notNull(),
+  /** The plans and periods it applies to; empty means all. */
+  plans: jsonb("plans").$type<PlanId[]>().notNull().default([]),
+  periods: jsonb("periods").$type<Period[]>().notNull().default([]),
+  /** Orders that may use it in all; null means no limit. */
+  maxUses: integer("max_uses"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  active: boolean("active").notNull().default(true),
+  note: text("note"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Messages sent once per account and occasion (server/src/reminders.ts); the key names the occasion, e.g. "renew:<plan end>:3". */
+export const notices = pgTable(
+  "notices",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("notices_user_key_idx").on(t.userId, t.key)],
+);
+
+export type UsageKind = "analysis" | "backtest" | "agent" | "translate" | "brief";
+
+/** Model tokens per worker command (server/src/tokens.ts): whose work, what for, which model. */
+export const llmUsage = pgTable(
+  "llm_usage",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    /** Null for the server's own work (the market brief) or an account since deleted. */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    kind: text("kind").$type<UsageKind>().notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("llm_usage_created_idx").on(t.createdAt), index("llm_usage_user_created_idx").on(t.userId, t.createdAt)],
 );
 
 export const analysisEvents = pgTable(

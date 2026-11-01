@@ -136,6 +136,9 @@ export type Payment = {
   founding: boolean;
   amount: number;
   uniqueCode: number;
+  /** The coupon used and the rupiah it took off the price. */
+  couponCode: string | null;
+  discount: number;
   status: PaymentStatus;
   note: string | null;
   adminNote: string | null;
@@ -144,6 +147,8 @@ export type Payment = {
   paidAt: string | null;
   periodStart: string | null;
   periodEnd: string | null;
+  /** The invoice page's signed path (server/src/invoice.ts); it opens without signing in. */
+  invoiceUrl: string;
 };
 export type Billing = {
   /** False until the server has PAYMENT_INSTRUCTIONS. */
@@ -163,6 +168,55 @@ export type AdminOverview = {
   trials: number;
   revenue: { month: number; last30: number };
   orders: { open: number; claimed: number };
+};
+/** What a coupon takes off each plan for one period, or why it does not apply (server/src/billing.ts). */
+export type CouponQuote = { code: string; plans: Partial<Record<'pro' | 'creator', { discount: number; total: number } | { error: string }>> };
+/** A discount code, with how often it was used (server/src/coupons.ts). */
+export type Coupon = {
+  id: string;
+  code: string;
+  kind: 'percent' | 'amount';
+  value: number;
+  plans: PlanId[];
+  periods: ('month' | 'year')[];
+  maxUses: number | null;
+  expiresAt: string | null;
+  active: boolean;
+  note: string | null;
+  createdAt: string;
+  paid: number;
+  open: number;
+  discountGiven: number;
+};
+export type NewCoupon = {
+  code: string;
+  kind: Coupon['kind'];
+  value: number;
+  plans: ('pro' | 'creator')[];
+  periods: ('month' | 'year')[];
+  maxUses: number | null;
+  /** "2026-12-31": the code works through the end of that day, WIB. */
+  lastDay: string | null;
+  note: string | null;
+};
+type Tokens = { input: number; output: number; cost: number | null };
+/** The admin's business dashboard (server/src/business.ts); rupiah without unique codes. */
+export type BusinessReport = {
+  subscribers: { paid: Record<'pro' | 'creator', Record<'month' | 'year', number>>; trials: number; granted: number };
+  mrr: number;
+  revenue: { month: string; amount: number; orders: number }[];
+  conversion: { trials: number; converted: number };
+  renewals: { week: number; month: number; soon: { username: string; plan: PlanId; until: string }[] };
+  lapsed: number;
+  coupons: { code: string; uses: number; discount: number }[];
+  tokens: {
+    total: Tokens;
+    days: { day: string; input: number; output: number }[];
+    kinds: (Tokens & { kind: string })[];
+    models: (Tokens & { model: string })[];
+    users: (Tokens & { username: string; plan: PlanId })[];
+    priced: boolean;
+  };
 };
 
 /** A user's own indicator script (web/shared/script.ts). */
@@ -461,8 +515,13 @@ export const api = {
   changePassword: (current: string | undefined, next: string) =>
     request<{ ok: true }>('/me/password', { method: 'POST', body: JSON.stringify({ current, next }) }),
   billing: () => request<Billing>('/billing'),
-  order: (body: { plan: 'pro' | 'creator'; period: 'month' | 'year'; founding?: boolean }) =>
+  order: (body: { plan: 'pro' | 'creator'; period: 'month' | 'year'; founding?: boolean; coupon?: string }) =>
     request<Payment>('/billing/orders', { method: 'POST', body: JSON.stringify(body) }),
+  couponQuote: (code: string, period: 'month' | 'year') => request<CouponQuote>(`/billing/coupon?code=${encodeURIComponent(code)}&period=${period}`),
+  adminCoupons: () => request<Coupon[]>('/admin/coupons'),
+  createCoupon: (body: NewCoupon) => request<Coupon>('/admin/coupons', { method: 'POST', body: JSON.stringify(body) }),
+  setCouponActive: (id: string, active: boolean) => request<Coupon>(`/admin/coupons/${id}`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  adminBusiness: () => request<BusinessReport>('/admin/business'),
   claimOrder: (id: string, note: string) => request<Payment>(`/billing/orders/${id}/claim`, { method: 'POST', body: JSON.stringify({ note }) }),
   cancelOrder: (id: string) => request<Payment>(`/billing/orders/${id}/cancel`, { method: 'POST' }),
   adminPayments: (status: 'open' | 'paid' | 'all') => request<AdminPayment[]>(`/admin/payments?status=${status}`),

@@ -182,7 +182,7 @@ async function writeBrief() {
     const { provider, quickModel, deepModel, backendUrl } = (await getCatalog()).defaults;
     let content: unknown = null;
     let error = "";
-    const handle = runCommand("brief", { provider, quickModel, deepModel, backendUrl, data }, async (e) => {
+    const handle = runCommand("brief", { provider, quickModel, deepModel, backendUrl, data }, { userId: null, kind: "brief" }, async (e) => {
       if (e.type === "brief") content = e.content;
       else if (e.type === "error") error = String(e.message);
     });

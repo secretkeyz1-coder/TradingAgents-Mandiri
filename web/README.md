@@ -232,8 +232,13 @@ API: `GET /api/session`, `GET /api/auth/config`, `POST /api/login`, `POST /api/l
 - Paket berlaku sampai tanggalnya, lalu akun kembali ke Gratis; notifikasi dan simbol watchlist di atas batas Gratis dijeda (yang terlama tetap jalan).
 - Pembayaran manual: anggota memesan di menu akun → **Paket & tagihan**. Jumlahnya harga ditambah kode unik 3 digit supaya mudah dicocokkan dengan mutasi rekening; rekening atau QRIS-nya dari `PAYMENT_INSTRUCTIONS`, dan pesanan kedaluwarsa setelah 3 hari. Setelah anggota menekan "Saya sudah bayar", admin mendapat Telegram dan email, lalu mengonfirmasi atau menolak di menu akun → **Pembayaran** (berisi ringkasan anggota, paket aktif, trial, dan pendapatan). Konfirmasi memperpanjang paket dari tanggal berakhirnya bila paketnya sama, atau mulai hari itu.
 - Paket yang diatur admin di menu Pengguna tercatat sebagai pemberian (Rp0) di riwayat pembayaran.
+- Kupon: admin membuat kode di menu akun → **Kupon**, berupa potongan persen atau rupiah, untuk paket dan periode tertentu atau semua, dengan kuota dan hari terakhir bila perlu. Anggota mengetiknya di **Paket & tagihan**. Satu akun memakai satu kode sekali, harga founding tidak bisa digabung dengan kupon, dan kupon 100% langsung mengaktifkan paket. Kupon dimatikan, tidak dihapus, supaya riwayat pesanannya tetap utuh.
+- Tagihan: setiap pesanan punya halaman tagihan, yang menjadi bukti pembayaran setelah lunas (`/invoice/:id`). Halaman itu dibuka dari tautan bertanda tangan di email pesanan dan bukti bayar, serta dari dialog Paket & tagihan; tidak perlu masuk, dan bisa dicetak atau disimpan sebagai PDF. Tautan di email butuh `PUBLIC_URL`.
+- Pengingat otomatis lewat email, dan Telegram bila akunnya menautkan Telegram: 7, 3, dan 1 hari sebelum paket berbayar berakhir, sehari sebelum masa coba habis, setelah paket atau masa coba berakhir, dan sehari sebelum pesanan yang belum dibayar kedaluwarsa. Tiap pengingat terkirim sekali per akun dan kejadian (tabel `notices`), dicek tiap jam.
+- Dashboard bisnis (menu akun → **Dashboard bisnis**): pendapatan bulanan berulang dari pelanggan berbayar, pendapatan per bulan selama 12 bulan, konversi trial ke berbayar, paket yang perlu diperpanjang dan yang tidak diperpanjang, pemakaian kupon, serta token model AI 30 hari terakhir per jenis pekerjaan, model, dan akun. Semua rupiah di sini tanpa kode unik.
+- Meteran token: setiap perintah worker yang memanggil model (analisa, backtest, agent chart, terjemahan Pine, ringkasan pasar) melaporkan token per model saat selesai, lewat callback pemakaian LangChain. Server menyimpannya per akun di tabel `llm_usage`, dan `LLM_COST_IDR_PER_MTOK` mengubahnya menjadi perkiraan biaya.
 
-API: `GET /api/billing`, `POST /api/billing/orders`, `POST /api/billing/orders/:id/claim`, `POST /api/billing/orders/:id/cancel`; admin: `GET /api/admin/payments?status=open|paid|all`, `POST /api/admin/payments/:id/confirm`, `POST /api/admin/payments/:id/reject`, `GET /api/admin/overview`.
+API: `GET /api/billing`, `GET /api/billing/coupon?code=&period=`, `POST /api/billing/orders` (dengan `coupon` opsional), `POST /api/billing/orders/:id/claim`, `POST /api/billing/orders/:id/cancel`; admin: `GET /api/admin/payments?status=open|paid|all`, `POST /api/admin/payments/:id/confirm`, `POST /api/admin/payments/:id/reject`, `GET /api/admin/overview`, `GET`/`POST /api/admin/coupons`, `PATCH /api/admin/coupons/:id`, `GET /api/admin/business`; tanpa masuk: `GET /invoice/:id?t=` (tautan bertanda tangan).
 
 ### Situs publik
 
@@ -300,7 +305,9 @@ Semua opsional, lewat environment variable:
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | kosong | Masuk dan daftar dengan Google (OAuth client tipe Web) |
 | `PAYMENT_INSTRUCTIONS` | kosong | Rekening atau QRIS untuk pembayaran manual (`
 ` untuk baris baru); kosong = pemesanan paket belum dibuka |
-| `SESSION_SECRET` | dari `APP_PASSWORD` | Kunci tanda tangan cookie sesi; menggantinya mengeluarkan semua orang |
+| `REMINDERS` | `on` | `off` menghentikan pengingat perpanjangan paket dan tagihan |
+| `LLM_COST_IDR_PER_MTOK` | kosong | Harga token model dalam rupiah per sejuta token, `masuk,keluar` (mis. `15000,60000`), untuk perkiraan biaya di dashboard bisnis |
+| `SESSION_SECRET` | dari `APP_PASSWORD` | Kunci tanda tangan cookie sesi dan tautan tagihan; menggantinya mengeluarkan semua orang dan membatalkan tautan tagihan lama |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |
 

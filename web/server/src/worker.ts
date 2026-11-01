@@ -1,5 +1,6 @@
 import { config } from "./config";
 import type { AnalysisRequest, BacktestRequest, JobKind } from "./db/schema";
+import { recordTokens, type Meter } from "./tokens";
 
 /** One line of the Python worker's protocol (see web/worker/ta_worker.py). */
 export type WorkerEvent = { type: string } & Record<string, unknown>;
@@ -53,15 +54,21 @@ async function* readLines(stream: ReadableStream<Uint8Array>): AsyncGenerator<st
 export function runJob(
   kind: JobKind,
   request: AnalysisRequest | BacktestRequest,
+  meter: Meter,
   onEvent: (event: WorkerEvent) => Promise<void>,
 ): WorkerHandle {
-  return runCommand(kind === "backtest" ? "backtest" : "run", request, onEvent);
+  return runCommand(kind === "backtest" ? "backtest" : "run", request, meter, onEvent);
 }
 
-/** Run any worker command with one JSON payload on stdin, handling its events in order. */
+/**
+ * Run any worker command with one JSON payload on stdin, handling its events in
+ * order. `meter` says whose work it is: the model tokens the worker reports at
+ * the end are kept for it (tokens.ts); null for commands that call no model.
+ */
 export function runCommand(
   command: Exclude<WorkerCommand, "catalog">,
   payload: unknown,
+  meter: Meter | null,
   onEvent: (event: WorkerEvent) => Promise<void>,
 ): WorkerHandle {
   const proc = spawnWorker(command);
@@ -76,6 +83,10 @@ export function runCommand(
         event = JSON.parse(line);
       } catch {
         continue; // not protocol; the worker keeps stdout clean, so this is noise
+      }
+      if (event.type === "usage") {
+        if (meter) await recordTokens(meter, event.models).catch((err) => console.error("token meter:", err));
+        continue;
       }
       await onEvent(event);
     }
