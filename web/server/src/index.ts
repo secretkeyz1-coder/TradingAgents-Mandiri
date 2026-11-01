@@ -80,8 +80,9 @@ app.onError((err, c) => {
 // PUBLIC_SITE=on (until then the root opens the app, as it always did).
 if (existsSync(config.clientDist)) {
   const dist = config.clientDist;
-  const page = (name: string) => serveStatic({ path: `${dist}/${name}/index.html` });
-  app.get("/", process.env.PUBLIC_SITE === "on" ? serveStatic({ path: `${dist}/index.html` }) : (c) => c.redirect("/app"));
+  // The file is joined onto `root` (default "./"), so it stays relative: an absolute path would land under the working directory on Linux.
+  const page = (name: string) => serveStatic({ root: dist, path: `${name}/index.html` });
+  app.get("/", process.env.PUBLIC_SITE === "on" ? serveStatic({ root: dist, path: "index.html" }) : (c) => c.redirect("/app"));
   app.get("/app", page("app"));
   app.get("/app/", page("app"));
   for (const name of ["harga", "syarat", "privasi", "disclaimer", "status"]) app.get(`/${name}`, page(name));
