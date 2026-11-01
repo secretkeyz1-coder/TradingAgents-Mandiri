@@ -175,10 +175,10 @@ async function notifyWhenDone(userId: string, ids: string[], skipped: string[], 
 
 /** Queue one analysis per symbol on this user's watchlist, as many as today's caps allow. */
 async function startRun(user: User, runId?: string): Promise<{ ids: string[]; skipped: string[] } | { error: string }> {
-  if (needsVerification(user)) return { error: "Verifikasi email kamu dulu untuk menjalankan analisa watchlist" };
+  if (needsVerification(user)) return { error: "Verifikasi email kamu dulu untuk menjalankan analisa harian" };
   // As many symbols as the plan holds, oldest first: a lapsed plan pauses the rest.
   const items = (await db.select().from(watchlist).where(eq(watchlist.userId, user.id)).orderBy(asc(watchlist.createdAt))).slice(0, limitsOf(user).watchlist);
-  if (!items.length) return { error: "Watchlist kosong" };
+  if (!items.length) return { error: "Belum ada simbol untuk analisa harian" };
   const catalog = await getCatalog();
   const { provider, quickModel, deepModel } = catalog.defaults;
   const known = new Set(catalog.analysts.map((a) => a.value));
@@ -207,7 +207,7 @@ async function startRun(user: User, runId?: string): Promise<{ ids: string[]; sk
     ids.push(row!.id);
   }
   if (runId) await db.update(watchRuns).set({ analysisIds: ids, skipped }).where(eq(watchRuns.id, runId));
-  const title = `Watchlist ${new Date().toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric" })}`;
+  const title = `Analisa harian ${new Date().toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "numeric", month: "short", year: "numeric" })}`;
   // Subscribe before the queue can start them, so no ending is missed.
   await notifyWhenDone(user.id, ids, skipped, title, runId);
   for (const id of ids) enqueue(id);
@@ -277,7 +277,7 @@ watchApi.post("/watchlist", async (c) => {
   const user = c.get("user");
   const max = limitsOf(user).watchlist;
   if ((await db.$count(watchlist, eq(watchlist.userId, user.id))) >= max) {
-    return c.json({ error: capMessage(user, max, "simbol di watchlist") }, 400);
+    return c.json({ error: capMessage(user, max, "simbol untuk analisa harian") }, 400);
   }
   await db
     .insert(watchlist)
@@ -304,6 +304,6 @@ watchApi.post("/watchlist/run", async (c) => {
 
 watchApi.post("/watchlist/test", async (c) => {
   const user = c.get("user");
-  const sent = await sendTelegram(user.telegramChatId, `<b>✅ TradingAgents</b>\nNotifikasi watchlist untuk ${escape(user.username)} tersambung ke chat ini.`);
+  const sent = await sendTelegram(user.telegramChatId, `<b>✅ TradingAgents</b>\nNotifikasi analisa harian untuk ${escape(user.username)} tersambung ke chat ini.`);
   return sent.ok ? c.json({ ok: true }) : c.json({ error: sent.error }, 400);
 });

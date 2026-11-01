@@ -74,7 +74,7 @@ export async function sendReminders(now = new Date()): Promise<void> {
         trial ? `Masa coba ${plan} sudah berakhir` : `Paket ${plan} sudah berakhir`,
         [
           `Halo ${u.username},`,
-          `${trial ? `Masa coba ${plan}` : `Paket ${plan}`} kamu berakhir ${day(end)}, jadi akunmu sekarang di paket Gratis. Skrip, watchlist, dan riwayatmu tetap tersimpan.`,
+          `${trial ? `Masa coba ${plan}` : `Paket ${plan}`} kamu berakhir ${day(end)}, jadi akunmu sekarang di paket Gratis. Skrip, daftar analisa harian, dan riwayatmu tetap tersimpan.`,
           "Berlangganan lagi kapan saja dari menu akun → Paket & tagihan.",
         ],
         billingButton(),
