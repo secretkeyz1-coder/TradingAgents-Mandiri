@@ -230,10 +230,10 @@ BINANCE_PERPETUALS = {"GC=F": "XAUUSDT"}
 
 def metals_open(ms: int) -> bool:
     """Whether spot gold trades at this bar's start: Sunday 18:00 to Friday 17:00 New York, less the 17:00 break."""
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
     from zoneinfo import ZoneInfo
 
-    ny = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).astimezone(ZoneInfo("America/New_York"))
+    ny = datetime.fromtimestamp(ms / 1000, tz=UTC).astimezone(ZoneInfo("America/New_York"))
     day, hour = ny.weekday(), ny.hour  # Monday = 0
     if hour == 17 or day == 5:
         return False
@@ -382,7 +382,7 @@ def scalper_signal(
     fast, slow = ema(c, int(ema_fast)), ema(c, int(ema_slow))
     gain = rma([0.0] + [max(c[i] - c[i - 1], 0.0) for i in range(1, n)], int(rsi_period))
     drop = rma([0.0] + [max(c[i - 1] - c[i], 0.0) for i in range(1, n)], int(rsi_period))
-    rsi = [100.0 if d == 0 else 100 - 100 / (1 + g / d) for g, d in zip(gain, drop)]
+    rsi = [100.0 if d == 0 else 100 - 100 / (1 + g / d) for g, d in zip(gain, drop, strict=True)]
     L = max(2, int(pivot_len))
 
     def bull(i: int) -> bool:

@@ -32,7 +32,8 @@ def fib(bars: list[dict], s: dict | None = None) -> dict | None:
         return None
     o = [b["open"] for b in bars]
     h = [b["high"] for b in bars]
-    l = [b["low"] for b in bars]
+    # o, h, l, c as fib.ts names them, so the two engines read alike line by line.
+    l = [b["low"] for b in bars]  # noqa: E741
     c = [b["close"] for b in bars]
     atr: list[float] = []
     for i in range(n):

@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import pandas as pd
-
 import chart_agent as ca
+import pandas as pd
 
 
 def run(job: dict, emit: Callable[..., None]) -> int:

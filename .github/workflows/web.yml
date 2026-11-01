@@ -1,0 +1,113 @@
+name: Web
+
+# The web app (web/): the client type-checked and built, the server type-checked, the
+# worker linted with the repository's ruff rules, and both test suites: the server's
+# against a fresh Postgres of the version production runs, and the indicator parity
+# test (the chart's TypeScript engines against the notifications' Python ones).
+
+on:
+  push:
+    branches: [main, feat/web-app]
+    # The worker imports the engine (the model catalog, analyses) and cli.display.
+    paths: ["web/**", "tradingagents/**", "cli/**", "pyproject.toml", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["web/**", "tradingagents/**", "cli/**", "pyproject.toml", ".github/workflows/web.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Bun the suites were last run with; the image (web/Dockerfile) takes the newest 1.x.
+  BUN_VERSION: "1.4.x"
+
+jobs:
+  check:
+    name: type-check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Type-check the client
+        working-directory: web/client
+        run: bun run check
+      - name: Type-check the server
+        working-directory: web/server
+        run: bunx tsc --noEmit
+      - name: Build the client
+        run: bun run build
+
+  lint:
+    name: ruff (web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install ruff
+        run: pip install "ruff>=0.16"
+      - name: Lint the worker and the parity runner
+        run: ruff check web
+
+  test:
+    name: tests (server, indicator parity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        # The version web/deploy/compose.yml runs.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tradingagents
+          POSTGRES_PASSWORD: tradingagents
+          POSTGRES_DB: tradingagents
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tradingagents"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # test/setup.ts drops and recreates this database on every run.
+      TEST_DATABASE_URL: postgres://tradingagents:tradingagents@localhost:5432/tradingagents_test
+      PYTHON_BIN: python
+      PYTHON: python
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          # The version the image runs (web/Dockerfile).
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the engine
+        # The server reads the model catalog through the worker, which imports the engine;
+        # the parity test needs only pandas, which comes with it.
+        run: pip install .
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install
+        working-directory: web
+        run: bun install --frozen-lockfile
+      - name: Server tests
+        working-directory: web/server
+        run: bun run test
+      - name: Indicator parity
+        working-directory: web/client
+        run: bun run test

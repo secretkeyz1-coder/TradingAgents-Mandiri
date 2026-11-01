@@ -47,6 +47,7 @@ THE PINE SCRIPT
 
 def translate_pine(llm, pine: str, reference: str, example: str, language: str) -> str:
     from langchain_core.messages import HumanMessage
+
     from cli.display import extract_content_string
 
     reply = llm.invoke([HumanMessage(content=_prompt(pine, reference, example, language))])

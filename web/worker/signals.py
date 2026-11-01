@@ -14,9 +14,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
-import pandas as pd
-
 import chart_agent as ca
+import pandas as pd
 from pob import pob
 
 # Bars a scalper signal is followed before it counts as expired, as PoB does.
