@@ -120,6 +120,27 @@
       "when": 1793503656427,
       "tag": "0016_coupons_notices_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793507589140,
+      "tag": "0017_two_factor",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793508063853,
+      "tag": "0018_status_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793508271519,
+      "tag": "0019_creator_pages",
+      "breakpoints": true
     }
   ]
 }

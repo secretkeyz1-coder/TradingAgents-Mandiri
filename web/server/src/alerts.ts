@@ -14,8 +14,9 @@ import { z } from "zod";
 import type { AppEnv } from "./auth";
 import { db } from "./db";
 import { signalAlerts, signalEvents, userScripts, users, type SignalIndicator, type SignalStatus } from "./db/schema";
+import { openCreatorSignals, recordCreatorSignal, scoreCreatorSignal } from "./creators";
 import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./ledger";
-import { capMessage, limitsOf } from "./plans";
+import { capMessage, limitsOf, planOf } from "./plans";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
 import { toScriptBars } from "../../shared/script";
 import { binancePair, binancePerpetual } from "./binance";
@@ -127,9 +128,14 @@ function closeMessage(
 let running = false;
 
 /** One scan. `only` limits it to some alerts (a new one's silent first scan). */
+/** When the last full scan finished and whether it threw, for the status page (status.ts). */
+let lastScan: { at: number; ok: boolean } | null = null;
+export const scanHealth = () => lastScan;
+
 async function scan(only?: string[], withHourly = true) {
   if (running) return;
   running = true;
+  let failed = false;
   try {
     const rows = await db
       .select({ alert: signalAlerts, chat: users.telegramChatId, owner: { role: users.role, plan: users.plan, planUntil: users.planUntil } })
@@ -222,6 +228,7 @@ async function scan(only?: string[], withHourly = true) {
             outcome: s.outcome,
             exit_time: s.exitIndex == null ? null : run.bars[s.exitIndex].time,
             bars_ago: last - s.index,
+            r: s.r,
           })),
         );
       } catch (e) {
@@ -229,8 +236,11 @@ async function scan(only?: string[], withHourly = true) {
       }
     }
 
-    for (const { alert, chat } of wanted) {
+    for (const { alert, chat, owner } of wanted) {
       const scriptName = scriptNames.get(alert.indicator);
+      // A Creator's published alert also feeds their public record (creators.ts).
+      const publicRecord = alert.public && planOf(owner) === "creator";
+      const strategy = scriptName ? `Skrip ${scriptName}` : (NAMES[alert.indicator] ?? alert.indicator);
       const signals = found.get(resultKey(alert.symbol, alert.timeframe, alert.venue, alert.indicator));
       if (!signals) continue; // this pair failed; try again next slot
       const known = new Map(
@@ -259,6 +269,8 @@ async function scan(only?: string[], withHourly = true) {
             .onConflictDoNothing()
             .returning();
           if (!row || !fresh) continue;
+          // On the record the moment it fires, whether or not the Telegram message gets through.
+          if (publicRecord) await recordCreatorSignal(alert, row, s, strategy).catch((err) => console.error(`creator record ${alert.id}:`, err));
           const sent = await sendTelegram(chat, openMessage(alert, s, scriptName));
           if (!sent.ok) {
             console.error(`signal alert ${alert.id}: ${sent.error}`);
@@ -271,6 +283,8 @@ async function scan(only?: string[], withHourly = true) {
           }
         } else if (seen.status === "open" && s.outcome !== "open") {
           await db.update(signalEvents).set({ status: s.outcome, exitTime: s.exit_time }).where(eq(signalEvents.id, seen.id));
+          // Scored on the public record too, if it went there when it fired (even if the alert is private now).
+          await scoreCreatorSignal(seen.id, s).catch((err) => console.error(`creator score ${alert.id}:`, err));
           if (seen.notifiedAt && !seen.closeNotifiedAt && (await sendTelegram(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, seen.id));
           }
@@ -281,8 +295,13 @@ async function scan(only?: string[], withHourly = true) {
     if (ledger.length) await recordLedger(found).catch((err) => console.error("signal ledger", err));
     // Daily strategies from the lab: their bars close once a day, so the hourly slots are enough.
     if (ledger.length && withHourly) await recordLedger(await ledgerScriptSignals()).catch((err) => console.error("signal ledger scripts", err));
+  } catch (err) {
+    failed = true;
+    throw err;
   } finally {
     running = false;
+    // A new alert's own first scan (only) is not the scheduled one.
+    if (!only) lastScan = { at: Date.now(), ok: !failed };
   }
 }
 
@@ -315,6 +334,7 @@ alertsApi.get("/alerts", async (c) => {
         timeframe: a.timeframe,
         venue: a.venue,
         primed: a.primed,
+        public: a.public,
         last: last ? { signalTime: last.signalTime, label: last.label, status: last.status } : null,
       };
     }),
@@ -367,7 +387,13 @@ alertsApi.post("/alerts", async (c) => {
 alertsApi.delete("/alerts/:id", async (c) => {
   const id = c.req.param("id");
   if (!z.uuid().safeParse(id).success) return c.json({ error: "Not found" }, 404);
-  await db.delete(signalAlerts).where(and(eq(signalAlerts.id, id), eq(signalAlerts.userId, c.get("user").id)));
+  const [mine] = await db.select({ id: signalAlerts.id }).from(signalAlerts).where(and(eq(signalAlerts.id, id), eq(signalAlerts.userId, c.get("user").id)));
+  if (!mine) return c.json({ ok: true });
+  // Its scan scores the public record's open signals: deleting it now would leave them open forever.
+  if (await openCreatorSignals(id)) {
+    return c.json({ error: "Alert ini punya sinyal yang masih berjalan di halaman publikmu. Jadikan privat dulu; alert bisa dihapus setelah sinyalnya selesai." }, 409);
+  }
+  await db.delete(signalAlerts).where(eq(signalAlerts.id, id));
   return c.json({ ok: true });
 });
 

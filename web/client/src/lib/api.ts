@@ -104,6 +104,12 @@ export type Account = {
   google: boolean;
   /** False for an account that only signs in with Google. */
   hasPassword: boolean;
+  /** Two-step sign-in with an authenticator app is on. */
+  twoFactor: boolean;
+  /** The public track record at /c/<username> (Creator): on or off, and the name and bio above it. */
+  publicProfile: boolean;
+  displayName: string | null;
+  bio: string | null;
   /** The plan in force (shared/plans.ts), its end (null = none) and what it allows. */
   plan: PlanId;
   planUntil: string | null;
@@ -240,6 +246,8 @@ export type SignalAlert = {
   /** The crypto venue whose bars it watches; "" = the default source (Binance, or Yahoo). */
   venue: string;
   primed: boolean;
+  /** Its live signals go on the owner's public track record (Creator). */
+  public: boolean;
   last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced' } | null;
 };
 export type SignalAlerts = {
@@ -514,6 +522,11 @@ export const api = {
   /** `current` is left out when the account has no password yet (Google only). */
   changePassword: (current: string | undefined, next: string) =>
     request<{ ok: true }>('/me/password', { method: 'POST', body: JSON.stringify({ current, next }) }),
+  /** Two-step sign-in (server/src/totp.ts): a pending secret, then the first code turns it on. */
+  twoFactorSetup: () => request<{ secret: string; uri: string }>('/me/2fa/setup', { method: 'POST' }),
+  twoFactorEnable: (code: string) => request<{ user: Account; recoveryCodes: string[] }>('/me/2fa/enable', { method: 'POST', body: JSON.stringify({ code }) }),
+  twoFactorDisable: (code: string) => request<{ user: Account }>('/me/2fa/disable', { method: 'POST', body: JSON.stringify({ code }) }),
+  twoFactorRecovery: (code: string) => request<{ recoveryCodes: string[] }>('/me/2fa/recovery', { method: 'POST', body: JSON.stringify({ code }) }),
   billing: () => request<Billing>('/billing'),
   order: (body: { plan: 'pro' | 'creator'; period: 'month' | 'year'; founding?: boolean; coupon?: string }) =>
     request<Payment>('/billing/orders', { method: 'POST', body: JSON.stringify(body) }),
@@ -538,6 +551,8 @@ export const api = {
       /** Last day of the plan, YYYY-MM-DD; null = no end. */
       planUntil?: string | null;
       emailVerified?: true;
+      /** Turns two-step sign-in off, for someone who lost their phone and recovery codes. */
+      twoFactor?: false;
     },
   ) => request<Account>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   get: (id: string) => request<Analysis>(`/analyses/${id}`),
@@ -596,6 +611,11 @@ export const api = {
     request<{ ok: true; id: string | null }>('/alerts', { method: 'POST', body: JSON.stringify(body) }),
   removeAlert: (id: string) => request<{ ok: true }>(`/alerts/${id}`, { method: 'DELETE' }),
   testAlert: () => request<{ ok: true }>('/alerts/test', { method: 'POST' }),
+  /** Put an alert's signals on the public track record from now on, or stop; what is recorded stays. */
+  setAlertPublic: (id: string, on: boolean) => request<{ id: string; public: boolean }>(`/alerts/${id}/public`, { method: 'PATCH', body: JSON.stringify({ public: on }) }),
+  /** The public track record's settings; turning it on needs the Creator plan. */
+  updateProfile: (patch: { publicProfile?: boolean; displayName?: string | null; bio?: string | null }) =>
+    request<Account>('/me/profile', { method: 'PATCH', body: JSON.stringify(patch) }),
   /** Add one of the app's own skills as a draft for this user to approve. */
   installSkill: (name: string) => request<{ id: string; version: number }>(`/agent/skills/builtin/${encodeURIComponent(name)}`, { method: 'POST' }),
   deleteSkill: (name: string) => request<{ ok: true }>(`/agent/skills/by-name/${encodeURIComponent(name)}`, { method: 'DELETE' }),

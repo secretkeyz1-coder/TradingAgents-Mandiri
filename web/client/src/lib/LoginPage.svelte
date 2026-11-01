@@ -1,12 +1,13 @@
 <script lang="ts">
-  // Sign in, sign up, forgotten and new password, on one card. Field names and
-  // autocomplete hints let a password manager fill them in. Sign-up and Google
-  // show only when the server offers them (SIGNUP=open, GOOGLE_CLIENT_ID).
+  // Sign in, sign up, forgotten and new password, and the code step of two-step
+  // sign-in, on one card. Field names and autocomplete hints let a password
+  // manager fill them in. Sign-up and Google show only when the server offers
+  // them (SIGNUP=open, GOOGLE_CLIENT_ID).
   import { BRAND } from '../../../shared/brand';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
 
-  type Mode = 'login' | 'signup' | 'forgot' | 'reset';
+  type Mode = 'login' | 'signup' | 'forgot' | 'reset' | '2fa';
   let { mode: initial = 'login', token = '' }: { mode?: Mode; token?: string } = $props();
 
   // svelte-ignore state_referenced_locally
@@ -16,18 +17,22 @@
   let phone = $state('');
   let password = $state('');
   let repeat = $state('');
+  let code = $state('');
+  /** Typing a recovery code (letters and digits) instead of the app's six digits. */
+  let recovery = $state(false);
   let accept = $state(false);
   let error = $state(auth.error);
   let sent = $state(false);
   let busy = $state(false);
 
-  const TITLE: Record<Mode, string> = { login: 'Masuk', signup: 'Daftar gratis', forgot: 'Lupa kata sandi', reset: 'Buat kata sandi baru' };
+  const TITLE: Record<Mode, string> = { login: 'Masuk', signup: 'Daftar gratis', forgot: 'Lupa kata sandi', reset: 'Buat kata sandi baru', '2fa': 'Kode verifikasi' };
 
   function go(next: Mode) {
     mode = next;
     error = '';
     sent = false;
-    password = repeat = '';
+    password = repeat = code = '';
+    if (next !== '2fa') auth.challenge = null;
   }
 
   async function submit(event: SubmitEvent) {
@@ -39,18 +44,26 @@
       return;
     }
     busy = true;
-    if (mode === 'login') error = await auth.login(login.trim(), password);
-    else if (mode === 'signup') error = await auth.signup({ email: email.trim(), password, phone: phone.trim(), acceptTerms: accept });
+    if (mode === 'login') {
+      error = await auth.login(login.trim(), password);
+      if (!error && auth.challenge) go('2fa');
+    } else if (mode === 'signup') error = await auth.signup({ email: email.trim(), password, phone: phone.trim(), acceptTerms: accept });
     else if (mode === 'forgot') {
       error = await auth.forgot(email.trim());
       sent = !error;
-    } else {
+    } else if (mode === 'reset') {
       error = await auth.reset(token, password);
-      // Signed in by the reset: open the app from a clean address.
+      // Signed in by the reset, or one code away from it.
+      if (!error && auth.challenge) go('2fa');
+      else if (!error) location.href = '/app';
+    } else {
+      error = await auth.verify(code.trim());
+      // Signed in: open the app from a clean address. An expired ticket starts over at the password.
       if (!error) location.href = '/app';
+      else if (!auth.challenge) mode = 'login';
     }
     busy = false;
-    if (error && mode !== 'forgot') password = repeat = '';
+    if (error && mode !== 'forgot') password = repeat = code = '';
   }
 </script>
 
@@ -69,6 +82,12 @@
         <p class="text-sm text-base-content/70">Gratis selamanya untuk dicoba. Paket Pro aktif {auth.config.trialDays} hari setelah emailmu terverifikasi.</p>
       {:else if mode === 'forgot'}
         <p class="text-sm text-base-content/70">Masukkan email akunmu. Kami kirim tautan untuk membuat kata sandi baru.</p>
+      {:else if mode === '2fa'}
+        <p class="text-sm text-base-content/70">
+          {recovery
+            ? 'Ketik salah satu kode pemulihan yang kamu simpan saat mengaktifkan verifikasi dua langkah. Tiap kode hanya berlaku sekali.'
+            : `Buka aplikasi authenticator di ponselmu dan ketik kode 6 digit untuk ${BRAND.name}.`}
+        </p>
       {:else}
         <p class="text-sm text-base-content/70">Semua browser lain yang masuk dengan akun ini akan dikeluarkan.</p>
       {/if}
@@ -122,9 +141,28 @@
             <!-- svelte-ignore a11y_autofocus -->
             <input class="input w-full" type="email" name="email" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus bind:value={email} />
           </fieldset>
+        {:else if mode === '2fa'}
+          <fieldset class="fieldset py-0">
+            <legend class="fieldset-legend pt-0">{recovery ? 'Kode pemulihan' : 'Kode dari aplikasi'}</legend>
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              class="input w-full font-mono tracking-widest"
+              name="code"
+              autocomplete="one-time-code"
+              inputmode={recovery ? 'text' : 'numeric'}
+              autocapitalize="none"
+              spellcheck="false"
+              placeholder={recovery ? 'xxxx-xxxx' : '123456'}
+              minlength="6"
+              maxlength="20"
+              required
+              autofocus
+              bind:value={code}
+            />
+          </fieldset>
         {/if}
 
-        {#if mode !== 'forgot'}
+        {#if mode !== 'forgot' && mode !== '2fa'}
           <fieldset class="fieldset py-0">
             <legend class="fieldset-legend pt-0">{mode === 'reset' ? 'Kata sandi baru' : 'Kata sandi'}</legend>
             <input
@@ -167,7 +205,15 @@
         {/if}
 
         <button class="btn btn-primary w-full" type="submit" disabled={busy}>
-          {#if busy}<span class="loading loading-spinner loading-sm" aria-hidden="true"></span>Memproses…{:else}{mode === 'login' ? 'Masuk' : mode === 'signup' ? 'Daftar' : mode === 'forgot' ? 'Kirim tautan' : 'Simpan kata sandi'}{/if}
+          {#if busy}<span class="loading loading-spinner loading-sm" aria-hidden="true"></span>Memproses…{:else}{mode === 'login'
+              ? 'Masuk'
+              : mode === 'signup'
+                ? 'Daftar'
+                : mode === 'forgot'
+                  ? 'Kirim tautan'
+                  : mode === '2fa'
+                    ? 'Verifikasi'
+                    : 'Simpan kata sandi'}{/if}
         </button>
       </form>
 
@@ -177,6 +223,11 @@
           {#if auth.config.signup}<p>Belum punya akun? <button class="link" onclick={() => go('signup')}>Daftar gratis</button></p>{/if}
         {:else if mode === 'signup' || mode === 'forgot'}
           <p>Sudah punya akun? <button class="link" onclick={() => go('login')}>Masuk</button></p>
+        {:else if mode === '2fa'}
+          <button class="link link-hover self-start" onclick={() => ((recovery = !recovery), (code = ''), (error = ''))}>
+            {recovery ? 'Pakai kode dari aplikasi' : 'Kehilangan ponsel? Pakai kode pemulihan'}
+          </button>
+          <button class="link link-hover self-start" onclick={() => go('login')}>Kembali ke Masuk</button>
         {:else}
           <a class="link link-hover self-start" href="/app">Batal</a>
         {/if}

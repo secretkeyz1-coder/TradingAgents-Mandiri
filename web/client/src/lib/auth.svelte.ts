@@ -34,6 +34,11 @@ class Auth {
   config = $state<AuthConfig>({ signup: false, google: false, mail: false, trialDays: 7 });
   /** A message from the link that opened the page, shown once. */
   notice = $state<Notice | null>(null);
+  /**
+   * The ticket the server hands over when the password (or Google, or a reset link)
+   * was right but the account has two-step sign-in: the code step still has to pass.
+   */
+  challenge = $state<string | null>(null);
 
   /** Takes ?notice=… out of the address, so a reload does not show it again. */
   takeNotice() {
@@ -74,22 +79,31 @@ class Auth {
     }
   }
 
-  async #post(path: string, body: unknown): Promise<{ ok: boolean; body: Record<string, unknown> }> {
+  async #post(path: string, body: unknown): Promise<{ ok: boolean; status: number; body: Record<string, unknown> }> {
     try {
       const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-      return { ok: res.ok, body: await res.json().catch(() => ({ error: `HTTP ${res.status}` })) };
+      return { ok: res.ok, status: res.status, body: await res.json().catch(() => ({ error: `HTTP ${res.status}` })) };
     } catch (e) {
-      return { ok: false, body: { error: `Server tidak bisa dihubungi (${(e as Error).message}).` } };
+      return { ok: false, status: 0, body: { error: `Server tidak bisa dihubungi (${(e as Error).message}).` } };
     }
   }
 
-  /** Each returns an error message, or '' when it worked. */
+  /** Each returns an error message, or '' when it worked; with two-step sign-in, '' leaves a challenge to answer. */
   async login(username: string, password: string): Promise<string> {
     const r = await this.#post('/api/login', { username, password });
     if (!r.ok) return String(r.body.error ?? 'Gagal masuk');
     this.error = '';
-    this.#signedIn(r.body as Session);
+    if (r.body.twoFactor) this.challenge = String(r.body.ticket);
+    else this.#signedIn(r.body as Session);
     return '';
+  }
+
+  /** The code step: a code from the authenticator app or a recovery code. The page reloads into the app after it. */
+  async verify(code: string): Promise<string> {
+    const r = await this.#post('/api/login/2fa', { ticket: this.challenge, code });
+    // 410: the ticket ran out; the password step starts over.
+    if (r.status === 410) this.challenge = null;
+    return r.ok ? '' : String(r.body.error ?? 'Gagal memeriksa kode');
   }
 
   async signup(form: { email: string; password: string; phone: string; acceptTerms: boolean }): Promise<string> {
@@ -106,6 +120,7 @@ class Auth {
 
   async reset(token: string, password: string): Promise<string> {
     const r = await this.#post('/api/password/reset', { token, password });
+    if (r.ok && r.body.twoFactor) this.challenge = String(r.body.ticket);
     return r.ok ? '' : String(r.body.error ?? 'Gagal menyimpan');
   }
 

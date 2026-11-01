@@ -28,6 +28,7 @@
     "dompurify": "^3.4.17",
     "lightweight-charts": "^5.2.1",
     "marked": "^18.1.2",
-    "quickjs-emscripten-core": "^0.32.0"
+    "quickjs-emscripten-core": "^0.32.0",
+    "uqr": "^0.1.3"
   }
 }

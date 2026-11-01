@@ -1,11 +1,14 @@
 <script lang="ts">
   // The signed-in user's own settings: plan and today's quota, e-mail and
-  // WhatsApp, the Telegram chat that gets their messages, and their password.
+  // WhatsApp, the Telegram chat that gets their messages, the public track
+  // record (Creator), their password, and two-step sign-in.
   import { PLANS } from '../../../../shared/plans';
   import { api } from '../api';
   import { auth } from '../auth.svelte';
   import { usage } from '../stores/usage.svelte';
   import { watch } from '../stores/watch.svelte';
+  import PublicProfileSection from './PublicProfileSection.svelte';
+  import TwoFactorSection from './TwoFactorSection.svelte';
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -190,6 +193,8 @@
       </div>
     </form>
 
+    {#if auth.user}<PublicProfileSection />{/if}
+
     <form class="flex flex-col gap-2" onsubmit={changePassword}>
       <h3 class="text-sm font-semibold">{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</h3>
       {#if auth.user?.hasPassword}
@@ -203,6 +208,8 @@
       {#if pwMessage}<p role="status" class="text-sm text-success">{pwMessage}</p>{/if}
       <button class="btn btn-primary btn-sm self-start" type="submit" disabled={busy}>{auth.user?.hasPassword ? 'Ganti kata sandi' : 'Buat kata sandi'}</button>
     </form>
+
+    {#if auth.enabled}<TwoFactorSection />{/if}
   </div>
   <button class="modal-backdrop" aria-label="Tutup" onclick={onclose}></button>
 </div>

@@ -116,18 +116,27 @@ export type Catalog = {
 let cached: { at: number; value: Catalog } | null = null;
 let inflight: Promise<Catalog> | null = null;
 const CATALOG_TTL_MS = 30_000;
+/** Whether the last catalog load worked: starting Python and the engine is what every analysis needs too (status.ts). */
+let lastLoad: { at: number; ok: boolean } | null = null;
+export const catalogHealth = () => lastLoad;
 
 async function loadCatalog(): Promise<Catalog> {
-  const proc = spawnWorker("catalog");
-  proc.stdin.end();
-  const [stdout, stderrTail, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    readTail(proc.stderr),
-    proc.exited,
-  ]);
-  if (exitCode !== 0) throw new Error(`Worker catalog gagal (exit ${exitCode}): ${stderrTail}`);
-  cached = { at: Date.now(), value: JSON.parse(stdout) };
-  return cached.value;
+  try {
+    const proc = spawnWorker("catalog");
+    proc.stdin.end();
+    const [stdout, stderrTail, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      readTail(proc.stderr),
+      proc.exited,
+    ]);
+    if (exitCode !== 0) throw new Error(`Worker catalog gagal (exit ${exitCode}): ${stderrTail}`);
+    cached = { at: Date.now(), value: JSON.parse(stdout) };
+    lastLoad = { at: Date.now(), ok: true };
+    return cached.value;
+  } catch (err) {
+    lastLoad = { at: Date.now(), ok: false };
+    throw err;
+  }
 }
 
 function refreshCatalog(): Promise<Catalog> {

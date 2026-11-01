@@ -3,8 +3,10 @@
   // off on the AI chart, and open the editor.
   import { indicators } from '../stores/indicators.svelte';
   import { scripts } from '../stores/scripts.svelte';
+  import { placeMenu } from './menuSide';
 
   let open = $state(false);
+  let place = $state({ rightward: false, maxHeight: 0 });
   let root: HTMLDivElement | undefined = $state();
 
   scripts.load();
@@ -33,11 +35,25 @@
 </script>
 
 <div class="relative" bind:this={root}>
-  <button class="btn btn-xs gap-1" class:btn-active={open} aria-expanded={open} aria-haspopup="dialog" onclick={() => (open = !open)}>
+  <button
+    class="btn btn-xs gap-1"
+    class:btn-active={open}
+    aria-expanded={open}
+    aria-haspopup="dialog"
+    onclick={() => {
+      if (!open && root) place = placeMenu(root, 18);
+      open = !open;
+    }}
+  >
     Skrip{#if shown}<span class="badge badge-xs badge-accent">{shown}</span>{/if}
   </button>
   {#if open}
-    <div class="ta-pop absolute top-full right-0 z-40 mt-1 flex w-72 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl" role="dialog" aria-label="Skrip indikator">
+    <div
+      class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-72 flex-col gap-2 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      style:max-height="{place.maxHeight}px"
+      role="dialog"
+      aria-label="Skrip indikator"
+    >
       <h3 class="font-semibold">Skrip indikator Anda</h3>
       {#if scripts.error}<p class="text-xs text-error">{scripts.error}</p>{/if}
       {#if scripts.items.length}

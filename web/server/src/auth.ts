@@ -5,8 +5,8 @@
 // page posts here and gets an HMAC-signed session cookie; scripts may send HTTP
 // Basic credentials instead. With no APP_PASSWORD (local development) there is
 // no login: every request acts as that first admin.
-import { createHash, createHmac, randomBytes } from "node:crypto";
-import { and, count, eq, gt, isNull, ne, sql } from "drizzle-orm";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { and, count, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
@@ -16,6 +16,7 @@ import { db } from "./db";
 import { agentMemories, agentSessions, agentSkills, analyses, authTokens, chartDrawings, payments, users, watchlist, watchRuns } from "./db/schema";
 import { composeMail, mailEnabled, sendMail } from "./mail";
 import { limitsOf, onTrial, planOf, trialEnd } from "./plans";
+import { hashRecovery, matchStep, newRecoveryCodes, newSecret, otpauthUri } from "./totp";
 import { BRAND } from "../../shared/brand";
 import { PLAN_IDS, TRIAL_DAYS } from "../../shared/plans";
 
@@ -127,7 +128,64 @@ async function basicUser(c: Context): Promise<User | null> {
   if (!header?.startsWith("Basic ")) return null;
   const decoded = Buffer.from(header.slice(6), "base64").toString();
   const at = decoded.indexOf(":");
-  return at < 0 ? null : checkPassword(decoded.slice(0, at), decoded.slice(at + 1));
+  const user = at < 0 ? null : await checkPassword(decoded.slice(0, at), decoded.slice(at + 1));
+  // Basic auth has no room for a second step, so an account with one cannot use it.
+  return user?.totpEnabledAt ? null : user;
+}
+
+// --------------------------------------------------------------------------- two-step sign-in (totp.ts)
+
+const TICKET_MS = 10 * 60_000;
+const TWO_FACTOR_OFF = { totpSecret: null, totpPending: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: [] as string[] };
+
+/** Proof that the password (or the Google account, or a reset link) was right, for the code step: who, until when, signed. */
+function ticketFor(u: User): string {
+  const body = `${u.id}.${Date.now() + TICKET_MS}.${u.sessionVersion}`;
+  return `${body}.${sign("2fa", body)}`;
+}
+
+async function ticketUser(ticket: string): Promise<User | null> {
+  const [id, expires, version, signature = ""] = ticket.split(".");
+  if (!z.uuid().safeParse(id).success || !(Number(expires) > Date.now())) return null;
+  const want = Buffer.from(sign("2fa", `${id}.${expires}.${version}`));
+  if (signature.length !== want.length || !timingSafeEqual(Buffer.from(signature), want)) return null;
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user && !user.disabled && user.totpEnabledAt && user.sessionVersion === Number(version) ? user : null;
+}
+
+/** A code from the authenticator app, or an unused recovery code. Either works once: it is marked used here. */
+async function secondFactor(user: User, code: string): Promise<boolean> {
+  if (!user.totpSecret) return false;
+  const step = matchStep(user.totpSecret, code);
+  if (step !== null) {
+    const [used] = await db
+      .update(users)
+      .set({ totpLastStep: step })
+      .where(and(eq(users.id, user.id), or(isNull(users.totpLastStep), lt(users.totpLastStep, step))))
+      .returning({ id: users.id });
+    return Boolean(used);
+  }
+  const hash = hashRecovery(code);
+  // Taken out in one statement, so two requests cannot both spend a code or put back each other's.
+  const [spent] = await db
+    .update(users)
+    .set({ recoveryCodes: sql`${users.recoveryCodes} - ${hash}::text` })
+    .where(and(eq(users.id, user.id), sql`${users.recoveryCodes} @> ${JSON.stringify([hash])}::jsonb`))
+    .returning({ id: users.id });
+  return Boolean(spent);
+}
+
+/** secondFactor with wrong codes counted per account, as sign-in counts them per address: six digits fall to guessing otherwise. */
+async function checkedCode(user: User, code: string): Promise<{ error: string; status: 401 | 429 } | null> {
+  const key = `2fa:${user.id}`;
+  const wait = blockedFor(key);
+  if (wait) return { error: `Terlalu banyak kode salah. Coba lagi dalam ${Math.ceil(wait / 60_000)} menit.`, status: 429 };
+  if (await secondFactor(user, code)) {
+    failures.delete(key);
+    return null;
+  }
+  recordFailure(key);
+  return { error: "Kode salah atau sudah pernah dipakai.", status: 401 };
 }
 
 /** Guards /api/*: sets c.get("user"). No WWW-Authenticate challenge: the page shows its own login form. */
@@ -161,6 +219,11 @@ export const publicUser = (u: User) => ({
   phone: u.phone,
   google: Boolean(u.googleSub),
   hasPassword: Boolean(u.passwordHash),
+  twoFactor: Boolean(u.totpEnabledAt),
+  /** The public track record page (creators.ts). */
+  publicProfile: u.publicProfile,
+  displayName: u.displayName,
+  bio: u.bio,
   /** The plan in force, its end (null = none) and what it allows. */
   plan: planOf(u),
   planUntil: planOf(u) === u.plan ? u.planUntil : null,
@@ -316,6 +379,26 @@ authApi.post("/login", async (c) => {
     return c.json({ error: "Nama pengguna atau kata sandi salah, atau akun dinonaktifkan." }, 401);
   }
   failures.delete(address);
+  // With two-step sign-in the password only earns a ticket for the code step.
+  if (user.totpEnabledAt) return c.json({ auth: false, twoFactor: true, ticket: ticketFor(user) });
+  await startSession(c, user);
+  return c.json({ auth: true, user: publicUser(user) });
+});
+
+authApi.post("/login/2fa", async (c) => {
+  if (!authEnabled()) return c.json({ error: "Login tidak aktif di server ini" }, 400);
+  const address = clientAddress(c);
+  const wait = blockedFor(address);
+  if (wait) return c.json({ error: `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(wait / 60_000)} menit.` }, 429);
+  const body = z.object({ ticket: z.string().max(300), code: z.string().trim().min(6).max(20) }).safeParse(await c.req.json().catch(() => null));
+  const user = body.success ? await ticketUser(body.data.ticket) : null;
+  if (!body.success || !user) return c.json({ error: "Langkah masuk ini sudah kedaluwarsa. Masuk lagi dari awal." }, 410);
+  const refused = await checkedCode(user, body.data.code);
+  if (refused) {
+    recordFailure(address);
+    return c.json({ error: refused.error }, refused.status);
+  }
+  failures.delete(address);
   await startSession(c, user);
   return c.json({ auth: true, user: publicUser(user) });
 });
@@ -412,6 +495,8 @@ authApi.post("/password/reset", async (c) => {
     .returning();
   // The link reached the inbox, so the address is proven as well.
   const verified = updated.email === row.email ? await markVerified(updated, row.email) : updated;
+  // The link proves the inbox, not the phone: two-step sign-in still asks for its code.
+  if (verified.totpEnabledAt) return c.json({ auth: false, twoFactor: true, ticket: ticketFor(verified) });
   await startSession(c, verified);
   return c.json({ auth: true, user: publicUser(verified) });
 });
@@ -496,6 +581,7 @@ authApi.get("/auth/google/callback", async (c) => {
     user = await markVerified(user, email);
   }
   if (user.disabled) return fail("account-disabled");
+  if (user.totpEnabledAt) return c.redirect(`/app#/2fa?ticket=${encodeURIComponent(ticketFor(user))}`);
   await startSession(c, user);
   return c.redirect("/app");
 });
@@ -522,6 +608,57 @@ meApi.post("/me/password", async (c) => {
     .returning();
   if (authEnabled()) await startSession(c, updated);
   return c.json({ ok: true });
+});
+
+const codeSchema = z.object({ code: z.string().trim().min(6).max(20) });
+
+/** Step one of turning two-step sign-in on: a new secret for the authenticator app, kept pending until a code proves it. */
+meApi.post("/me/2fa/setup", async (c) => {
+  const me = c.get("user");
+  if (me.totpEnabledAt) return c.json({ error: "Verifikasi dua langkah sudah aktif" }, 400);
+  const secret = newSecret();
+  await db.update(users).set({ totpPending: secret }).where(eq(users.id, me.id));
+  return c.json({ secret, uri: otpauthUri(secret, me.email ?? me.username, BRAND.name) });
+});
+
+/** Step two: the first code from the app turns it on, signs out every other browser, and gives the recovery codes once. */
+meApi.post("/me/2fa/enable", async (c) => {
+  const body = codeSchema.safeParse(await c.req.json().catch(() => null));
+  const [me] = await db.select().from(users).where(eq(users.id, c.get("user").id));
+  if (!me?.totpPending) return c.json({ error: "Mulai dari tombol Aktifkan" }, 400);
+  const step = body.success ? matchStep(me.totpPending, body.data.code) : null;
+  if (step === null) return c.json({ error: "Kode tidak cocok. Pastikan jam ponselmu tepat, lalu ketik kode yang sedang tampil." }, 400);
+  const { codes, hashes } = newRecoveryCodes();
+  const [updated] = await db
+    .update(users)
+    .set({ totpSecret: me.totpPending, totpPending: null, totpEnabledAt: new Date(), totpLastStep: step, recoveryCodes: hashes, sessionVersion: sql`${users.sessionVersion} + 1` })
+    .where(eq(users.id, me.id))
+    .returning();
+  if (authEnabled()) await startSession(c, updated);
+  return c.json({ user: publicUser(updated), recoveryCodes: codes });
+});
+
+meApi.post("/me/2fa/disable", async (c) => {
+  const body = codeSchema.safeParse(await c.req.json().catch(() => null));
+  const [me] = await db.select().from(users).where(eq(users.id, c.get("user").id));
+  if (!me?.totpEnabledAt) return c.json({ error: "Verifikasi dua langkah belum aktif" }, 400);
+  // A wrong code is a 400 here, not a 401: the page reads 401 as signed out.
+  const refused = body.success ? await checkedCode(me, body.data.code) : { error: "Kode salah atau sudah pernah dipakai.", status: 401 };
+  if (refused) return c.json({ error: refused.error }, refused.status === 429 ? 429 : 400);
+  const [updated] = await db.update(users).set(TWO_FACTOR_OFF).where(eq(users.id, me.id)).returning();
+  return c.json({ user: publicUser(updated) });
+});
+
+/** New recovery codes in place of the old ones, for a code from the app. */
+meApi.post("/me/2fa/recovery", async (c) => {
+  const body = codeSchema.safeParse(await c.req.json().catch(() => null));
+  const [me] = await db.select().from(users).where(eq(users.id, c.get("user").id));
+  if (!me?.totpEnabledAt) return c.json({ error: "Verifikasi dua langkah belum aktif" }, 400);
+  const refused = body.success ? await checkedCode(me, body.data.code) : { error: "Kode salah atau sudah pernah dipakai.", status: 401 };
+  if (refused) return c.json({ error: refused.error }, refused.status === 429 ? 429 : 400);
+  const { codes, hashes } = newRecoveryCodes();
+  await db.update(users).set({ recoveryCodes: hashes }).where(eq(users.id, me.id));
+  return c.json({ recoveryCodes: codes });
 });
 
 meApi.patch("/me", async (c) => {
@@ -654,11 +791,13 @@ usersApi.patch("/users/:id", async (c) => {
         .optional(),
       /** Mark the e-mail verified by hand (when mail cannot be sent). */
       emailVerified: z.literal(true).optional(),
+      /** Turn two-step sign-in off for someone who lost their phone and recovery codes. */
+      twoFactor: z.literal(false).optional(),
     })
     .safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: body.error.issues.map((i) => i.message).join("; ") }, 400);
   const me = c.get("user");
-  const { plan, planUntil, emailVerified, ...change } = body.data;
+  const { plan, planUntil, emailVerified, twoFactor, ...change } = body.data;
   if (id === me.id && (change.disabled || change.role === "member")) {
     return c.json({ error: "Kamu tidak bisa menonaktifkan atau menurunkan akunmu sendiri" }, 400);
   }
@@ -672,17 +811,18 @@ usersApi.patch("/users/:id", async (c) => {
   const { password, ...rest } = change;
   const signOut = password !== undefined || change.disabled === true;
   const until = planUntil === undefined ? undefined : planUntil === null ? null : new Date(`${planUntil}T23:59:59+07:00`);
-  let [updated] = await db
-    .update(users)
-    .set({
-      ...rest,
-      ...(password !== undefined ? { passwordHash: await Bun.password.hash(password) } : {}),
-      ...(signOut ? { sessionVersion: sql`${users.sessionVersion} + 1` } : {}),
-      ...(plan !== undefined ? { plan } : {}),
-      ...(until !== undefined ? { planUntil: until } : {}),
-    })
-    .where(eq(users.id, id))
-    .returning();
+  const patch = {
+    ...rest,
+    ...(password !== undefined ? { passwordHash: await Bun.password.hash(password) } : {}),
+    ...(signOut ? { sessionVersion: sql`${users.sessionVersion} + 1` } : {}),
+    ...(plan !== undefined ? { plan } : {}),
+    ...(until !== undefined ? { planUntil: until } : {}),
+    ...(twoFactor === false ? TWO_FACTOR_OFF : {}),
+  };
+  // "Verifikasi manual" alone changes no column here (markVerified below does), and an empty update throws.
+  let [updated] = Object.values(patch).some((v) => v !== undefined)
+    ? await db.update(users).set(patch).where(eq(users.id, id)).returning()
+    : await db.select().from(users).where(eq(users.id, id));
   if (!updated) return c.json({ error: "Not found" }, 404);
   if (emailVerified && updated.email) updated = await markVerified(updated, updated.email);
   if (plan !== undefined || until !== undefined) {

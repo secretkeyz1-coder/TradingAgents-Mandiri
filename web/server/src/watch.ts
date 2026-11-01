@@ -72,6 +72,10 @@ function nextRun(after = Date.now()): string {
 export const telegramBot = () => Boolean(settings.telegramToken);
 export const publicUrl = () => settings.publicUrl;
 
+/** The last message the bot tried to send, for the status page (status.ts). */
+let lastSend: { at: number; ok: boolean } | null = null;
+export const telegramHealth = () => ({ configured: telegramBot(), last: lastSend });
+
 export async function sendTelegram(chatId: string | null, html: string): Promise<{ ok: boolean; error?: string }> {
   if (!settings.telegramToken) return { ok: false, error: "TELEGRAM_BOT_TOKEN belum diisi di .env server" };
   if (!chatId) return { ok: false, error: "Chat ID Telegram belum diisi di Profil" };
@@ -83,8 +87,11 @@ export async function sendTelegram(chatId: string | null, html: string): Promise
       signal: AbortSignal.timeout(15_000),
     });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
+    // A refusal for one chat (blocked bot, wrong ID) says nothing about the service; a server error does.
+    lastSend = { at: Date.now(), ok: Boolean(body.ok) || res.status < 500 };
     return body.ok ? { ok: true } : { ok: false, error: `Telegram: ${body.description ?? `HTTP ${res.status}`}` };
   } catch (e) {
+    lastSend = { at: Date.now(), ok: false };
     return { ok: false, error: `Telegram tidak bisa dihubungi: ${(e as Error).message}` };
   }
 }

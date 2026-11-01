@@ -48,7 +48,7 @@ export const PLANS: Record<PlanId, Plan> = {
     blurb: "Untuk pemilik grup sinyal dan mentor.",
     price: { month: 399_000, year: 3_990_000 },
     limits: { analyses: 60, chat: 600, labRuns: 120, alerts: 50, watchlist: 30, scripts: 50 },
-    highlights: ["Kapasitas dua kali Pro", "Uji Lab 120 kali sehari", "60 analisa AI sehari", "50 notifikasi sinyal", "Halaman rekam jejak publik (segera hadir)"],
+    highlights: ["Kapasitas dua kali Pro", "Uji Lab 120 kali sehari", "60 analisa AI sehari", "50 notifikasi sinyal", "Halaman rekam jejak publik"],
   },
 };
 

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Rekam jejak Creator · {{BRAND}}</title>
+    <meta
+      name="description"
+      content="Rekam jejak sinyal live seorang Creator di {{BRAND}}: setiap sinyal dicatat saat muncul, dibekukan, lalu dinilai setelah biaya. Pemiliknya tidak bisa mengubah hasilnya."
+    />
+    <link rel="stylesheet" href="/src/site.css" />
+  </head>
+  <body class="bg-base-100 text-base-content">
+    <!-- site:header -->
+    <main class="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-14 sm:py-20">
+      <p data-loading role="status" class="text-base-content/70">Memuat rekam jejak…</p>
+
+      <div data-missing hidden class="flex flex-col gap-4">
+        <h1 class="section-title text-3xl font-semibold sm:text-4xl">Halaman ini tidak ada</h1>
+        <p class="max-w-2xl text-base-content/75">Alamatnya mungkin salah ketik, atau pemiliknya sedang menyembunyikan halamannya.</p>
+        <a class="btn btn-sm self-start" href="/">Ke beranda</a>
+      </div>
+
+      <div data-page hidden class="flex flex-col gap-12">
+        <header class="flex flex-col gap-3">
+          <h1 data-name class="section-title text-4xl font-semibold break-words sm:text-5xl"></h1>
+          <p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-base-content/70">
+            <span data-handle class="font-mono"></span>
+            <span data-since></span>
+          </p>
+          <p data-bio class="max-w-2xl text-lg break-words whitespace-pre-line text-base-content/80"></p>
+        </header>
+
+        <section class="flex flex-col gap-4" aria-labelledby="record-title">
+          <div class="flex flex-col gap-1">
+            <h2 id="record-title" class="text-xl font-semibold">Hasil setelah biaya</h2>
+            <p class="text-sm text-base-content/70">Dari hasil akhir tiap sinyal yang sudah selesai, dalam R: 1R adalah jarak dari entry ke stop loss.</p>
+          </div>
+          <dl data-record class="grid grid-cols-2 gap-px overflow-hidden rounded-box border border-base-300 bg-base-300 sm:grid-cols-5"></dl>
+          <p data-sample hidden class="text-sm text-base-content/60">Sampel masih kecil; angka ini akan bergerak.</p>
+        </section>
+
+        <section class="flex flex-col gap-4" aria-labelledby="strategies-title">
+          <h2 id="strategies-title" class="text-xl font-semibold">Per strategi</h2>
+          <div class="overflow-x-auto rounded-box border border-base-300">
+            <table class="table table-sm">
+              <thead>
+                <tr class="text-base-content/60">
+                  <th>Strategi</th><th>Timeframe</th><th class="text-right">Selesai</th><th class="text-right">Menang bersih</th><th class="text-right">Rata-rata</th>
+                  <th class="text-right">Total</th><th class="text-right">Berjalan</th>
+                </tr>
+              </thead>
+              <tbody data-strategies></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="flex flex-col gap-4" aria-labelledby="signals-title">
+          <div class="flex flex-col gap-1">
+            <h2 id="signals-title" class="text-xl font-semibold">Sinyal terbaru</h2>
+            <p class="text-sm text-base-content/70">Hingga 100 sinyal terakhir. Waktu dalam WIB, saat sinyal tercatat.</p>
+          </div>
+          <div class="overflow-x-auto rounded-box border border-base-300">
+            <table class="table table-sm">
+              <thead>
+                <tr class="text-base-content/60">
+                  <th>Dicatat</th><th>Simbol</th><th>Strategi</th><th>Arah</th><th class="text-right">Entry</th><th class="text-right">Stop loss</th>
+                  <th class="text-right">Target</th><th>Status</th><th class="text-right">Hasil bersih</th>
+                </tr>
+              </thead>
+              <tbody data-signals></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="flex max-w-3xl flex-col gap-3 border-t border-base-300 pt-6 text-sm text-base-content/70" aria-label="Cara pencatatan dan disclaimer">
+          <p>
+            {{BRAND}} mencatat setiap sinyal dari alert yang dipublikkan pemilik halaman ini saat sinyal itu muncul, lalu menilainya otomatis dari harga pasar
+            setelah biaya simulasi per trade. Pemiliknya tidak bisa mengedit atau menghapus catatan: alert yang dihapus atau dijadikan privat tetap meninggalkan
+            sinyal yang sudah tercatat.
+          </p>
+          <p>
+            Hasil masa lalu tidak menjamin hasil di masa depan. Halaman ini bukan nasihat investasi dan bukan ajakan membeli atau menjual; keputusan trading
+            sepenuhnya milikmu. Baca <a class="link" href="/disclaimer">disclaimer</a> selengkapnya.
+          </p>
+        </section>
+      </div>
+    </main>
+    <!-- site:footer -->
+    <script type="module" src="/src/site/creator.ts"></script>
+  </body>
+</html>

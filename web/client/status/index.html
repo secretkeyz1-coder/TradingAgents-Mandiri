@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Status layanan · {{BRAND}}</title>
+    <meta name="description" content="Status layanan {{BRAND}} saat ini dan 90 hari terakhir: database, harga pasar, mesin analisa AI, pemindai sinyal, dan notifikasi." />
+    <link rel="stylesheet" href="/src/site.css" />
+  </head>
+  <body class="bg-base-100 text-base-content">
+    <!-- site:header -->
+    <main class="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-14">
+      <div class="flex flex-col gap-4">
+        <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Status layanan</h1>
+        <div role="status" aria-live="polite" class="flex items-center gap-3 rounded-box border border-base-300 p-4">
+          <span data-overall-dot class="size-3 shrink-0 rounded-full bg-base-300" aria-hidden="true"></span>
+          <div class="flex flex-col">
+            <p data-overall class="font-semibold">Memeriksa layanan…</p>
+            <p data-checked class="text-sm text-base-content/70"></p>
+          </div>
+        </div>
+      </div>
+      <section class="flex flex-col gap-3" aria-labelledby="parts-title">
+        <h2 id="parts-title" class="text-lg font-semibold">Bagian layanan</h2>
+        <ul data-parts class="flex flex-col divide-y divide-base-300 rounded-box border border-base-300"></ul>
+      </section>
+      <p class="text-sm text-base-content/70">
+        Diperiksa tiap 5 menit oleh server yang sama dengan aplikasinya, jadi bila server mati halaman ini juga tidak terbuka. Batang menunjukkan 90 hari terakhir;
+        satu batang satu hari, dan persentasenya bagian pemeriksaan yang tidak menemukan gangguan.
+      </p>
+    </main>
+    <!-- site:footer -->
+    <script type="module" src="/src/site/status.ts"></script>
+  </body>
+</html>

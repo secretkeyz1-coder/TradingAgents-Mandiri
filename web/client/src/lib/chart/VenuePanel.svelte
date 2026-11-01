@@ -5,6 +5,7 @@
   // indicators to that venue's prices.
   import { ws } from '../stores/workspace.svelte';
   import { CRYPTO_VENUES, onVenue, type VenueId } from '../tv';
+  import { placeMenu } from './menuSide';
 
   let { base, venue }: { base: string; venue: VenueId } = $props();
 
@@ -23,6 +24,7 @@
   };
 
   let open = $state(false);
+  let place = $state({ rightward: false, maxHeight: 0 });
   let quotes = $state<Quote[]>([]);
   let note = $state('');
   let now = $state(Date.now());
@@ -82,12 +84,22 @@
 </script>
 
 <div class="relative" bind:this={root}>
-  <button class="btn btn-xs gap-1" class:btn-active={open} aria-expanded={open} aria-haspopup="dialog" onclick={() => (open = !open)}>
+  <button
+    class="btn btn-xs gap-1"
+    class:btn-active={open}
+    aria-expanded={open}
+    aria-haspopup="dialog"
+    onclick={() => {
+      if (!open && root) place = placeMenu(root, 26);
+      open = !open;
+    }}
+  >
     Bursa: {label}
   </button>
   {#if open}
     <div
-      class="ta-pop absolute top-full right-0 z-40 mt-1 flex w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      class="ta-pop absolute top-full {place.rightward ? 'left-0' : 'right-0'} z-40 mt-1 flex w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-2 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-3 text-sm shadow-xl"
+      style:max-height="{place.maxHeight}px"
       role="dialog"
       aria-label="Harga {base} di semua bursa"
     >

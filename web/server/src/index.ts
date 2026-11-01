@@ -11,7 +11,9 @@ import { alertsApi, startAlertScheduler } from "./alerts";
 import { billingApi, invoicePages } from "./billing";
 import { businessApi } from "./business";
 import { couponsApi } from "./coupons";
+import { creatorsApi, creatorsPublicApi } from "./creators";
 import { startReminders } from "./reminders";
+import { startStatusChecks, statusApi } from "./status";
 import { labApi } from "./lab";
 import { venuesApi } from "./venues";
 import { ledgerApi, startLedgerRecaps } from "./ledger";
@@ -31,6 +33,7 @@ startAlertScheduler();
 startLedgerRecaps();
 startBriefs();
 startReminders();
+startStatusChecks();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => console.error("catalog warm-up failed", err));
 
@@ -45,12 +48,15 @@ app.use("/api/*", logger());
 app.route("/api", authApi);
 // The public site's prices, signals and AI brief: no sign-in, all cached.
 app.route("/api", siteApi);
+app.route("/api", statusApi);
+app.route("/api", creatorsPublicApi);
 app.use("/api/*", requireAuth);
 app.route("/api", meApi);
 app.route("/api", usersApi);
 app.route("/api", billingApi);
 app.route("/api", couponsApi);
 app.route("/api", businessApi);
+app.route("/api", creatorsApi);
 app.route("/api", api);
 app.route("/api", agentApi);
 app.route("/api", watchApi);
@@ -78,7 +84,9 @@ if (existsSync(config.clientDist)) {
   app.get("/", process.env.PUBLIC_SITE === "on" ? serveStatic({ path: `${dist}/index.html` }) : (c) => c.redirect("/app"));
   app.get("/app", page("app"));
   app.get("/app/", page("app"));
-  for (const name of ["harga", "syarat", "privasi", "disclaimer"]) app.get(`/${name}`, page(name));
+  for (const name of ["harga", "syarat", "privasi", "disclaimer", "status"]) app.get(`/${name}`, page(name));
+  // A Creator's public track record; the page reads the name from the address.
+  app.get("/c/:username", page("c"));
   app.use("/*", serveStatic({ root: dist }));
   app.get("*", (c) => (c.req.path.startsWith("/api/") ? c.json({ error: "Not found" }, 404) : c.redirect("/")));
 }

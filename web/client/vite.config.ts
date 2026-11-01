@@ -14,6 +14,13 @@ function site(): Plugin {
       order: 'pre',
       handler: (html) => fill(html.replace(/<!--\s*site:(\w+)\s*-->/g, (match, name: string) => PARTS[name]?.() ?? match)),
     },
+    // A Creator's page lives at /c/<username>, one HTML file for every name, as the server serves it.
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (/^\/c\/[^/.?]+\/?(\?|$)/.test(req.url ?? '')) req.url = '/c/index.html'
+        next()
+      })
+    },
   }
 }
 
@@ -29,6 +36,8 @@ export default defineConfig({
         syarat: page('./syarat/index.html'),
         privasi: page('./privasi/index.html'),
         disclaimer: page('./disclaimer/index.html'),
+        status: page('./status/index.html'),
+        c: page('./c/index.html'),
       },
     },
   },

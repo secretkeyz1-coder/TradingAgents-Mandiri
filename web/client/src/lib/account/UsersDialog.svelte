@@ -128,6 +128,19 @@
                     {/if}
                   </span>
                 {/if}
+                {#if a.twoFactor}
+                  <span class="block text-xs text-base-content/70">
+                    verifikasi dua langkah aktif
+                    {#if !self}
+                      · <button
+                        class="link"
+                        onclick={() =>
+                          confirm(`Matikan verifikasi dua langkah ${a.username}? Lakukan hanya bila pemiliknya kehilangan ponsel dan kode pemulihannya, setelah kamu memastikan identitasnya.`) &&
+                          act(() => api.updateUser(a.id, { twoFactor: false }), `Verifikasi dua langkah ${a.username} dimatikan.`)}>matikan</button
+                      >
+                    {/if}
+                  </span>
+                {/if}
               </td>
               <td>
                 {#if a.role === 'admin'}

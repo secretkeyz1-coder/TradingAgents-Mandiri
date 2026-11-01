@@ -90,6 +90,19 @@ export const users = pgTable("users", {
   trialStartedAt: timestamp("trial_started_at", { withTimezone: true }),
   /** When the user accepted the terms and privacy policy at sign-up. */
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  /**
+   * Two-step sign-in (totp.ts): the authenticator secret, a secret being set up, since when it is on,
+   * the last code step used (each code works once), and the hashes of the unused recovery codes.
+   */
+  totpSecret: text("totp_secret"),
+  totpPending: text("totp_pending"),
+  totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
+  totpLastStep: integer("totp_last_step"),
+  recoveryCodes: jsonb("recovery_codes").$type<string[]>().notNull().default([]),
+  /** A Creator's public track record page at /c/<username> (creators.ts): on or off, and what it says about them. */
+  publicProfile: boolean("public_profile").notNull().default(false),
+  displayName: text("display_name"),
+  bio: text("bio"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -353,6 +366,8 @@ export const signalAlerts = pgTable(
     primed: boolean("primed").notNull().default(false),
     /** For crypto: the venue whose bars are scanned (bybit, okx, …, venues.ts); empty = the default source (Binance). */
     venue: text("venue").notNull().default(""),
+    /** A Creator's live signals from this alert go on their public record (creator_signals). */
+    public: boolean("public").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("signal_alerts_user_pair_idx").on(t.userId, t.symbol, t.indicator, t.timeframe, t.venue)],
@@ -503,6 +518,61 @@ export const notices = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("notices_user_key_idx").on(t.userId, t.key)],
+);
+
+/**
+ * A Creator's public track record (server/src/creators.ts): every live signal of an alert they
+ * published, frozen when it fired and scored against later bars after the simulated costs, as in
+ * the signal ledger. Rows are only added and scored. Deleting an alert or making it private never
+ * takes them away, so the record cannot be trimmed afterwards.
+ */
+export const creatorSignals = pgTable(
+  "creator_signals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The alert event this mirrors, so its outcome reaches the record; null once the alert is gone. */
+    eventId: uuid("event_id")
+      .unique()
+      .references(() => signalEvents.id, { onDelete: "set null" }),
+    alertId: uuid("alert_id").references(() => signalAlerts.id, { onDelete: "set null" }),
+    symbol: text("symbol").notNull(),
+    tvSymbol: text("tv_symbol").notNull(),
+    venue: text("venue").notNull().default(""),
+    /** The strategy's name when it fired: the script's, or the built-in engine's. */
+    strategy: text("strategy").notNull(),
+    timeframe: text("timeframe").notNull(),
+    /** The signal bar's time, exchange-local, as the engines print it. */
+    signalTime: text("signal_time").notNull(),
+    side: text("side").notNull(),
+    label: text("label").notNull(),
+    entry: doublePrecision("entry").notNull(),
+    stopLoss: doublePrecision("stop_loss").notNull(),
+    takeProfit: doublePrecision("take_profit").notNull(),
+    status: text("status").$type<SignalStatus>().notNull().default("open"),
+    exitTime: text("exit_time"),
+    /** Result before costs, in R; and the simulated costs, in R (ledger.ts tradeCost). */
+    grossR: doublePrecision("gross_r"),
+    costR: doublePrecision("cost_r").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [index("creator_signals_user_created_idx").on(t.userId, t.createdAt)],
+);
+
+/** The status page's daily tally per part (server/src/status.ts): how many checks ran, and how many found it down. */
+export const statusDays = pgTable(
+  "status_days",
+  {
+    /** The day in WIB, "2026-11-01". */
+    day: text("day").notNull(),
+    component: text("component").notNull(),
+    checks: integer("checks").notNull().default(0),
+    failures: integer("failures").notNull().default(0),
+  },
+  (t) => [uniqueIndex("status_days_day_component_idx").on(t.day, t.component)],
 );
 
 export type UsageKind = "analysis" | "backtest" | "agent" | "translate" | "brief";

@@ -82,6 +82,7 @@ export function footer(): string {
       ${link('/syarat', 'Syarat &amp; Ketentuan')}
       ${link('/privasi', 'Kebijakan Privasi')}
       ${link('/disclaimer', 'Disclaimer risiko')}
+      ${link('/status', 'Status layanan')}
     </nav>
     <div class="flex flex-col gap-2 text-sm"><span class="font-semibold">Kontak</span>${contact()}</div>
   </div>
@@ -133,14 +134,16 @@ export function limits(): string {
   const rows = LIMIT_ROWS.map(
     ([key, label]) => `<tr><td>${label}</td>${PLAN_IDS.map((id) => `<td class="text-right tabular-nums">${PLANS[id].limits[key]}</td>`).join('')}</tr>`,
   ).join('');
+  // The one thing a plan adds besides capacity (server/src/creators.ts).
+  const page = `<tr><td>Halaman rekam jejak publik</td>${PLAN_IDS.map((id) => `<td class="text-right">${id === 'creator' ? 'Ya' : '–'}</td>`).join('')}</tr>`;
   const shared = ['Lab strategi dengan data uji terkunci dan biaya', 'Buku catatan sinyal live', 'Harga kripto real-time dari 9 bursa', 'Skrip sendiri dan impor Pine Script', 'Notifikasi Telegram'];
   return `<div class="overflow-x-auto rounded-box border border-base-300">
   <table class="table">
     <thead><tr><th>Kapasitas</th>${head}</tr></thead>
-    <tbody>${rows}</tbody>
+    <tbody>${rows}${page}</tbody>
   </table>
 </div>
-<p class="mt-3 text-sm text-base-content/70">Semua paket memakai fitur yang sama: ${shared.map(esc).join(', ')}. Bedanya hanya kapasitas. Kuota harian kembali penuh pukul 00.00 WIB.</p>`;
+<p class="mt-3 text-sm text-base-content/70">Semua paket memakai alat riset yang sama: ${shared.map(esc).join(', ')}. Bedanya kapasitas, dan Creator juga bisa membagikan rekam jejak sinyalnya di halaman publik. Kuota harian kembali penuh pukul 00.00 WIB.</p>`;
 }
 
 export const PARTS: Record<string, () => string> = { header, footer, pricing, limits, contact: contactText };
