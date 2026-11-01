@@ -99,7 +99,7 @@ export async function sendTelegram(chatId: string | null, html: string): Promise
 export const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** The executive summary of a final decision, cut at a sentence end, without markdown. */
-function gist(decision: string | undefined): string {
+export function gist(decision: string | undefined): string {
   if (!decision) return "";
   const summary =
     decision.match(/\*\*Executive Summary\*\*:?\s*([^\n]+)/i)?.[1] ??

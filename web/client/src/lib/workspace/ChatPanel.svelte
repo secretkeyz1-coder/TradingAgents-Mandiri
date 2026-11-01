@@ -1,11 +1,20 @@
 <script lang="ts">
   // Ask the chart agent about the symbol in focus. It answers, draws on the
-  // chart, and remembers what you tell it; all of that is listed here.
+  // chart, and remembers what you tell it; all of that is listed here. `simple`
+  // (the Pemula screen) keeps only the conversation: no tool names, memory or skills.
   import { renderMarkdown } from '../format';
   import { agent } from '../stores/agent.svelte';
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
   import SkillsPanel from './SkillsPanel.svelte';
+
+  const SUGGESTIONS = ['Gambar support dan resistance 6 bulan', 'Ada trendline yang masih valid?', 'Buat rencana trade dari level terdekat'];
+
+  let {
+    suggestions = SUGGESTIONS,
+    intro = '',
+    simple = false,
+  }: { suggestions?: string[]; intro?: string; simple?: boolean } = $props();
 
   usage.refresh();
 
@@ -13,8 +22,6 @@
   let showMemory = $state(false);
   let showSkills = $state(false);
   let list: HTMLElement | undefined = $state();
-
-  const SUGGESTIONS = ['Gambar support dan resistance 6 bulan', 'Ada trendline yang masih valid?', 'Buat rencana trade dari level terdekat'];
 
   // Keep the newest message in view.
   $effect(() => {
@@ -57,9 +64,9 @@
 
   <div bind:this={list} class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto" aria-live="polite">
     {#if agent.messages.length === 0 && !agent.sending}
-      <p class="text-sm text-base-content/70">Tanya soal chart {ws.yahoo}. Agent menghitung level dari data harga, lalu menggambarnya di chart.</p>
+      <p class="text-sm text-base-content/70">{intro || `Tanya soal chart ${ws.yahoo}. Agent menghitung level dari data harga, lalu menggambarnya di chart.`}</p>
       <div class="flex flex-col gap-1.5">
-        {#each SUGGESTIONS as s (s)}
+        {#each suggestions as s (s)}
           <button class="btn btn-ghost btn-sm justify-start text-left font-normal" onclick={() => agent.send(s)}>{s}</button>
         {/each}
       </div>
@@ -69,7 +76,7 @@
         <p class="ml-6 self-end whitespace-pre-wrap rounded-box bg-base-200 px-3 py-2 text-sm">{m.content}</p>
       {:else}
         <div class="flex flex-col gap-1.5">
-          {#if m.toolCalls.length}
+          {#if m.toolCalls.length && !simple}
             <p class="font-mono text-xs text-base-content/70">{m.toolCalls.map((t) => t.name).join(' · ')}</p>
           {/if}
           <div class="md text-sm">{@html renderMarkdown(m.content)}</div>
@@ -78,11 +85,15 @@
     {/each}
     {#if agent.sending}
       <div class="flex flex-col gap-1">
-        {#each agent.liveTools as t, i (i)}
-          <p class="font-mono text-xs text-base-content/70">
-            {t.summary === undefined ? '…' : t.summary.startsWith('ditolak') ? '✗' : '✓'} {t.name}
-          </p>
-        {/each}
+        {#if simple}
+          {#if agent.liveTools.length && !agent.liveText}<p class="text-xs text-base-content/70">AI sedang membaca data harga…</p>{/if}
+        {:else}
+          {#each agent.liveTools as t, i (i)}
+            <p class="font-mono text-xs text-base-content/70">
+              {t.summary === undefined ? '…' : t.summary.startsWith('ditolak') ? '✗' : '✓'} {t.name}
+            </p>
+          {/each}
+        {/if}
         {#if agent.liveText}
           <div class="md text-sm">{@html renderMarkdown(agent.liveText)}</div>
         {:else}
@@ -98,19 +109,21 @@
       class="textarea textarea-sm min-h-16 w-full"
       bind:value={draft}
       onkeydown={onKey}
-      placeholder="Gambar support resistance dan jelaskan…"
+      placeholder={simple ? 'Tulis pertanyaanmu…' : 'Gambar support resistance dan jelaskan…'}
       aria-label="Pesan untuk agent"
       maxlength="4000"
     ></textarea>
     <div class="flex items-center gap-2">
-      <button class="btn btn-ghost btn-xs" type="button" onclick={() => (showMemory = !showMemory)}>
-        Memori · {agent.memories.length}
-      </button>
-      <button class="btn btn-ghost btn-xs gap-1" type="button" onclick={() => (showSkills = !showSkills)}>
-        Skill
-        {#if agent.drafts.length}<span class="badge badge-xs badge-warning">{agent.drafts.length} baru</span>{/if}
-      </button>
-      <span class="text-xs tabular-nums text-base-content/70">{agent.drawings.length} gambar</span>
+      {#if !simple}
+        <button class="btn btn-ghost btn-xs" type="button" onclick={() => (showMemory = !showMemory)}>
+          Memori · {agent.memories.length}
+        </button>
+        <button class="btn btn-ghost btn-xs gap-1" type="button" onclick={() => (showSkills = !showSkills)}>
+          Skill
+          {#if agent.drafts.length}<span class="badge badge-xs badge-warning">{agent.drafts.length} baru</span>{/if}
+        </button>
+        <span class="text-xs tabular-nums text-base-content/70">{agent.drawings.length} gambar</span>
+      {/if}
       {#if usage.value?.chat.limit}
         <span class="text-xs tabular-nums" class:text-warning={!usage.left('chat')} class:text-base-content={usage.left('chat') > 0} title="Pesan chat hari ini; reset pukul 00.00 WIB">
           {usage.value.chat.used}/{usage.value.chat.limit} pesan

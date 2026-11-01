@@ -94,8 +94,8 @@ export type Account = {
   dailyAnalysisLimit: number | null;
   dailyChatLimit: number | null;
   telegramChatId: string | null;
-  /** The page's own per-account settings: saved layout, indicator inputs. */
-  preferences: { layout?: Record<string, unknown>; indicators?: Record<string, unknown> };
+  /** The page's own per-account settings: saved layout, indicator inputs, and Pemula or Pro (no `ui` = Pro). */
+  preferences: { layout?: Record<string, unknown>; indicators?: Record<string, unknown>; ui?: { mode?: 'pemula' | 'pro' } };
   email: string | null;
   emailVerified: boolean;
   /** WhatsApp number in +62 form. */
@@ -297,6 +297,15 @@ export type CandleSeries = {
   /** A crypto venue (binance, bybit, okx, …) = real time; yahoo = delayed. */
   source?: string;
 };
+
+/**
+ * The one answer the Pemula screen shows for a ticker (server/src/routes.ts /verdict): the user's
+ * latest finished analysis, else the daily AI brief's view of the asset; null when there is neither.
+ */
+export type Verdict =
+  | { source: 'analysis'; id: string; date: string; rating: string; at: string | null; hasReport: boolean; summary: string }
+  | { source: 'brief'; at: string; symbol: string; bias: 'naik' | 'turun' | 'netral'; bull: string; bear: string; watch: string }
+  | null;
 
 export type Decision = {
   source: 'analysis' | 'backtest';
@@ -598,6 +607,7 @@ export const api = {
   candles: (symbol: string, range: string, interval: Interval = '1d', venue?: string | null) =>
     request<CandleSeries>(`/candles?symbol=${encodeURIComponent(symbol)}&range=${range}&interval=${interval}${venue ? `&venue=${venue}` : ''}`),
   decisions: (ticker: string) => request<Decision[]>(`/decisions?ticker=${encodeURIComponent(ticker)}`),
+  verdict: (ticker: string) => request<Verdict>(`/verdict?ticker=${encodeURIComponent(ticker)}`),
   agentSessions: (symbol: string) => request<AgentSession[]>(`/agent/sessions?symbol=${encodeURIComponent(symbol)}`),
   createAgentSession: (symbol: string) =>
     request<AgentSession>('/agent/sessions', { method: 'POST', body: JSON.stringify({ symbol }) }),

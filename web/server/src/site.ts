@@ -212,6 +212,16 @@ async function latestBrief() {
   return b ? { createdAt: b.createdAt, content: b.content, data: b.data } : null;
 }
 
+/** The latest brief's take on one engine ticker (BTC-USD, GC=F, ^JKSE …), or null when the brief does not cover it. */
+export async function briefFor(ticker: string) {
+  const label = ASSETS.find((a) => a.brief && a.symbol === ticker)?.label;
+  if (!label) return null;
+  const latest = await cached("brief", 60_000, latestBrief);
+  const content = latest ? briefSchema.safeParse(latest.content) : null;
+  const asset = content?.success ? content.data.assets.find((a) => a.symbol === label) : undefined;
+  return latest && asset ? { at: latest.createdAt, ...asset } : null;
+}
+
 // --------------------------------------------------------------------------- routes, before the sign-in guard
 
 export const siteApi = new Hono();

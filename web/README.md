@@ -20,7 +20,7 @@ web/worker/ta_worker.py  →  engine tradingagents (Python, .venv repo)
 
 ## Workspace satu layar
 
-Semua fitur ada di satu layar yang berpusat pada **simbol aktif**. Ganti simbol (kotak pencarian Ctrl/⌘ K, daftar Pasar, atau klik di widget TradingView) dan semua panel ikut berganti.
+Semua fitur ada di satu layar yang berpusat pada **simbol aktif**. Ganti simbol (kotak pencarian Ctrl/⌘ K, daftar Pasar, atau klik di widget TradingView) dan semua panel ikut berganti. Kotak pencarian menerima nama aset (Emas, Bitcoin, Bank Central Asia) selain kode (BBCA, BBCA.JK, IDX:BBCA, BTC-USD), dan menyarankan aset dari daftar Pasar saat mengetik. Nama yang dipakai beberapa aset (mis. "bank") meminta pilihan dari saran.
 
 | Panel | Isi |
 | --- | --- |
@@ -32,6 +32,27 @@ Semua fitur ada di satu layar yang berpusat pada **simbol aktif**. Ganti simbol 
 Lebar ≥ 1280 px: tiga kolom + dock. 1024–1279 px: chart + AI, daftar Pasar jadi laci. < 1024 px: satu panel dengan tab bawah (Pasar · Chart · AI · Riwayat).
 
 **Status di URL** — `#/?s=IDX:BBCA&run=<id>&bt=<id>&dock=log&m=crypto&v=ai&ai=backtest`, jadi link bisa dibagikan dan tombol Back berjalan. Link lama (`#/analyses/:id`, `#/backtests/:id`, `#/chart?symbol=…`, `#/markets?tab=…`, `#/?ticker=…`) diterjemahkan otomatis.
+
+### Mode Pemula dan Pro
+
+Sakelar **Pemula | Pro** ada di bilah atas.
+
+- **Pemula** menampilkan satu aset dengan bahasa sederhana:
+  - **Pantauanku**: watchlist, dengan saran AI terakhir tiap aset. Kalau masih kosong, tampil aset populer.
+  - **Aset**: nama, harga terakhir dan perubahan hari ini, grafik area 1 hari sampai 1 tahun, kartu **Saran AI**, dan kartu **Kabari saya** (sakelar ringkasan AI harian, yang sekaligus memasukkan aset ke Pantauanku, plus status Telegram).
+  - **Tanya AI**: chat agent tanpa nama tool, memori, dan skill.
+
+  Mulai 1024 px tampil tiga kolom; di bawahnya, tiga tab bawah.
+- **Pro** adalah workspace lengkap di atas.
+
+Akun baru (daftar lewat email, Google, atau dibuat admin sebagai anggota) mulai di Pemula. Akun lama dan admin mulai di Pro. Pilihan disimpan di preferensi akun (`ui.mode`), jadi ikut ke perangkat lain, dan simbol aktif tidak berubah saat pindah mode.
+
+**Saran AI** (`GET /api/verdict`) mengambil sumber dengan urutan ini:
+1. Keputusan analisa terakhirmu untuk aset itu, dengan tanggal trading terbaru.
+2. Ringkasan pasar AI harian, untuk aset yang dicakupnya (BTC, ETH, Emas, IHSG).
+3. Kalau keduanya tidak ada, tombol **Minta saran AI** menjalankan analisa standar dengan jatah analisa harian: semua analis yang relevan, kedalaman 1, bahasa Indonesia, dan model server.
+
+Rating diterjemahkan ke bahasa awam: Buy = Beli, Overweight = Cenderung beli, Hold = Tunggu dulu, Underweight = Cenderung jual, Sell = Jual.
 
 ### Agent chart (tab "Tanya" di panel AI)
 
@@ -328,6 +349,7 @@ Setiap analisa yang berjalan mengirim *heartbeat* ke barisnya tiap 30 detik. Saa
 | POST | `/api/backtests` | Mulai backtest (`tickers`, `start`, `end`, `everyNDays`, opsional `runId`) |
 | GET | `/api/candles?symbol=&range=&interval=` | Candle Yahoo; `range` `6mo`/`1y`/`2y`/`5y`, `interval` `1h`/`4h`/`1d`/`1wk`/`1mo` (default `1d`) |
 | GET | `/api/decisions?ticker=` | Semua keputusan AI untuk satu ticker |
+| GET | `/api/verdict?ticker=` | Satu saran untuk layar Pemula: analisa selesai terakhir milik pengguna, atau pandangan ringkasan pasar AI, atau `null` |
 | POST | `/api/analyses` | Mulai analisa baru |
 | GET | `/api/analyses/:id` | Detail, status agent, laporan |
 | GET | `/api/analyses/:id/events` | Stream SSE: event tersimpan diputar ulang, lalu event live |

@@ -411,6 +411,9 @@ authApi.post("/logout", (c) => {
 /** What the login page offers. */
 authApi.get("/auth/config", (c) => c.json({ signup: signupOpen(), google: googleEnabled(), mail: mailEnabled(), trialDays: TRIAL_DAYS }));
 
+/** A new member starts on the simple screen (Pemula); an account without `ui` opens the full workspace (Pro). */
+const BEGINNER = { ui: { mode: "pemula" } };
+
 const signupSchema = z.object({
   email: emailSchema,
   password: z.string().min(8, "Kata sandi minimal 8 karakter").max(200),
@@ -430,7 +433,7 @@ authApi.post("/signup", async (c) => {
   if (exists) return c.json({ error: "Email ini sudah terdaftar. Masuk, atau pakai Lupa kata sandi." }, 409);
   const [created] = await db
     .insert(users)
-    .values({ username: await freeUsername(email), email, phone, passwordHash: await Bun.password.hash(password), termsAcceptedAt: new Date() })
+    .values({ username: await freeUsername(email), email, phone, passwordHash: await Bun.password.hash(password), termsAcceptedAt: new Date(), preferences: BEGINNER })
     .onConflictDoNothing()
     .returning();
   if (!created) return c.json({ error: "Email ini sudah terdaftar. Masuk, atau pakai Lupa kata sandi." }, 409);
@@ -575,7 +578,7 @@ authApi.get("/auth/google/callback", async (c) => {
       if (!signupOpen()) return fail("signup-closed");
       [user] = await db
         .insert(users)
-        .values({ username: await freeUsername(email), email, googleSub: info.sub, passwordHash: null, termsAcceptedAt: new Date() })
+        .values({ username: await freeUsername(email), email, googleSub: info.sub, passwordHash: null, termsAcceptedAt: new Date(), preferences: BEGINNER })
         .returning();
     }
     user = await markVerified(user, email);
@@ -710,9 +713,9 @@ meApi.post("/me/email", async (c) => {
   return c.json({ user: publicUser(user), mailed: sent.ok });
 });
 
-// The page's own settings (panel layout, indicator inputs). Opaque to the server:
-// each top-level key is replaced whole, null removes it, and the total is capped.
-const PREFERENCE_KEYS = ["layout", "indicators"] as const;
+// The page's own settings (panel layout, indicator inputs, Pemula or Pro). Opaque to the
+// server: each top-level key is replaced whole, null removes it, and the total is capped.
+const PREFERENCE_KEYS = ["layout", "indicators", "ui"] as const;
 const MAX_PREFERENCES_BYTES = 16_000;
 
 meApi.patch("/me/preferences", async (c) => {
@@ -766,7 +769,7 @@ usersApi.post("/users", async (c) => {
   const { password, ...rest } = body.data;
   const [created] = await db
     .insert(users)
-    .values({ ...rest, passwordHash: await Bun.password.hash(password) })
+    .values({ ...rest, passwordHash: await Bun.password.hash(password), preferences: rest.role === "member" ? BEGINNER : {} })
     .onConflictDoNothing()
     .returning();
   return created ? c.json(publicUser(created), 201) : c.json({ error: `Nama pengguna ${rest.username} sudah dipakai` }, 409);

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ilike, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -10,8 +10,10 @@ import { analyses, analysisEvents, users, type JobKind } from "./db/schema";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
 import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
 import { catalogFor, modelsFor } from "./models";
+import { briefFor } from "./site";
 import { overLimit, room, usage } from "./usage";
 import { isVenue } from "./venues";
+import { gist } from "./watch";
 import { getCatalog, type Catalog } from "./worker";
 
 // Every backtest cell is one full analysis (many LLM calls), so a sweep is capped.
@@ -205,6 +207,42 @@ api.get("/decisions", async (c) => {
     ),
   ].sort((a, b) => a.date.localeCompare(b.date));
   return c.json(decisions);
+});
+
+/**
+ * The one answer the Pemula screen shows for a ticker: this user's latest finished analysis of
+ * it (latest trade date first), else the daily AI brief's view when the brief covers it, else null.
+ */
+api.get("/verdict", async (c) => {
+  const ticker = (c.req.query("ticker") ?? "").toUpperCase();
+  if (!SYMBOL_PATTERN.test(ticker)) return c.json({ error: "Simbol tidak valid" }, 400);
+  const [last] = await db
+    .select({
+      id: analyses.id,
+      date: analyses.tradeDate,
+      rating: analyses.rating,
+      reports: analyses.reports,
+      at: analyses.finishedAt,
+      hasReport: sql<boolean>`${analyses.reportHtml} is not null`,
+    })
+    .from(analyses)
+    .where(
+      and(
+        eq(analyses.userId, c.get("user").id),
+        eq(analyses.kind, "analysis"),
+        eq(analyses.status, "completed"),
+        eq(analyses.ticker, ticker),
+        isNotNull(analyses.rating),
+      ),
+    )
+    .orderBy(desc(analyses.tradeDate), desc(analyses.createdAt))
+    .limit(1);
+  if (last) {
+    const { reports, ...rest } = last;
+    return c.json({ source: "analysis" as const, ...rest, summary: gist(reports?.final_trade_decision) });
+  }
+  const brief = await briefFor(ticker);
+  return c.json(brief ? { source: "brief" as const, ...brief } : null);
 });
 
 api.post("/analyses", async (c) => {
