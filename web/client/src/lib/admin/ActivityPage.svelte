@@ -36,7 +36,7 @@
     script: 'Skrip baru',
     journal: 'Trade dicatat ke jurnal',
   };
-  const INDICATOR: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib GZ' };
+  const INDICATOR: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone' };
   const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
 
   const readMember = () => location.hash.match(/^#\/admin\/aktivitas\/([0-9a-f-]{36})/)?.[1] ?? null;

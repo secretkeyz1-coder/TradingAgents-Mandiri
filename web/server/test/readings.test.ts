@@ -92,7 +92,7 @@ test("another account's script, an unknown key or a fourth indicator is refused"
   // The same one twice is read once.
   const twice = await ask([{ key: "fib", timeframe: "1d" }, { key: "fib", timeframe: "15m" }]);
   expect(twice.status).toBe(201);
-  expect((await stored(twice.body.id)).indicators).toEqual([{ key: "fib", name: "Fib GZ", timeframe: "15m", engine: "fib" }]);
+  expect((await stored(twice.body.id)).indicators).toEqual([{ key: "fib", name: "Fib Golden Zone", timeframe: "15m", engine: "fib" }]);
 });
 
 test("only the Market Analyst reads indicators: an admin's run without it is refused", async () => {
