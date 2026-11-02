@@ -25,6 +25,7 @@
   import { api, type Candle, type Decision, type Drawing, type Interval } from './api';
   import AlertsMenu from './chart/AlertsMenu.svelte';
   import IndicatorsMenu from './chart/IndicatorsMenu.svelte';
+  import TradePlan, { type Plan } from './chart/TradePlan.svelte';
   import IndicatorPanel from './chart/IndicatorPanel.svelte';
   import ScriptEditor from './chart/ScriptEditor.svelte';
   import ScriptsMenu from './chart/ScriptsMenu.svelte';
@@ -575,6 +576,32 @@
     }),
   );
 
+  /** Open setups from the indicators on the chart, newest first: what the trading plan card offers. */
+  const plans = $derived.by((): Plan[] => {
+    const at = (index: number) => candles[index]?.time ?? '';
+    const out: Plan[] = [];
+    // Scalper reports its latest setup even after it ended: one whose stop or target a later bar touched is no plan.
+    const ended = (s: { index: number; side: 'BUY' | 'SELL'; stopLoss: number; takeProfit: number }) =>
+      candles.slice(s.index + 1).some((c) => (s.side === 'BUY' ? c.low <= s.stopLoss || c.high >= s.takeProfit : c.high >= s.stopLoss || c.low <= s.takeProfit));
+    if (ind?.setup && !ended(ind.setup)) {
+      const s = ind.setup;
+      out.push({ key: 'scalper', source: 'Scalper Pro+', side: s.side, entry: s.entry, stopLoss: s.stopLoss, takeProfit: s.takeProfit, time: at(s.index) });
+    }
+    const pobOpen = pobRes?.signals.findLast((s) => s.outcome === 'open');
+    if (pobOpen) out.push({ key: 'pob', source: `PoB BYSTRA · ${pobOpen.label}`, side: pobOpen.side, entry: pobOpen.entry, stopLoss: pobOpen.stopLoss, takeProfit: pobOpen.takeProfit, time: at(pobOpen.index) });
+    const fibOpen = fibRes?.signals.findLast((s) => s.outcome === 'open');
+    if (fibOpen) out.push({ key: 'fib', source: 'Fib GZ', side: fibOpen.side, entry: fibOpen.entry, stopLoss: fibOpen.stopLoss, takeProfit: fibOpen.takeProfit, time: at(fibOpen.index) });
+    for (const card of scriptCards) {
+      if ('open' in card && card.open) {
+        const o = card.open;
+        out.push({ key: card.id, source: card.name, side: o.side, entry: o.entry, stopLoss: o.stopLoss, takeProfit: o.takeProfit, time: o.time });
+      }
+    }
+    return out.sort((a, b) => b.time.localeCompare(a.time));
+  });
+  const latestDecision = $derived([...decisions].sort((a, b) => a.date.localeCompare(b.date)).at(-1) ?? null);
+  const anyIndicator = $derived(indicators.showScalper || indicators.showPob || indicators.showFib || enabledScripts.length > 0);
+
   const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', exit: 'keluar oleh kondisi skrip', expired: 'kedaluwarsa', open: 'masih berjalan' };
   /** "28 Okt 21:45" for intraday bars, the date for daily ones. */
   const stamp = (t: string) => {
@@ -860,6 +887,12 @@
       </div>
     </div>
   </div>
+
+  {#if tools && plans.length}
+    <TradePlan {plans} {symbol} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
+  {:else if tools && !anyIndicator && candles.length}
+    <p class="text-xs text-base-content/70">Rencana trading (entry, SL, TP, dan ukuran posisi) muncul di sini saat indikator memberi setup. Nyalakan dari menu Indikator.</p>
+  {/if}
 
   <!-- The workspace chart fills its panel; elsewhere it has a fixed height. -->
   <div class="relative w-full" class:min-h-48={tools} class:flex-1={tools} style={tools ? '' : `height: ${height}px`}>
