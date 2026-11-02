@@ -19,6 +19,7 @@ import { startOpsAlerts } from "./monitor";
 import { startReminders } from "./reminders";
 import { startBriefs } from "./site";
 import { startStatusChecks } from "./status";
+import { startTelegramLinks } from "./telegram";
 import { startWatchScheduler } from "./watch";
 import { getCatalog } from "./worker";
 
@@ -42,6 +43,7 @@ startStatusChecks();
 startErrorPruning();
 startLimitPruning();
 startActivityPruning();
+startTelegramLinks();
 startOpsAlerts();
 // Warm the form options: the first catalog read starts Python and takes seconds.
 getCatalog().catch((err) => recordError("catalog", err));

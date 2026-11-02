@@ -101,6 +101,20 @@ export async function sendTelegram(chatId: string | null, html: string): Promise
   }
 }
 
+/** Calls one Bot API method with this server's bot (telegram.ts reads its updates with it); null without a bot. */
+export async function telegramCall<T>(method: string, params: Record<string, unknown>, timeoutMs = 15_000): Promise<T | null> {
+  if (!settings.telegramToken) return null;
+  const res = await fetch(`${settings.telegramApi}/bot${settings.telegramToken}/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(params),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const body = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: T; description?: string };
+  if (!body.ok) throw new Error(`Telegram ${method}: ${body.description ?? `HTTP ${res.status}`}`);
+  return body.result ?? null;
+}
+
 export const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** The executive summary of a final decision, cut at a sentence end, without markdown. */

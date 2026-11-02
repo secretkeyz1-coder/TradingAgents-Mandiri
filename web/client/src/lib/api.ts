@@ -770,6 +770,8 @@ export const api = {
   /** Last prices for many symbols (engine spelling), for the Pasar list and Pantauanku. */
   quotes: (symbols: string[]) => request<{ quotes: Record<string, Quote | null> }>(`/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),
   sinceVisit: () => request<SinceVisit>('/activity/since'),
+  /** A one-time link to the bot that connects this account's Telegram chat when Start is pressed. */
+  telegramLink: () => request<{ url: string }>('/me/telegram/link', { method: 'POST' }),
   publicMarket: () => request<MarketQuote[]>('/public/market'),
   publicBrief: () => request<MarketBrief>('/public/brief'),
   claimOrder: (id: string, note: string) => request<Payment>(`/billing/orders/${id}/claim`, { method: 'POST', body: JSON.stringify({ note }) }),

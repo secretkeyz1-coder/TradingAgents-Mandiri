@@ -782,3 +782,17 @@ export const activityEvents = pgTable(
   },
   (t) => [index("activity_events_user_at_idx").on(t.userId, t.at), index("activity_events_at_idx").on(t.at)],
 );
+
+/**
+ * One-time links that connect a member's Telegram chat (telegram.ts): the bot's /start <token>
+ * gives the account that chat. Each lives 15 minutes and is deleted when used.
+ */
+export const telegramLinks = pgTable(
+  "telegram_links",
+  {
+    token: text("token").primaryKey(),
+    userId: owner().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("telegram_links_expires_at_idx").on(t.expiresAt)],
+);

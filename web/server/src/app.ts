@@ -27,6 +27,7 @@ import { api } from "./routes";
 import { scriptsApi } from "./scripts";
 import { siteApi } from "./site";
 import { statusApi } from "./status";
+import { telegramApi } from "./telegram";
 import { venuesApi } from "./venues";
 import { watchApi } from "./watch";
 
@@ -130,6 +131,7 @@ app.route("/api", venuesApi);
 app.route("/api", scriptsApi);
 app.route("/api", indicatorsApi);
 app.route("/api", analyticsApi);
+app.route("/api", telegramApi);
 // An order's invoice page opens from its signed link, without a session.
 app.route("/", invoicePages);
 

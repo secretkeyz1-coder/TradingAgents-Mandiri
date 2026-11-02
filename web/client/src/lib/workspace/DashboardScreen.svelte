@@ -11,6 +11,7 @@
   import { usage } from '../stores/usage.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
+  import TelegramConnect from '../TelegramConnect.svelte';
   import MorningSummary from './MorningSummary.svelte';
   import ResultCurve from './ResultCurve.svelte';
 
@@ -132,9 +133,14 @@
         <span class="loading loading-spinner" aria-label="Memuat"></span>
       {:else}
         {#if !data.telegram}
-          <p class="text-sm text-warning">
-            Telegram belum tersambung: call tetap tercatat di sini, tapi tidak dikirim ke HP-mu. Sambungkan di menu akun → Profil → Notifikasi.
-          </p>
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+            <span class="text-base-content/80">Call tercatat di sini, tapi belum dikirim ke HP-mu.</span>
+            {#if watch.value?.telegram.bot}
+              <TelegramConnect compact />
+            {:else}
+              <span class="text-base-content/70">Notifikasi Telegram belum tersedia di server ini.</span>
+            {/if}
+          </div>
         {/if}
 
         {#if !s.total}

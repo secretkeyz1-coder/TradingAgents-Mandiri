@@ -2958,6 +2958,41 @@
         }
       }
     },
+    "/api/me/telegram/link": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
     "/api/me/verify-email": {
       "post": {
         "tags": [

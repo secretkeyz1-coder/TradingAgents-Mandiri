@@ -8,6 +8,7 @@
   import { auth } from '../auth.svelte';
   import { usage } from '../stores/usage.svelte';
   import { watch } from '../stores/watch.svelte';
+  import TelegramConnect from '../TelegramConnect.svelte';
   import PublicProfileSection from './PublicProfileSection.svelte';
   import TwoFactorSection from './TwoFactorSection.svelte';
 
@@ -194,14 +195,15 @@
             {auth.isAdmin ? 'Bot Telegram belum diatur di server (TELEGRAM_BOT_TOKEN), jadi pesan belum bisa dikirim.' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}
           </p>
         {/if}
+        {#if !watch.value || watch.value.telegram.bot}<TelegramConnect />{/if}
         <fieldset class="fieldset py-0">
-          <legend class="fieldset-legend pt-0">Chat ID</legend>
+          <legend class="fieldset-legend pt-0">Atau isi chat ID sendiri (mis. untuk grup)</legend>
           <div class="join w-full">
             <input class="input join-item input-sm w-full" inputmode="numeric" placeholder="mis. 123456789" bind:value={chatId} />
             <button class="btn btn-sm join-item" type="submit">Simpan</button>
           </div>
           <p class="label whitespace-normal">
-            Kirim satu pesan ke bot app ini di Telegram, lalu cari ID-mu dengan @userinfobot (atau minta admin melihatnya).
+            Masukkan bot app ini ke grupnya, lalu cari ID grup dengan @userinfobot (atau minta admin melihatnya).
           </p>
         </fieldset>
         <div class="flex flex-wrap items-center gap-2">
