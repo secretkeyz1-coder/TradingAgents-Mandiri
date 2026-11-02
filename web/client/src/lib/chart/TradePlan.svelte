@@ -10,6 +10,9 @@
   // and risk per trade, one tap to put price alerts on the three levels (POST /api/price-alerts,
   // within the plan's notification allowance), and the plan as text to copy into a broker app
   // or a group. Capital and risk are remembered in this browser. Research, not advice.
+  // IDX levels are put on the exchange's price grid (idx.ts) so a broker app takes them; an IDX
+  // sell signal, which an ordinary retail account cannot short, reads as "avoid buying, or sell
+  // what you hold", with alerts but no position size and no journal entry.
   // Under the plan, the engine's live record on this timeframe (RecordLine): how often its
   // signals have paid after costs, so the plan is weighed before it is taken. "Saya ambil" puts
   // the plan in the journal (POST /api/journal) with the trader's own entry, mood and note, and
@@ -17,6 +20,7 @@
   import { TIMEFRAME_LABELS } from '../alertLabels';
   import { api, type JournalMood } from '../api';
   import { friendlyName } from '../beginner/plain';
+  import { onIdxTick } from '../idx';
   import MoodPicker from '../MoodPicker.svelte';
   import { ws } from '../stores/workspace.svelte';
   import RecordLine from './RecordLine.svelte';
@@ -75,17 +79,30 @@
   });
 
   const plan = $derived(plans.find((p) => p.key === picked) ?? plans[0]);
-  const risk = $derived(plan ? Math.abs(plan.entry - plan.stopLoss) : 0);
-  const rr = $derived(plan && risk ? Math.abs(plan.takeProfit - plan.entry) / risk : null);
   const kind = $derived(symbol.endsWith('.JK') ? 'idx' : symbol === 'GC=F' || symbol.startsWith('XAU') ? 'gold' : symbol.endsWith('-USD') ? 'crypto' : 'units');
+  /**
+   * The levels a broker app accepts. IDX prices move in steps (fraksi harga), so there the stop goes
+   * to the step beyond the indicator's level, the target to the step before it, and the entry to the
+   * nearest; other markets keep the indicator's levels.
+   */
+  const levels = $derived.by(() => {
+    if (!plan) return null;
+    if (kind !== 'idx') return { entry: plan.entry, stopLoss: plan.stopLoss, takeProfit: plan.takeProfit };
+    const buy = plan.side === 'BUY';
+    return { entry: onIdxTick(plan.entry, 'nearest'), stopLoss: onIdxTick(plan.stopLoss, buy ? 'down' : 'up'), takeProfit: onIdxTick(plan.takeProfit, buy ? 'down' : 'up') };
+  });
+  /** An IDX share cannot be sold short from an ordinary retail account: its sell signal is a warning to act on, not a position to size. */
+  const idxSell = $derived(kind === 'idx' && plan?.side === 'SELL');
+  const risk = $derived(levels ? Math.abs(levels.entry - levels.stopLoss) : 0);
+  const rr = $derived(levels && risk ? Math.abs(levels.takeProfit - levels.entry) / risk : null);
   const toIdr = $derived(currency === 'IDR' ? 1 : rate);
   /** The position the stop allows: the most loss is capital × risk; IDX shares go in lots of 100. */
   const size = $derived.by(() => {
-    if (!plan || !risk || !toIdr || !(capital > 0) || !(riskPct > 0)) return null;
+    if (!levels || idxSell || !risk || !toIdr || !(capital > 0) || !(riskPct > 0)) return null;
     let units = (capital * riskPct) / 100 / toIdr / risk;
     if (kind === 'idx') units = Math.floor(units / 100) * 100;
     else if (kind === 'units') units = Math.floor(units);
-    return { units, loss: units * risk * toIdr, value: units * plan.entry * toIdr };
+    return { units, loss: units * risk * toIdr, value: units * levels.entry * toIdr };
   });
 
   const price = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
@@ -111,15 +128,15 @@
   });
 
   async function alertLevels() {
-    if (!plan) return;
+    if (!plan || !levels) return;
     busy = true;
     note = '';
     const done: string[] = [];
     const failed: string[] = [];
     for (const [name, level] of [
-      ['entry', plan.entry],
-      ['SL', plan.stopLoss],
-      ['TP', plan.takeProfit],
+      ['entry', levels.entry],
+      ['SL', levels.stopLoss],
+      ['TP', levels.takeProfit],
     ] as const) {
       try {
         await api.priceLevelAdd({ symbol, tvSymbol: ws.symbol, price: level, label: `${name} · ${plan.source}`.slice(0, 40) });
@@ -144,13 +161,13 @@
 
   function startTaking() {
     taking = !taking;
-    takenEntry = plan?.entry ?? null;
+    takenEntry = levels?.entry ?? null;
     takeError = '';
   }
 
   async function take(e: SubmitEvent) {
     e.preventDefault();
-    if (!plan || takenEntry == null) return;
+    if (!plan || !levels || takenEntry == null) return;
     saving = true;
     takeError = '';
     try {
@@ -159,14 +176,14 @@
         tvSymbol: ws.symbol,
         side: plan.side,
         entry: takenEntry,
-        stopLoss: plan.stopLoss,
-        takeProfit: plan.takeProfit,
+        stopLoss: levels.stopLoss,
+        takeProfit: levels.takeProfit,
         source: plan.key,
         label: `${plan.source.split(' · ')[0]} ${TIMEFRAME_LABELS[timeframe as keyof typeof TIMEFRAME_LABELS] ?? timeframe}`.slice(0, 80),
         mood: mood ?? undefined,
         note: memo.trim() || undefined,
         // What the stop would cost at the size shown, from the entry the trader got.
-        riskIdr: open && size && size.units > 0 && toIdr ? Math.round(size.units * Math.abs(takenEntry - plan.stopLoss) * toIdr) : undefined,
+        riskIdr: open && size && size.units > 0 && toIdr ? Math.round(size.units * Math.abs(takenEntry - levels.stopLoss) * toIdr) : undefined,
       });
       taking = false;
       mood = null;
@@ -180,8 +197,9 @@
   }
 
   async function copy() {
-    if (!plan) return;
-    const text = `${friendlyName(ws.symbol)} · ${plan.side === 'BUY' ? 'Beli' : 'Jual'} · Entry ${price(plan.entry)} · SL ${price(plan.stopLoss)} · TP ${price(plan.takeProfit)}${rr ? ` · R:R 1:${rr.toFixed(1).replace('.', ',')}` : ''} (${plan.source}). Riset, bukan saran investasi.`;
+    if (!plan || !levels) return;
+    const side = idxSell ? 'Jual (hindari beli, atau jual kalau sudah punya)' : plan.side === 'BUY' ? 'Beli' : 'Jual';
+    const text = `${friendlyName(ws.symbol)} · ${side} · Entry ${price(levels.entry)} · SL ${price(levels.stopLoss)} · TP ${price(levels.takeProfit)}${rr ? ` · R:R 1:${rr.toFixed(1).replace('.', ',')}` : ''} (${plan.source}). Riset, bukan saran investasi.`;
     try {
       await navigator.clipboard.writeText(text);
       copied = true;
@@ -192,21 +210,29 @@
   }
 </script>
 
-{#if plan}
+{#if plan && levels}
   <section class="flex flex-col gap-1.5 rounded-box border border-base-300 bg-base-100 px-3 py-2 text-sm" aria-label="Rencana trading">
     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span class="font-semibold">Rencana</span>
       <span class="badge badge-sm badge-soft {plan.side === 'BUY' ? 'badge-success' : 'badge-error'}">{plan.side === 'BUY' ? 'Beli' : 'Jual'}</span>
-      <span class="tabular-nums">Entry <strong>{price(plan.entry)}</strong></span>
-      <span class="tabular-nums">SL <strong class="text-error">{price(plan.stopLoss)}</strong> <span class="text-xs text-base-content/70">{percent(plan.entry, plan.stopLoss)}</span></span>
-      <span class="tabular-nums">TP <strong class="text-success">{price(plan.takeProfit)}</strong> <span class="text-xs text-base-content/70">{percent(plan.entry, plan.takeProfit)}</span></span>
+      <span class="tabular-nums">Entry <strong>{price(levels.entry)}</strong></span>
+      <span class="tabular-nums">SL <strong class="text-error">{price(levels.stopLoss)}</strong> <span class="text-xs text-base-content/70">{percent(levels.entry, levels.stopLoss)}</span></span>
+      <span class="tabular-nums">TP <strong class="text-success">{price(levels.takeProfit)}</strong> <span class="text-xs text-base-content/70">{percent(levels.entry, levels.takeProfit)}</span></span>
       {#if rr}<span class="tabular-nums">R:R 1:{rr.toFixed(1).replace('.', ',')}</span>{/if}
       <span class="ml-auto flex items-center gap-1">
         <button class="btn btn-ghost btn-xs" onclick={copy}>{copied ? 'Tersalin' : 'Salin'}</button>
-        <button class="btn btn-xs" aria-expanded={taking} title="Catat rencana ini di jurnal sebagai trade yang kamu ambil" onclick={startTaking}>Saya ambil</button>
-        <button class="btn btn-xs" aria-expanded={open} onclick={() => (open = !open)}>{open ? 'Tutup' : 'Ukuran posisi & alert'}</button>
+        {#if !idxSell}
+          <button class="btn btn-xs" aria-expanded={taking} title="Catat rencana ini di jurnal sebagai trade yang kamu ambil" onclick={startTaking}>Saya ambil</button>
+        {/if}
+        <button class="btn btn-xs" aria-expanded={open} onclick={() => (open = !open)}>{open ? 'Tutup' : idxSell ? 'Pasang alert' : 'Ukuran posisi & alert'}</button>
       </span>
     </div>
+    {#if idxSell}
+      <p class="text-xs">
+        Saham di BEI tidak bisa dijual kosong (short) dari akun ritel biasa, jadi sinyal ini berarti <strong>hindari beli dulu, atau jual kalau sudah punya</strong>.
+        Pandangan turun ini batal bila harga naik ke SL.
+      </p>
+    {/if}
     <div class="flex flex-wrap items-center gap-x-2 text-xs text-base-content/70">
       {#if plans.length > 1}
         <select class="select select-xs w-auto" aria-label="Sumber rencana" value={plan.key} onchange={(e) => (picked = e.currentTarget.value)}>
@@ -216,14 +242,15 @@
         <span>dari {plan.source}</span>
       {/if}
       <span>· {when(plan.time)}</span>
-      {#if last != null}<span>· harga sekarang {price(last)} ({percent(plan.entry, last)} dari entry)</span>{/if}
+      {#if kind === 'idx'}<span title="Harga order di BEI harus kelipatan fraksi harga: SL ke langkah di luar level indikator, TP ke langkah sebelum level">· dibulatkan ke fraksi harga BEI</span>{/if}
+      {#if last != null}<span>· harga sekarang {price(last)} ({percent(levels.entry, last)} dari entry)</span>{/if}
       {#if decision}<span>· keputusan AI terakhir {decision.rating} ({decision.date})</span>{/if}
     </div>
     <RecordLine source={plan.key} {timeframe} {symbol} lead="Rekam jejak" exact showScope />
     {#if taking}
       <form class="flex flex-col gap-2 border-t border-base-300 pt-2" onsubmit={take} aria-label="Catat ke jurnal">
         <p class="text-xs text-base-content/70">
-          Catat ke jurnal: {plan.side === 'BUY' ? 'Beli' : 'Jual'}, SL {price(plan.stopLoss)}, TP {price(plan.takeProfit)}. Jurnal menutupnya otomatis saat harga menyentuh TP atau SL.
+          Catat ke jurnal: {plan.side === 'BUY' ? 'Beli' : 'Jual'}, SL {price(levels.stopLoss)}, TP {price(levels.takeProfit)}. Jurnal menutupnya otomatis saat harga menyentuh TP atau SL.
         </p>
         <div class="flex flex-wrap items-end gap-3">
           <label class="flex flex-col gap-0.5 text-xs">
@@ -244,6 +271,7 @@
     {/if}
     {#if open}
       <div class="flex flex-col gap-2 border-t border-base-300 pt-2">
+        {#if !idxSell}
         <div class="flex flex-wrap items-end gap-3">
           <label class="flex flex-col gap-0.5 text-xs">
             Modal (Rp)
@@ -257,6 +285,7 @@
         </div>
         {#if size && size.value > capital}
           <p class="text-xs text-warning">Nilai posisi melebihi modal: hanya bisa dengan margin atau leverage, dan risikonya ikut membesar.</p>
+        {/if}
         {/if}
         <div class="flex flex-wrap items-center gap-2">
           <button class="btn btn-xs" disabled={busy} onclick={alertLevels}>
