@@ -84,7 +84,7 @@ class Workspace {
   /** The same symbol as the engine spells it (BBCA.JK), or null when it cannot be analysed. */
   yahoo = $derived(toYahoo(this.symbol));
   market = $state('idx');
-  chartView = $state<ChartView>('tv');
+  chartView = $state<ChartView>('ai');
   /** Candle timeframe of the AI chart; the engine itself only ever sees daily bars. */
   timeframe = $state<Interval>('1d');
   aiMode = $state<AiMode>('analysis');
@@ -295,8 +295,9 @@ class Workspace {
     if (market && MARKET_TABS.some((t) => t.key === market)) this.market = market;
     else if (canonical) this.market = 'idx';
     const view = q.get('v');
+    // The AI chart is the default: the app's own indicators, signals and notifications live there.
     if (view === 'ai' || view === 'tv') this.chartView = view;
-    else if (canonical) this.chartView = 'tv';
+    else if (canonical) this.chartView = 'ai';
     const tf = q.get('tf') as Interval | null;
     if (tf && INTERVALS.includes(tf)) this.timeframe = tf;
     else if (canonical) this.timeframe = '1d';
@@ -344,7 +345,7 @@ class Workspace {
     if (this.backtest) q.set('bt', this.backtest.id);
     if (this.screen !== 'beranda' && this.dock !== DEFAULT_TAB[this.screen]) q.set('dock', this.dock);
     if (this.market !== 'idx') q.set('m', this.market);
-    if (this.chartView !== 'tv') q.set('v', this.chartView);
+    if (this.chartView !== 'ai') q.set('v', this.chartView);
     if (this.timeframe !== '1d') q.set('tf', this.timeframe);
     if (this.aiMode !== 'analysis') q.set('ai', this.aiMode);
     const hash = `#/${this.screen}?${q}`;

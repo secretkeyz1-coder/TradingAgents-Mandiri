@@ -17,6 +17,8 @@ export type Catalog = {
   languages: string[];
   /** From the server's .env when set; `backendUrl` belongs to `provider` and the server fills it in itself. */
   defaults: { provider: string; quickModel: string; deepModel: string; backendUrl: string | null };
+  /** The median minutes of recent analyses (server routes.ts typicalMinutes); null before any. */
+  typicalMinutes?: number | null;
 };
 
 export type AnalysisRequest = {

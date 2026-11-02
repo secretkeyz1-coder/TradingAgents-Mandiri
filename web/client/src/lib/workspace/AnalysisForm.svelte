@@ -11,6 +11,12 @@
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { hasNoFundamentals, STANDARD_DEPTH, STANDARD_LANGUAGE, standardAnalysts } from '../../../../shared/analysis';
+  import { friendlyName } from '../beginner/plain';
+  import VerifyNote from '../VerifyNote.svelte';
+
+  /** "2026-11-02" → "Senin, 2 November 2026". */
+  const longDate = (day: string) =>
+    new Date(`${day}T00:00:00Z`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
   let { mode }: { mode: 'analysis' | 'backtest' } = $props();
 
@@ -177,6 +183,8 @@
     <fieldset class="fieldset py-0">
       <legend class="fieldset-legend pt-0">Tanggal analisa</legend>
       <input class="input input-sm w-full" type="date" bind:value={date} max={today()} required />
+      <!-- The date field's own format follows the browser's language; this line is always Indonesian. -->
+      {#if date}<span class="text-xs text-base-content/70">{longDate(date)}{date === today() ? ' (hari ini)' : ''}</span>{/if}
     </fieldset>
   {:else}
     <fieldset class="fieldset py-0">
@@ -293,11 +301,19 @@
       analysts.length === 0 ||
       (mode === 'analysis' && !ticker) ||
       (mode === 'backtest' && (cellCount === 0 || cellCount > MAX_CELLS || tickers.length > 5)) ||
-      overQuota}
+      overQuota ||
+      auth.unverified}
   >
     {#if submitting}<span class="loading loading-spinner loading-xs"></span>{/if}
-    {#if mode === 'analysis'}Analisa {ticker || 'simbol ini'}{:else}Mulai backtest · {cellCount} sel{/if}
+    {#if mode === 'analysis'}Analisa {ticker ? friendlyName(ws.symbol) : 'simbol ini'}{:else}Mulai backtest · {cellCount} sel{/if}
   </button>
+  {#if auth.unverified}
+    <VerifyNote />
+  {:else if mode === 'analysis'}
+    <p class="text-xs text-base-content/70">
+      {options?.typicalMinutes ? `Biasanya selesai dalam ±${options.typicalMinutes} menit.` : 'Butuh beberapa menit.'} Kamu boleh pindah layar; hasilnya muncul di Riwayat.
+    </p>
+  {/if}
   {#if quota?.limit}
     <p class="text-xs tabular-nums" class:text-warning={overQuota} class:text-base-content={!overQuota}>
       Kuota hari ini: {quota.used} / {quota.limit} analisa{#if overQuota}. Tidak cukup untuk {need}; reset pukul 00.00 WIB.{/if}

@@ -89,7 +89,26 @@ async function visible(c: Context<AppEnv>, id: string) {
 
 const finite = (n: number) => (Number.isFinite(n) ? n : null);
 
-api.get("/options", async (c) => c.json(catalogFor(c.get("user"), await getCatalog())));
+let typical: { at: number; minutes: number | null } | null = null;
+/** How long an analysis usually takes: the median of the last 50 completed ones, in whole minutes; null before any. Cached per process. */
+export async function typicalMinutes(): Promise<number | null> {
+  if (typical && Date.now() - typical.at < 10 * 60_000) return typical.minutes;
+  const recent = db
+    .select({ seconds: sql<number>`extract(epoch from ${analyses.finishedAt} - ${analyses.startedAt})`.as("seconds") })
+    .from(analyses)
+    .where(and(eq(analyses.kind, "analysis"), eq(analyses.status, "completed"), isNotNull(analyses.startedAt), isNotNull(analyses.finishedAt)))
+    .orderBy(desc(analyses.finishedAt))
+    .limit(50)
+    .as("recent");
+  const [row] = await db.select({ median: sql<number | null>`percentile_cont(0.5) within group (order by ${recent.seconds})` }).from(recent);
+  const minutes = row?.median == null ? null : Math.max(1, Math.round(Number(row.median) / 60));
+  typical = { at: Date.now(), minutes };
+  return minutes;
+}
+/** Tests: forget the cached median. */
+export const forgetTypical = () => (typical = null);
+
+api.get("/options", async (c) => c.json({ ...catalogFor(c.get("user"), await getCatalog()), typicalMinutes: await typicalMinutes() }));
 
 /** Today's use against the daily caps (see usage.ts); `left` also respects the server's total, null = no cap. */
 api.get("/usage", async (c) => {

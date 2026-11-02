@@ -82,19 +82,20 @@
   // The engine scores a decision over this many trading days from the first close after its date.
   const HOLDING_DAYS = 5;
   const RANGES = [
-    { value: '6mo', label: '6bl', days: 182 },
-    { value: '1y', label: '1th', days: 365 },
-    { value: '2y', label: '2th', days: 730 },
-    { value: '5y', label: '5th', days: 1826 },
+    { value: '6mo', label: '6 bln', days: 182 },
+    { value: '1y', label: '1 thn', days: 365 },
+    { value: '2y', label: '2 thn', days: 730 },
+    { value: '5y', label: '5 thn', days: 1826 },
   ] as const;
   type Range = (typeof RANGES)[number]['value'];
+  // Words, not "1h": in TradingView beside this chart 1h is an hour, so a short "1h" for a day misleads.
   const TIMEFRAMES: { value: Interval; label: string; title: string }[] = [
     { value: '15m', label: '15m', title: '15 menit (1 bulan terakhir)' },
-    { value: '1h', label: '1j', title: '1 jam' },
-    { value: '4h', label: '4j', title: '4 jam' },
-    { value: '1d', label: '1h', title: '1 hari' },
-    { value: '1wk', label: '1mg', title: '1 minggu' },
-    { value: '1mo', label: '1bl', title: '1 bulan' },
+    { value: '1h', label: '1 jam', title: '1 jam' },
+    { value: '4h', label: '4 jam', title: '4 jam' },
+    { value: '1d', label: 'Harian', title: '1 hari' },
+    { value: '1wk', label: 'Mingguan', title: '1 minggu' },
+    { value: '1mo', label: 'Bulanan', title: '1 bulan' },
   ];
   // Yahoo keeps hourly bars for two years at most; the server clamps, the buttons say so.
   const INTRADAY_RANGES: Range[] = ['6mo', '1y'];
@@ -261,7 +262,8 @@
       timeScale: { borderVisible: false },
       crosshair: { mode: 0 },
     });
-    candleSeries = chart.addSeries(CandlestickSeries, { borderVisible: false });
+    // Prices read as everywhere else in the app (77.954,01); the volume scale keeps its own short form.
+    candleSeries = chart.addSeries(CandlestickSeries, { borderVisible: false, priceFormat: { type: 'custom', formatter: (p: number) => priceText(p), minMove: 0.00001 } });
     volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     markers = createSeriesMarkers(candleSeries, []);
@@ -589,6 +591,20 @@
   }
 
   const priceText = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
+  /** The last price and its change since the previous day's close; weekly and monthly bars compare with the bar before. */
+  const quote = $derived.by(() => {
+    const last = candles.at(-1);
+    if (!last) return null;
+    const longBars = timeframe === '1wk' || timeframe === '1mo';
+    const prev = timeframe === '1d' || longBars ? candles.at(-2) : candles.findLast((c) => day(c.time) < day(last.time));
+    return {
+      price: last.close,
+      change: prev && prev.close ? (last.close - prev.close) / prev.close : null,
+      since: timeframe === '1wk' ? 'minggu ini' : timeframe === '1mo' ? 'bulan ini' : 'hari ini',
+    };
+  });
+  /** On a narrow chart the secondary tools fold behind "Lainnya". */
+  let moreTools = $state(false);
 
   // --- Navigation: zoom, jump to a date, the navigator strip.
   let visible = $state({ from: 0, to: 0 });
@@ -763,9 +779,17 @@
   });
 </script>
 
-<div class="flex flex-col gap-3" class:h-full={tools}>
+<div class="@container flex flex-col gap-3" class:h-full={tools}>
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
+      {#if quote}
+        <span class="text-lg font-semibold tabular-nums text-base-content">{priceText(quote.price)}</span>
+        {#if quote.change != null}
+          <span class="tabular-nums" class:text-success={quote.change > 0} class:text-error={quote.change < 0}>
+            {quote.change > 0 ? '+' : quote.change < 0 ? '−' : ''}{(Math.abs(quote.change) * 100).toFixed(2).replace('.', ',')}% {quote.since}
+          </span>
+        {/if}
+      {/if}
       <span class="font-mono font-semibold text-base-content">{symbol}</span>
       {#if currency}<span>· {currency}</span>{/if}
       {#if source && source !== 'yahoo'}
@@ -779,13 +803,28 @@
       {/if}
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <div class="join" role="group" aria-label="Timeframe candle">
+      <!-- Narrow: the timeframe as one compact picker, so the toolbar keeps to one row on a phone. -->
+      <select
+        class="select select-xs w-auto @2xl:hidden"
+        aria-label="Timeframe candle"
+        value={timeframe}
+        onchange={(e) => pickTimeframe(e.currentTarget.value as Interval)}
+      >
+        {#each TIMEFRAMES as t (t.value)}<option value={t.value}>{t.label}</option>{/each}
+      </select>
+      <div class="join hidden @2xl:inline-flex" role="group" aria-label="Timeframe candle">
         {#each TIMEFRAMES as t (t.value)}
           <button class="btn btn-xs join-item" class:btn-active={timeframe === t.value} aria-pressed={timeframe === t.value} title={t.title} onclick={() => pickTimeframe(t.value)}>
             {t.label}
           </button>
         {/each}
       </div>
+      {#if tools}
+        <IndicatorsMenu pobOk={!!pobTf} {fibOk} />
+        <AlertsMenu {symbol} {venue} last={candles.at(-1)?.close ?? null} />
+        <button class="btn btn-xs @2xl:hidden" aria-expanded={moreTools} onclick={() => (moreTools = !moreTools)}>Lainnya</button>
+      {/if}
+      <div class="{moreTools || !tools ? 'flex' : 'hidden'} flex-wrap items-center gap-2 @2xl:flex">
       <div class="join" role="group" aria-label="Rentang waktu">
         {#each RANGES as r (r.value)}
           <button
@@ -815,11 +854,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
           Tanggal
         </button>
-        <IndicatorsMenu pobOk={!!pobTf} {fibOk} />
         <ScriptsMenu />
         {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
-        <AlertsMenu {symbol} {venue} last={candles.at(-1)?.close ?? null} />
       {/if}
+      </div>
     </div>
   </div>
 

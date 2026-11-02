@@ -55,7 +55,7 @@
         <button
           class="btn btn-sm"
           onclick={() => watch.runNow()}
-          disabled={watch.busy || !w.items.length || room === 0}
+          disabled={watch.busy || !w.items.length || room === 0 || auth.unverified}
           title="Analisa semua simbol sekarang, di luar jadwal"
         >
           {#if watch.busy}<span class="loading loading-spinner loading-xs"></span>{/if}

@@ -4,6 +4,8 @@
   // that runs a standard analysis on the day's quota. While one runs for this asset
   // the card says so, and shows the result once the history (jobs store) has it.
   import { api, type Verdict } from '../api';
+  import { auth } from '../auth.svelte';
+  import VerifyNote from '../VerifyNote.svelte';
   import { formatDateTime, formatDuration, today } from '../format';
   import { catalog } from '../stores/catalog.svelte';
   import { jobs } from '../stores/jobs.svelte';
@@ -162,7 +164,7 @@
       <button
         class="btn btn-sm"
         class:btn-primary={!verdict || verdict.source === 'brief'}
-        disabled={busy || !catalog.value || left === 0}
+        disabled={busy || !catalog.value || left === 0 || auth.unverified}
         onclick={ask}
       >
         {#if busy}<span class="loading loading-spinner loading-xs" aria-hidden="true"></span>{/if}
@@ -171,9 +173,13 @@
       {#if verdict?.source === 'analysis' && verdict.hasReport}
         <a class="btn btn-ghost btn-sm" href={api.reportUrl(verdict.id)} target="_blank" rel="noopener">Baca laporan lengkap</a>
       {/if}
-      <span class="text-xs text-base-content/70">
-        {left === 0 ? 'Jatah analisa hari ini habis; terisi lagi pukul 00.00 WIB.' : Number.isFinite(left) ? `Memakai 1 dari ${left} jatah analisa tersisa hari ini.` : 'Memakai 1 jatah analisa.'}
-      </span>
+      {#if auth.unverified}
+        <VerifyNote />
+      {:else}
+        <span class="text-xs text-base-content/70">
+          {left === 0 ? 'Jatah analisa hari ini habis; terisi lagi pukul 00.00 WIB.' : Number.isFinite(left) ? `Memakai 1 dari ${left} jatah analisa tersisa hari ini.` : 'Memakai 1 jatah analisa.'}
+        </span>
+      {/if}
     </div>
   {/if}
 </section>

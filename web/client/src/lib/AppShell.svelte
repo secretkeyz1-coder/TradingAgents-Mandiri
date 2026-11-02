@@ -146,7 +146,9 @@
         </span>
         {#if resent}<span class="text-xs">{resent}</span>{:else}<button class="btn btn-xs" onclick={resend}>Kirim ulang tautan</button>{/if}
       {:else}
-        <span>
+        <!-- One line on a phone, where every line above the chart counts. -->
+        <span class="sm:hidden">Menunggu verifikasi admin; fitur AI terbuka setelahnya.</span>
+        <span class="hidden sm:inline">
           Akunmu menunggu verifikasi admin. Setelah itu analisa AI dan chat agent bisa dipakai{auth.user.trialUsed ? '' : ', dan trial Pro aktif'}.
         </span>
       {/if}

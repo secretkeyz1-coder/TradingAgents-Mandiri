@@ -25,7 +25,7 @@ Mode Pro punya lima layar, dipilih dari menu di bilah atas (di ponsel dari tab b
 | Layar | Isi |
 | --- | --- |
 | Beranda | Kinerja sinyalmu: call dari notifikasi sinyal dan hasilnya untuk 7 hari sampai 1 tahun (jumlah call, TP, SL, rasio menang, total R, R kumulatif per hari, per indikator, per aset, riwayat call yang bisa disaring), lalu yang berjalan sekarang, kuota hari ini, analisa terjadwal, dan alert harga |
-| Pasar | Daftar harga per pasar (IDX, US, Crypto, Forex, Komoditas) di kiri, chart di tengah (TradingView, atau "Keputusan AI": candle Yahoo + marker setiap keputusan, dengan Indikator dan Notifikasi), Screener di panel bawah |
+| Pasar | Daftar harga per pasar (IDX, US, Crypto, Forex, Komoditas) di kiri, chart di tengah ("Keputusan AI", bawaan sejak November 2026: harga terakhir dan perubahan hari ini, candle + marker setiap keputusan, dengan Indikator dan Notifikasi; atau TradingView), Screener di panel bawah |
 | Riset AI | Chart simbol aktif, panel **Tanya** (agent chart) dan **Jalankan** (analisa yang terbuka, keputusan terakhir, form analisa) di kanan, dan Riwayat, Laporan, Log di panel bawah |
 | Pantau | Hanya yang kamu pantau: Analisa terjadwal dan Alert (semua alert harga dan sinyal) |
 | Uji strategi | Backtest (form, daftar, hasil), Lab, dan Strategi live (buku sinyal strategi bawaan) |
@@ -488,7 +488,7 @@ Referensi lengkapnya ada di [`docs/api/openapi.json`](../docs/api/openapi.json) 
 
 | Method | Path | Fungsi |
 | --- | --- | --- |
-| GET | `/api/options` | Provider, model, analis, kedalaman, bahasa |
+| GET | `/api/options` | Provider, model, analis, kedalaman, bahasa, dan `typicalMinutes` (median lama 50 analisa terakhir, untuk janji waktu di form Riset AI) |
 | GET | `/api/analyses` | 100 analisa terakhir (`?kind=backtest` untuk backtest) |
 | POST | `/api/backtests` | Mulai backtest (`tickers`, `start`, `end`, `everyNDays`, opsional `runId`) |
 | GET | `/api/candles?symbol=&range=&interval=` | Candle Yahoo; `range` `6mo`/`1y`/`2y`/`5y`, `interval` `1h`/`4h`/`1d`/`1wk`/`1mo` (default `1d`) |

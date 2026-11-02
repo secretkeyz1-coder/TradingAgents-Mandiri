@@ -5,7 +5,8 @@
 const STORAGE_KEY = 'tradingagents.panes';
 
 export const PANE_LIMITS = {
-  market: { min: 200, max: 480, initial: 320 },
+  // 360 so TradingView's quote list has room for the % change column, the figure traders scan first.
+  market: { min: 200, max: 480, initial: 360 },
   ai: { min: 280, max: 640, initial: 352 },
   dock: { min: 120 },
   /** The chart never gets narrower or shorter than this. */

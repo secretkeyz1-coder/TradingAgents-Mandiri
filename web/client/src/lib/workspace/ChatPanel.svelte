@@ -2,10 +2,12 @@
   // Ask the chart agent about the symbol in focus. It answers, draws on the
   // chart, and remembers what you tell it; all of that is listed here. `simple`
   // (the Pemula screen) keeps only the conversation: no tool names, memory or skills.
+  import { auth } from '../auth.svelte';
   import { renderMarkdown } from '../format';
   import { agent } from '../stores/agent.svelte';
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
+  import VerifyNote from '../VerifyNote.svelte';
   import SkillsPanel from './SkillsPanel.svelte';
 
   const SUGGESTIONS = ['Gambar support dan resistance 6 bulan', 'Ada trendline yang masih valid?', 'Buat rencana trade dari level terdekat'];
@@ -133,9 +135,10 @@
       {#if agent.sending}
         <button class="btn btn-sm ml-auto" type="button" onclick={() => agent.stop()}>Hentikan</button>
       {:else}
-        <button class="btn btn-primary btn-sm ml-auto" type="submit" disabled={!draft.trim() || !ws.yahoo || usage.left('chat') === 0}>Kirim</button>
+        <button class="btn btn-primary btn-sm ml-auto" type="submit" disabled={!draft.trim() || !ws.yahoo || usage.left('chat') === 0 || auth.unverified}>Kirim</button>
       {/if}
     </div>
+    {#if auth.unverified}<VerifyNote />{/if}
   </form>
 
   {#if showSkills}

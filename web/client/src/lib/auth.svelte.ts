@@ -29,6 +29,8 @@ class Auth {
   enabled = $state(false);
   user = $state<Account | null>(null);
   isAdmin = $derived(this.user?.role === 'admin');
+  /** The server spends no AI on this account until its e-mail is verified (server plans.ts needsVerification). */
+  unverified = $derived(Boolean(this.user?.email && !this.user.emailVerified));
   /** Set when the session check itself failed (server down), not when signed out. */
   error = $state('');
   config = $state<AuthConfig>({ signup: false, google: false, mail: false, trialDays: 7 });
