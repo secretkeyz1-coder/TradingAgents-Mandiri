@@ -2,8 +2,9 @@
   // "Kabari saya saat harga menyentuh X" for one asset (server/src/price-alerts.ts): add a
   // level, see the ones waiting and the last that fired, remove one. The direction follows the
   // price now (`last`): a level above it waits for a rise, one below for a fall, and the line
-  // under the box says which before it is added. Used by Pemula's Kabari saya card and the
-  // chart's Notifikasi menu.
+  // under the box says which before it is added. A level removed by mistake comes back from that
+  // line (Urungkan), since a missing level would tell no one; a fired record, which cannot come back,
+  // asks first. Used by Pemula's Kabari saya card and the chart's Notifikasi menu.
   import { api, type PriceLevel, type PriceLevels } from './api';
 
   let { symbol, tvSymbol, label, last = null }: { symbol: string; tvSymbol: string; label: string; last?: number | null } = $props();
@@ -12,6 +13,8 @@
   let text = $state('');
   let busy = $state(false);
   let error = $state('');
+  /** The waiting level just removed, which the line under the box offers back. */
+  let removed = $state<PriceLevel | null>(null);
 
   async function load(asset: string) {
     try {
@@ -28,6 +31,7 @@
     data = null;
     error = '';
     text = '';
+    removed = null;
     load(asset);
     const timer = setInterval(() => load(asset), 60_000);
     return () => clearInterval(timer);
@@ -74,6 +78,7 @@
     try {
       await api.priceLevelAdd({ symbol, tvSymbol, price: value, label });
       text = '';
+      removed = null;
       await load(symbol);
     } catch (e) {
       error = (e as Error).message;
@@ -82,13 +87,31 @@
     }
   }
 
-  async function remove(id: string) {
+  async function remove(level: PriceLevel) {
     error = '';
     try {
-      await api.priceLevelRemove(id);
+      await api.priceLevelRemove(level.id);
+      removed = level.active ? level : null;
       await load(symbol);
     } catch (e) {
       error = (e as Error).message;
+    }
+  }
+
+  /** Arm the removed level again at its price; the server reads its direction from the price now. */
+  async function restore() {
+    const level = removed;
+    if (!level) return;
+    removed = null;
+    busy = true;
+    error = '';
+    try {
+      await api.priceLevelAdd({ symbol, tvSymbol, price: level.price, label });
+      await load(symbol);
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      busy = false;
     }
   }
 </script>
@@ -112,7 +135,10 @@
       </button>
     </div>
     <p class="text-xs text-base-content/70" aria-live="polite">
-      {#if full}
+      {#if removed && !text.trim()}
+        Notifikasi {way(removed).toLowerCase()} {fmt(removed.price)} dihapus.
+        <button type="button" class="link" disabled={busy} onclick={restore}>Urungkan</button>
+      {:else if full}
         Semua jatah notifikasi paketmu ({data?.max}) sudah terpakai. Hapus satu dulu atau naikkan paket.
       {:else if same}
         Itu harga sekarang. Pilih harga di atas atau di bawahnya.
@@ -136,7 +162,7 @@
             <span class={l.direction === 'above' ? 'text-success' : 'text-error'} aria-hidden="true">{l.direction === 'above' ? '▲' : '▼'}</span>
             {way(l)} <strong class="font-semibold tabular-nums">{fmt(l.price)}</strong>
           </span>
-          <button class="btn btn-ghost btn-xs" aria-label="Hapus notifikasi {way(l).toLowerCase()} {fmt(l.price)}" onclick={() => remove(l.id)}>Hapus</button>
+          <button class="btn btn-ghost btn-xs" aria-label="Hapus notifikasi {way(l).toLowerCase()} {fmt(l.price)}" onclick={() => remove(l)}>Hapus</button>
         </li>
       {/each}
     </ul>
@@ -151,7 +177,11 @@
               ? ''
               : '. Pesannya tidak terkirim: Telegram atau email belum diatur'}
           </span>
-          <button class="btn btn-ghost btn-xs" aria-label="Hapus catatan {way(l).toLowerCase()} {fmt(l.price)}" onclick={() => remove(l.id)}>Hapus</button>
+          <button
+            class="btn btn-ghost btn-xs"
+            aria-label="Hapus catatan {way(l).toLowerCase()} {fmt(l.price)}"
+            onclick={() => confirm(`Hapus catatan notifikasi ${way(l).toLowerCase()} ${fmt(l.price)}? Catatan ini tidak bisa dikembalikan.`) && remove(l)}>Hapus</button
+          >
         </li>
       {/each}
     </ul>

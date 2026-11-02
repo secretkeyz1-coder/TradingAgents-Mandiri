@@ -169,7 +169,7 @@ Beranda menghitung **call**: sinyal yang keluar live dari notifikasi (terkirim, 
 - Level terpicu kalau harga terbaru melewatinya, atau kalau high/low candle yang dibuka setelah level dipasang menyentuhnya. Sentuhan di antara dua pemeriksaan tetap terhitung, sedangkan gerakan sebelum level dipasang tidak pernah memicunya.
 - **Sekali saja:** level dimatikan dengan satu update bersyarat sebelum pesannya dikirim, jadi tetap terkirim sekali walau ada dua instance server.
 - **Pesan:** dikirim lewat Telegram, dan lewat email kalau SMTP diatur dan alamatnya terverifikasi. Isinya nama aset, level, harga saat itu, dan sumber datanya.
-- **Catatan:** level yang terpicu tetap tersimpan (waktu dan harga), dan bisa dihapus.
+- **Catatan:** level yang terpicu tetap tersimpan (waktu dan harga), dan bisa dihapus setelah konfirmasi. Level yang masih menunggu langsung terhapus, dengan **Urungkan** di baris bawah kotak harga untuk memasangnya lagi.
 - **Jatah:** level aktif memakai jatah notifikasi paket bersama notifikasi sinyal. Kalau paket turun, notifikasi sinyal didahulukan dan level terbaru dijeda.
 
 API:
