@@ -451,7 +451,16 @@ export type Interval = (typeof INTERVALS)[number];
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
 
 /** A symbol's last price and its change on the previous close (server routes.ts /quotes). */
-export type Quote = { price: number; change: number | null; currency: string | null; delayed: boolean; time: string };
+export type Quote = {
+  price: number;
+  change: number | null;
+  currency: string | null;
+  delayed: boolean;
+  time: string;
+  /** With `spark`: the last 30 days of closes, and the change over them. */
+  spark?: number[];
+  month?: number | null;
+};
 /** A market for Beranda's strip, with its last 30 closes (server site.ts /public/market). */
 export type MarketQuote = Quote & { symbol: string; label: string; spark: number[] };
 /** The latest AI market brief (server site.ts /public/brief). */
@@ -822,7 +831,8 @@ export const api = {
   /** The public status page's data (server/src/status.ts). */
   serviceStatus: () => request<ServiceStatus>('/public/status'),
   /** Last prices for many symbols (engine spelling), for the Pasar list and Pantauanku. */
-  quotes: (symbols: string[]) => request<{ quotes: Record<string, Quote | null> }>(`/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),
+  quotes: (symbols: string[], spark = false) =>
+    request<{ quotes: Record<string, Quote | null> }>(`/quotes?symbols=${encodeURIComponent(symbols.join(','))}${spark ? '&spark=1' : ''}`),
   sinceVisit: () => request<SinceVisit>('/activity/since'),
   /** A one-time link to the bot that connects this account's Telegram chat when Start is pressed. */
   telegramLink: () => request<{ url: string }>('/me/telegram/link', { method: 'POST' }),

@@ -202,33 +202,43 @@ export function useDailyCandles(read?: DailyCandles) {
   readDaily = read ?? ((symbol) => getCandles(symbol, "6mo", "1d"));
 }
 
-/** A symbol's last price and its change on the previous close, from the daily bars the chart reads (cached in market.ts). */
-async function lastQuote(symbol: string) {
+/**
+ * A symbol's last price and its change on the previous close, from the daily bars the chart reads
+ * (cached in market.ts); with `month`, also the closes of the last 30 days and the change over them,
+ * for the Pasar board's small chart.
+ */
+async function lastQuote(symbol: string, month = false) {
   const series = await readDaily(symbol);
   const bars = series.candles.filter((c) => Number.isFinite(c.close));
   const last = bars.at(-1);
   if (!last) return null;
   const prev = bars.at(-2);
-  return {
+  const quote = {
     price: last.close,
     change: prev && prev.close ? last.close / prev.close - 1 : null,
     currency: series.currency,
     delayed: series.source === "yahoo",
     time: last.time,
   };
+  if (!month) return quote;
+  const from = new Date(Date.parse(last.time.slice(0, 10)) - 30 * 86_400_000).toISOString().slice(0, 10);
+  const window = bars.filter((c) => c.time.slice(0, 10) >= from);
+  return { ...quote, spark: window.map((c) => c.close), month: window.length > 1 && window[0].close ? last.close / window[0].close - 1 : null };
 }
 
 /**
  * Last prices for up to 80 symbols (engine spelling: BBCA.JK, BTC-USD), for the Pasar list and
- * Pantauanku; a symbol whose data fails is null. Six at a time, so a whole market's list does
- * not fire dozens of requests at the data source at once.
+ * Pantauanku; a symbol whose data fails is null. `spark=1` adds the last 30 days of closes and the
+ * change over them. Six at a time, so a whole market's list does not fire dozens of requests at
+ * the data source at once.
  */
 api.get("/quotes", async (c) => {
   const symbols = [...new Set((c.req.query("symbols") ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
   if (!symbols.length || symbols.length > 80 || !symbols.every((s) => SYMBOL_PATTERN.test(s))) return c.json({ error: "Daftar simbol tidak valid" }, 400);
+  const month = c.req.query("spark") === "1";
   const quotes: Record<string, Awaited<ReturnType<typeof lastQuote>>> = {};
   for (let i = 0; i < symbols.length; i += 6) {
-    await Promise.all(symbols.slice(i, i + 6).map(async (s) => (quotes[s] = await lastQuote(s).catch(() => null))));
+    await Promise.all(symbols.slice(i, i + 6).map(async (s) => (quotes[s] = await lastQuote(s, month).catch(() => null))));
   }
   return c.json({ quotes });
 });

@@ -3,31 +3,8 @@
   // name of an asset the market lists know ("emas", "Bank Central Asia"), and the
   // chart opens. Names are suggested as you type. Ctrl/⌘+K focuses it from anywhere.
   import { onMount } from 'svelte';
+  import { findAsset as find, LISTED } from './assets';
   import { ws } from './stores/workspace.svelte';
-  import { MARKET_TABS, resolveSymbol } from './tv';
-
-  /** Every listed asset once, [TradingView symbol, name]: the suggestions, and what a typed name or code is matched against. */
-  const LISTED = (() => {
-    const seen = new Map<string, string>();
-    for (const tab of MARKET_TABS) for (const group of tab.groups) for (const [symbol, name] of group.symbols) if (!seen.has(symbol)) seen.set(symbol, name);
-    return [...seen.entries()];
-  })();
-
-  /**
-   * What the typed text opens: an explicit symbol as typed (BBCA.JK, IDX:BBCA, BTC-USD), else the
-   * listed asset it names or whose code it is ("emas", "BBCA"), else whatever the engine makes of it.
-   * A name shared by several assets ("bank") opens nothing: the suggestions show the choice.
-   */
-  function find(text: string): string | null {
-    const t = text.trim();
-    if (/[:.=^-]/.test(t)) return resolveSymbol(t)?.tv ?? null;
-    const lower = t.toLowerCase();
-    const named = LISTED.filter(([, name]) => name.toLowerCase().includes(lower));
-    const exact = named.find(([, name]) => name.toLowerCase() === lower) ?? (named.length === 1 ? named[0] : null);
-    const code = LISTED.find(([symbol]) => symbol.split(':')[1] === t.toUpperCase());
-    if (exact || code) return (exact ?? code)![0];
-    return named.length > 1 ? null : (resolveSymbol(t)?.tv ?? null);
-  }
 
   let value = $state('');
   let error = $state(false);

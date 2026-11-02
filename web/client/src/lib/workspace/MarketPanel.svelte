@@ -1,8 +1,9 @@
 <script lang="ts">
-  // Pasar: the price list per market, from the server's quotes (GET /api/quotes: the daily bars
-  // the chart reads), with the change on the previous close that traders scan first, at any
-  // panel width. A row opens its chart; the list refreshes every minute while the tab is in
-  // front. The same market's screener sits in the bottom panel, under the same destination.
+  // Pasar beside an open chart: the price list of the chart's market, from the server's quotes
+  // (GET /api/quotes: the daily bars the chart reads), with the change on the previous close that
+  // traders scan first, at any panel width, so the next asset is one click away. A row opens its
+  // chart; "Semua pasar" goes back to the market board (MarketBoard). The list refreshes every
+  // minute while the tab is in front. The same market's screener sits in the bottom panel.
   import { api, type Quote } from '../api';
   import { priceText } from '../beginner/plain';
   import { layout } from '../stores/layout.svelte';
@@ -58,7 +59,10 @@
 <section class="flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Pasar">
   {#if !bare}
     <header class="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-base-300 px-3">
-      <h2 class="text-sm font-semibold">Pasar</h2>
+      <button class="btn btn-ghost btn-xs -ml-1 gap-1" title="Kembali ke daftar semua aset pasar ini" onclick={() => ws.closeChart()}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+        Semua pasar
+      </button>
       <div class="flex items-center gap-1">
         <button class="btn btn-ghost btn-xs" onclick={screener}>Screener</button>
         {#if onclose}<PanelClose label="Tutup panel Pasar" onclick={onclose} />{/if}

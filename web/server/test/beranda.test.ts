@@ -24,6 +24,11 @@ test("quotes give each symbol's last price and change, null where the data fails
   expect(r.body.quotes["BBCA.JK"]).toMatchObject({ price: 5000, currency: "IDR", delayed: true, time: "2026-10-31" });
   expect(r.body.quotes["BBCA.JK"].change).toBeCloseTo(5000 / 4900 - 1, 6);
   expect(r.body.quotes["RUSAK.JK"]).toBeNull();
+  // Without spark=1 there is no month; with it, the last 30 days of closes and the change over them.
+  expect(r.body.quotes["BBCA.JK"].spark).toBeUndefined();
+  const month = await call("/api/quotes?symbols=BBCA.JK&spark=1", { cookie: m.cookie });
+  expect(month.body.quotes["BBCA.JK"].spark).toEqual([4900, 5000]);
+  expect(month.body.quotes["BBCA.JK"].month).toBeCloseTo(5000 / 4900 - 1, 6);
 
   expect((await call("/api/quotes?symbols=", { cookie: m.cookie })).status).toBe(400);
   expect((await call("/api/quotes?symbols=<b>", { cookie: m.cookie })).status).toBe(400);

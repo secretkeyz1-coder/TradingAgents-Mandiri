@@ -8,6 +8,7 @@
   import { api, type MarketBrief, type MarketQuote, type Quote, type SinceVisit } from '../api';
   import { friendlyName, priceText, STARTERS } from '../beginner/plain';
   import { ratingBadge } from '../format';
+  import Sparkline from '../Sparkline.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { toYahoo } from '../tv';
@@ -74,13 +75,6 @@
 
   const percent = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${(Math.abs(x) * 100).toFixed(2).replace('.', ',')}%`;
   const tone = (x: number | null | undefined) => (x == null ? 'text-base-content/70' : x > 0 ? 'text-success' : x < 0 ? 'text-error' : 'text-base-content/70');
-  /** A month of closes as a line across the tile. */
-  function spark(values: number[]) {
-    if (values.length < 2) return '';
-    const low = Math.min(...values);
-    const span = Math.max(...values) - low || 1;
-    return values.map((v, i) => `${((i / (values.length - 1)) * 100).toFixed(1)},${(22 - ((v - low) / span) * 20).toFixed(1)}`).join(' ');
-  }
   const rtf = new Intl.RelativeTimeFormat('id', { numeric: 'auto' });
   function ago(iso: string) {
     const minutes = Math.round((Date.now() - Date.parse(iso)) / 60_000);
@@ -108,9 +102,7 @@
             <span class="text-xs text-base-content/70">{q.name}</span>
             <span class="font-semibold tabular-nums">{priceText(q.price, q.currency, q.symbol)}</span>
             <span class="text-xs tabular-nums {tone(q.change)}">{q.change == null ? '–' : `${percent(q.change)} hari ini`}</span>
-            <svg viewBox="0 0 100 24" class="mt-1 h-6 w-full text-base-content/40" preserveAspectRatio="none" aria-hidden="true">
-              <polyline points={spark(q.spark)} fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" />
-            </svg>
+            <Sparkline values={q.spark} class="mt-1 h-6 w-full text-base-content/40" />
           </button>
         </li>
       {/each}

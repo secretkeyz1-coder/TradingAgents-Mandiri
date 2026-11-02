@@ -34,7 +34,7 @@
         screen: pro ? ws.screen : 'pemula',
         // Pasar's one tab is its bottom panel; the member is on the chart there.
         tab: pro && ws.screen !== 'beranda' && ws.screen !== 'pasar' ? ws.dock : null,
-        symbol: !pro || isChartScreen(ws.screen) ? ws.symbol : null,
+        symbol: !pro || (isChartScreen(ws.screen) && ws.open[ws.screen]) ? ws.symbol : null,
       })),
     );
   });

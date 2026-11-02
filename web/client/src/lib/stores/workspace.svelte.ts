@@ -3,11 +3,16 @@
 // and change this; they never navigate themselves. The state lives in the URL hash so links
 // can be shared and Back works:  #/riset?s=IDX:BBCA&run=<id>&dock=log&tf=4h
 //
+// Pasar and Riset AI open at their start: Pasar's market board, Riset AI's asset picker. A
+// symbol in the URL (s=) means the chart is open there; the top bar's buttons go back to the
+// start. The symbols lately opened are kept in this browser, for Riset AI's quick switch.
+//
 // Links from before the screens (#/?s=…&run=…, #/analyses/:id, #/backtests/:id,
 // #/chart?symbol=…, #/markets?tab=…, #/?ticker=…) are read too, sent to the screen that now
 // holds what they name, and rewritten to that form. A TradingView widget click arrives as
 // ?tvwidgetsymbol=… and opens that symbol's chart.
 import { INTERVALS, type Interval } from '../api';
+import { marketOf, symbolsOf } from '../assets';
 import { acceptHandoffs } from '../tabs';
 import { MARKET_TABS, toTradingView, toYahoo } from '../tv';
 import { BacktestStream } from './backtest.svelte';
@@ -81,7 +86,11 @@ const ID = /^[0-9a-f-]{36}$/;
 class Workspace {
   screen = $state<Screen>('beranda');
   /** The symbol in focus, as TradingView spells it (IDX:BBCA). */
-  symbol = $state(DEFAULT_SYMBOL);
+  symbol = $state(rememberedRecent()[0] ?? DEFAULT_SYMBOL);
+  /** Whether each chart screen shows its chart, or its start: Pasar's market board, Riset AI's asset picker. */
+  open = $state<Record<ChartScreen, boolean>>({ pasar: false, riset: false });
+  /** Symbols lately opened on a chart, newest first, kept in this browser. */
+  recent = $state<string[]>(rememberedRecent());
   /** The same symbol as the engine spells it (BBCA.JK), or null when it cannot be analysed. */
   yahoo = $derived(toYahoo(this.symbol));
   market = $state('idx');
@@ -111,9 +120,10 @@ class Workspace {
     acceptHandoffs((symbol) => this.setSymbol(symbol));
   }
 
-  /** Open a screen as it was left. */
+  /** Open a screen as it was left; Pasar and Riset AI open at their start. */
   go(screen: Screen) {
     if (screen !== 'beranda' && screenOf(this.dock) !== screen) this.dock = this.#resume(screen);
+    if (isChartScreen(screen)) this.open[screen] = false;
     this.screen = screen;
     this.#write('push');
   }
@@ -121,13 +131,39 @@ class Workspace {
   /** A symbol picked from a list: its chart opens, on Pasar unless Riset AI is open (to ask about it). */
   setSymbol(tv: string) {
     const next = tv.trim().toUpperCase();
+    if (!next) return;
+    const shown = isChartScreen(this.screen) && this.open[this.screen];
     const moved = this.#toChart();
-    if (!next || next === this.symbol) {
-      if (moved) this.#write('push');
-      return;
-    }
-    this.symbol = next;
+    if (next === this.symbol && shown && !moved) return;
+    this.#focus(next);
     this.#write('push');
+  }
+
+  /** Riset AI on a symbol, from the Pasar chart: it opens there without being picked again. */
+  research(tv = this.symbol) {
+    if (screenOf(this.dock) !== 'riset') this.dock = this.#resume('riset');
+    this.screen = 'riset';
+    this.open.riset = true;
+    this.phonePane.riset = 'chart';
+    this.#focus(tv.trim().toUpperCase());
+    this.#write('push');
+  }
+
+  /** From a chart back to its screen's start: Pasar's market board, Riset AI's asset picker. */
+  closeChart() {
+    if (!isChartScreen(this.screen)) return;
+    this.open[this.screen] = false;
+    this.#write('push');
+  }
+
+  /** The next or previous asset in the open symbol's market list (Alt+↑/↓), without a history entry each. */
+  step(by: 1 | -1) {
+    if (!isChartScreen(this.screen) || !this.open[this.screen]) return;
+    const list = symbolsOf(marketOf(this.symbol) ?? this.market);
+    if (!list.length) return;
+    const at = list.indexOf(this.symbol);
+    this.#focus(list[at < 0 ? 0 : (at + by + list.length) % list.length]);
+    this.#write('replace');
   }
 
   /** The chart of the symbol in focus, opened from a screen without one. */
@@ -138,7 +174,8 @@ class Workspace {
 
   /** Open an analysis; `symbol` also brings its ticker into focus in the same history entry. */
   openRun(id: string, { show = true, symbol = '' } = {}) {
-    if (symbol) this.symbol = symbol.toUpperCase();
+    if (symbol) this.#focus(symbol.toUpperCase());
+    this.open.riset = true;
     if (this.run?.id !== id) this.#replaceRun(id, false);
     this.aiMode = 'analysis';
     if (show) this.#show(this.dock === 'log' ? 'log' : 'report');
@@ -228,8 +265,22 @@ class Workspace {
     const moved = this.screen !== target;
     if (moved && screenOf(this.dock) !== target) this.dock = this.#resume(target);
     this.screen = target;
+    this.open[target] = true;
     this.phonePane[target] = 'chart';
     return moved;
+  }
+
+  /** Bring a symbol into focus: the market list turns to its market, and it heads the recent ones. */
+  #focus(tv: string) {
+    this.symbol = tv;
+    const market = marketOf(tv);
+    if (market) this.market = market;
+    this.recent = [tv, ...this.recent.filter((s) => s !== tv)].slice(0, RECENT_MAX);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(this.recent));
+    } catch {
+      /* remembering is a convenience */
+    }
   }
 
   #finished() {
@@ -273,13 +324,13 @@ class Workspace {
       if (!q.has('dock')) q.set('dock', 'backtest');
     }
 
-    // A canonical URL (one this class wrote) states the whole state; anything
+    // A canonical URL (one this class wrote: a screen path) states the whole state; anything
     // else (a widget click, an old link) only changes what it names.
-    const canonical = q.has('s') && !legacy;
     const ticker = q.get('ticker');
     const symbol = q.get('s') ?? q.get('symbol') ?? q.get('tvwidgetsymbol') ?? (ticker ? toTradingView(ticker) : null);
-    if (symbol) this.symbol = symbol.toUpperCase();
+    if (symbol) this.#focus(symbol.toUpperCase());
     if (q.has('tvwidgetsymbol') || q.has('symbol') || ticker) legacy = true;
+    const canonical = !legacy;
 
     const dockParam = q.get('dock') as DockTab | null;
     const dock = dockParam && DOCK_TABS.includes(dockParam) ? dockParam : null;
@@ -292,9 +343,12 @@ class Workspace {
     else if (symbol || path === '/chart' || path === '/markets') this.screen = 'pasar';
     else if (path === '/') this.screen = 'beranda';
 
+    // A chart screen shows its chart when the URL names a symbol (or, on Riset AI, an analysis).
+    if (isChartScreen(this.screen)) this.open[this.screen] = Boolean(symbol) || (this.screen === 'riset' && q.has('run'));
+
     const market = q.get('m');
     if (market && MARKET_TABS.some((t) => t.key === market)) this.market = market;
-    else if (canonical) this.market = 'idx';
+    else if (canonical) this.market = (symbol && marketOf(symbol.toUpperCase())) || 'idx';
     const view = q.get('v');
     // The AI chart is the default: the app's own indicators, signals and notifications live there.
     if (view === 'ai' || view === 'tv') this.chartView = view;
@@ -341,7 +395,7 @@ class Workspace {
 
   #write(mode: 'push' | 'replace') {
     const q = new URLSearchParams();
-    q.set('s', this.symbol);
+    if (isChartScreen(this.screen) && this.open[this.screen]) q.set('s', this.symbol);
     if (this.run) q.set('run', this.run.id);
     if (this.backtest) q.set('bt', this.backtest.id);
     if (this.screen !== 'beranda' && this.dock !== DEFAULT_TAB[this.screen]) q.set('dock', this.dock);
@@ -349,10 +403,24 @@ class Workspace {
     if (this.chartView !== 'ai') q.set('v', this.chartView);
     if (this.timeframe !== '1d') q.set('tf', this.timeframe);
     if (this.aiMode !== 'analysis') q.set('ai', this.aiMode);
-    const hash = `#/${this.screen}?${q}`;
+    const query = q.toString();
+    const hash = `#/${this.screen}${query ? `?${query}` : ''}`;
     if (location.hash === hash) return;
     // pushState/replaceState do not fire hashchange, so this never loops back into #read.
     history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', hash);
+  }
+}
+
+const RECENT_KEY = 'ta.recent';
+const RECENT_MAX = 6;
+
+/** The symbols this browser opened lately, newest first. */
+function rememberedRecent(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    return Array.isArray(list) ? list.filter((s): s is string => typeof s === 'string' && /^[A-Z0-9_.:!=^&-]{1,40}$/.test(s)).slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
   }
 }
 

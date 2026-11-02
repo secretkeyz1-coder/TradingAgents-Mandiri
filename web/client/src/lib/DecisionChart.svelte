@@ -57,6 +57,7 @@
     jumpRequest = 0,
     tools = false,
     venue = null,
+    research = true,
   }: {
     /** Yahoo symbol, as the engine and the analyses store it (BBCA.JK). */
     symbol: string;
@@ -78,6 +79,8 @@
     tools?: boolean;
     /** For crypto: the venue whose candles to show (server/src/venues.ts); Binance when null. */
     venue?: VenueId | null;
+    /** Load and mark the AI's decisions (Riset AI); off on Pasar, which shows the market without them. */
+    research?: boolean;
   } = $props();
 
   // The engine scores a decision over this many trading days from the first close after its date.
@@ -112,7 +115,7 @@
   let loadError = $state('');
   let loading = $state(true);
   let fetched = $state<Decision[]>([]);
-  const decisions = $derived(given ?? fetched);
+  const decisions = $derived(given ?? (research ? fetched : []));
 
   function pickTimeframe(tf: Interval) {
     if (onTimeframe) onTimeframe(tf);
@@ -688,9 +691,9 @@
     return () => clearTimeout(timer);
   });
 
-  // Decisions for the symbol, unless the caller passed them.
+  // Decisions for the symbol, unless the caller passed them or the screen is not about research.
   $effect(() => {
-    if (given) return;
+    if (given || !research) return;
     const s = symbol;
     void refresh;
     api
@@ -822,7 +825,7 @@
       {#if source && source !== 'yahoo'}
         <span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari {sourceLabel}">{sourceLabel} · real-time</span>
       {/if}
-      <span class="badge badge-sm badge-info badge-soft">{decisions.length} keputusan AI</span>
+      {#if research}<span class="badge badge-sm badge-info badge-soft">{decisions.length} keputusan AI</span>{/if}
       {#if hitRate != null}
         <span class="badge badge-sm {hitRate >= 0.5 ? 'badge-success' : 'badge-warning'} badge-soft">
           arah benar {Math.round(hitRate * 100)}% ({scored.length})
