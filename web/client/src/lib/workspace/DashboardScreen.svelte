@@ -8,6 +8,7 @@
   import { INDICATOR_NAMES, SIGNAL_STATUS, TIMEFRAME_LABELS } from '../alertLabels';
   import { api, INTERVALS, type Interval, type Journal, type PriceLevels, type SignalCall, type SignalHistory } from '../api';
   import { ratingBadge } from '../format';
+  import { assetCode } from '../tv';
   import { signedR } from '../journalLabels';
   import { usage } from '../stores/usage.svelte';
   import { watch } from '../stores/watch.svelte';
@@ -181,10 +182,10 @@
         {#if !s.total}
           <div class="flex flex-col items-start gap-3 rounded-box border border-dashed border-base-300 p-5">
             <p class="max-w-[60ch] text-sm">
-              Belum ada call dalam {period} terakhir. Pasang notifikasi sinyal dari tombol Notifikasi di chart Keputusan AI: setiap sinyal baru dan
+              Belum ada call dalam {period} terakhir. Pasang notifikasi sinyal dari tombol Notifikasi di chart Sinyal (Pasar): setiap sinyal baru dan
               hasilnya (TP atau SL) tercatat di sini.
             </p>
-            <button class="btn btn-sm btn-primary" onclick={openNotifications}>Buka chart Keputusan AI</button>
+            <button class="btn btn-sm btn-primary" onclick={openNotifications}>Buka chart Sinyal</button>
           </div>
         {:else}
           <dl class="grid grid-cols-3 gap-x-6 gap-y-4 border-y border-base-300 py-4 sm:grid-cols-6">
@@ -243,7 +244,7 @@
                   <tbody class="tabular-nums">
                     {#each data.bySymbol as g (g.tvSymbol)}
                       <tr>
-                        <td><button class="link link-hover font-mono font-semibold" onclick={() => ws.setSymbol(g.tvSymbol)}>{g.symbol}</button></td>
+                        <td><button class="link link-hover font-mono font-semibold" onclick={() => ws.setSymbol(g.tvSymbol)}>{assetCode(g.symbol)}</button></td>
                         <td class="text-right">{g.total}</td>
                         <td class="text-right">{g.win}</td>
                         <td class="text-right">{g.loss}</td>
@@ -278,7 +279,7 @@
                     {#each calls as c (c.id)}
                       <tr>
                         <td class="whitespace-nowrap text-xs tabular-nums">{c.signalTime}</td>
-                        <td><button class="link link-hover font-mono font-semibold" onclick={() => openAsset(c)}>{c.symbol}</button></td>
+                        <td><button class="link link-hover font-mono font-semibold" onclick={() => openAsset(c)}>{assetCode(c.symbol)}</button></td>
                         <td class="whitespace-nowrap">{name(c.indicator)} {tf(c.timeframe)}</td>
                         <td class="font-medium" class:text-success={c.side === 'BUY'} class:text-error={c.side === 'SELL'}>{c.side}</td>
                         <td class="whitespace-nowrap font-mono text-xs tabular-nums">{price(c.entry)} · {price(c.stopLoss)} · {price(c.takeProfit)}</td>
@@ -310,7 +311,7 @@
             {#each open.slice(0, 6) as c (c.id)}
               <li class="flex flex-col gap-0.5 text-sm">
                 <span class="flex items-center gap-2">
-                  <button class="link link-hover font-mono font-semibold" onclick={() => openAsset(c)}>{c.symbol}</button>
+                  <button class="link link-hover font-mono font-semibold" onclick={() => openAsset(c)}>{assetCode(c.symbol)}</button>
                   <span class="text-xs font-medium" class:text-success={c.side === 'BUY'} class:text-error={c.side === 'SELL'}>{c.side}</span>
                   <span class="ml-auto truncate text-xs text-base-content/70">{name(c.indicator)} {tf(c.timeframe)}</span>
                 </span>
@@ -348,7 +349,7 @@
           <ul class="mt-2 flex flex-col gap-1.5">
             {#each journal.items.filter((t) => t.status === 'open').slice(0, 4) as t (t.id)}
               <li class="flex items-center justify-between gap-2 text-sm">
-                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(t.tvSymbol)}>{t.symbol}</button>
+                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(t.tvSymbol)}>{assetCode(t.symbol)}</button>
                 <span class="text-xs tabular-nums">
                   <span class:text-success={t.side === 'BUY'} class:text-error={t.side === 'SELL'}>{t.side === 'BUY' ? 'Beli' : 'Jual'}</span>
                   {price(t.entry)}
@@ -387,7 +388,7 @@
           <ul class="mt-2 flex flex-col gap-1.5">
             {#each watch.value.items.slice(0, 5) as item (item.symbol)}
               <li class="flex items-center justify-between gap-2 text-sm">
-                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(item.tvSymbol)}>{item.symbol}</button>
+                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(item.tvSymbol)}>{assetCode(item.symbol)}</button>
                 {#if item.last?.rating}
                   <button class="badge badge-sm {ratingBadge(item.last.rating)}" onclick={() => ws.openRun(item.last!.id, { symbol: item.tvSymbol })}>{item.last.rating}</button>
                 {:else}
@@ -412,7 +413,7 @@
           <ul class="mt-2 flex flex-col gap-1.5">
             {#each waiting as l (l.id)}
               <li class="flex items-center justify-between gap-2 text-sm">
-                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(l.tvSymbol)}>{l.symbol}</button>
+                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(l.tvSymbol)}>{assetCode(l.symbol)}</button>
                 <span class="tabular-nums">
                   <span class={l.direction === 'above' ? 'text-success' : 'text-error'}>{l.direction === 'above' ? 'Naik ke' : 'Turun ke'}</span>
                   {price(l.price)}

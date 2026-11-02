@@ -17,11 +17,11 @@
 
   type Span = { key: string; short: string; label: string; range: string; interval: Interval; days: 'session' | number | null };
   const SPANS: Span[] = [
-    { key: '1d', short: '1hr', label: '1 Hari', range: '6mo', interval: '15m', days: 'session' },
-    { key: '1w', short: '1mg', label: '1 Minggu', range: '6mo', interval: '1h', days: 7 },
-    { key: '1m', short: '1bln', label: '1 Bulan', range: '6mo', interval: '1d', days: 31 },
-    { key: '6m', short: '6bln', label: '6 Bulan', range: '6mo', interval: '1d', days: null },
-    { key: '1y', short: '1thn', label: '1 Tahun', range: '1y', interval: '1d', days: null },
+    { key: '1d', short: '1 hari', label: '1 Hari', range: '6mo', interval: '15m', days: 'session' },
+    { key: '1w', short: '1 mgg', label: '1 Minggu', range: '6mo', interval: '1h', days: 7 },
+    { key: '1m', short: '1 bln', label: '1 Bulan', range: '6mo', interval: '1d', days: 31 },
+    { key: '6m', short: '6 bln', label: '6 Bulan', range: '6mo', interval: '1d', days: null },
+    { key: '1y', short: '1 thn', label: '1 Tahun', range: '1y', interval: '1d', days: null },
   ];
   const SPAN_KEY = 'ta.beginner.span';
   let spanKey = $state(remembered());

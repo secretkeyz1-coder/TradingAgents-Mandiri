@@ -31,7 +31,7 @@
 
   const active = $derived(Number(indicators.showScalper) + Number(indicators.showPob) + Number(indicators.showFib) + indicators.published.length);
   /** Why a built-in is off on this timeframe. */
-  const TIMEFRAMES: Record<string, string> = { pob: 'Hanya di timeframe 15m dan 1j.', fib: 'Hanya di timeframe 15m, 1j dan 1h.' };
+  const TIMEFRAMES: Record<string, string> = { pob: 'Hanya di timeframe 15 menit dan 1 jam.', fib: 'Hanya di timeframe 15 menit, 1 jam, dan harian.' };
 
   const usable = (item: CatalogIndicator) => (item.builtin === 'pob' ? pobOk : item.builtin === 'fib' ? fibOk : true);
   const isOn = (item: CatalogIndicator) =>

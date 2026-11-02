@@ -3,6 +3,7 @@
   import { api } from '../../api';
   import { formatDateTime, formatNumber, ratingTone, readIndicators, renderMarkdown, SECTION_LABELS } from '../../format';
   import { ws } from '../../stores/workspace.svelte';
+  import { assetCode } from '../../tv';
   import StatusBadge from '../../StatusBadge.svelte';
 
   const run = $derived(ws.run);
@@ -18,7 +19,7 @@
     <header class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
-          <h3 class="font-mono text-lg font-semibold">{a.ticker}</h3>
+          <h3 class="text-lg font-semibold">{assetCode(a.ticker)}</h3>
           <StatusBadge status={run.status} />
         </div>
         <p class="text-sm text-base-content/70">

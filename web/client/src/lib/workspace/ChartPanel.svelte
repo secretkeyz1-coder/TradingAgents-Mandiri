@@ -37,7 +37,7 @@
         ? {
             label: 'Akhir hari',
             status: 'status-warning',
-            title: 'Chart TradingView untuk IDX hanya memuat data penutupan harian. Chart Keputusan AI (Yahoo) tertunda ±10–25 menit.',
+            title: 'Chart TradingView untuk IDX hanya memuat data penutupan harian. Chart Sinyal dan Keputusan AI (Yahoo) tertunda ±10–25 menit.',
           }
         : { label: 'Tertunda ~15 mnt', status: 'status-neutral', title: 'Data bursa ini tertunda di chart TradingView' },
   );

@@ -8,6 +8,7 @@
   import { api, type PriceLevel, type PriceLevels, type SignalAlerts } from '../../api';
   import { auth } from '../../auth.svelte';
   import { ws } from '../../stores/workspace.svelte';
+  import { assetCode } from '../../tv';
 
   let levels = $state<PriceLevels | null>(null);
   let signals = $state<SignalAlerts | null>(null);
@@ -74,7 +75,7 @@
 <div class="flex flex-col gap-5 p-4">
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div class="flex max-w-[70ch] flex-col gap-1 text-sm">
-      <p>Semua notifikasi akunmu. Pasang yang baru dari tombol <strong>Notifikasi</strong> di chart Keputusan AI.</p>
+      <p>Semua notifikasi akunmu. Pasang yang baru dari tombol <strong>Notifikasi</strong> di chart Sinyal (Pasar).</p>
       {#if allowance}
         <p class="text-xs text-base-content/70">{allowance.used} dari {allowance.max} notifikasi terpakai (harga dan sinyal).</p>
       {/if}
@@ -88,7 +89,7 @@
       {/if}
     </div>
     <div class="flex shrink-0 flex-wrap gap-2">
-      {#if toChart}<button class="btn btn-sm" onclick={openChart}>Buka chart Keputusan AI</button>{/if}
+      {#if toChart}<button class="btn btn-sm" onclick={openChart}>Buka chart Sinyal</button>{/if}
       <button class="btn btn-ghost btn-sm" onclick={load}>Muat ulang</button>
     </div>
   </div>
@@ -117,7 +118,7 @@
             {#each levels.items as l (l.id)}
               <tr>
                 <td>
-                  <button class="link link-hover font-mono font-semibold" onclick={() => ws.setSymbol(l.tvSymbol)}>{l.symbol}</button>
+                  <button class="link link-hover font-mono font-semibold" onclick={() => ws.setSymbol(l.tvSymbol)}>{assetCode(l.symbol)}</button>
                   {#if l.label && l.label !== l.symbol}<span class="block text-xs text-base-content/70">{l.label}</span>{/if}
                 </td>
                 <td class="whitespace-nowrap tabular-nums">

@@ -16,17 +16,17 @@
   // expiry and the crypto venue wait under "Pengaturan lanjutan" with their defaults.
   import { ColorType, createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
   import { api, type LabConfig, type LabRun, type LabRunSummary, type LabStats } from '../../api';
-  import { formatDateTime } from '../../format';
+  import { formatDateTime, formatR } from '../../format';
   import { scripts } from '../../stores/scripts.svelte';
   import { ws } from '../../stores/workspace.svelte';
   import { theme, tokenColor } from '../../theme.svelte';
-  import { CRYPTO_VENUES } from '../../tv';
+  import { assetCode, CRYPTO_VENUES } from '../../tv';
   import AssetChips from '../AssetChips.svelte';
 
   const TF = [
-    { value: '15m', label: '15m' },
-    { value: '1h', label: '1j' },
-    { value: '4h', label: '4j' },
+    { value: '15m', label: '15 menit' },
+    { value: '1h', label: '1 jam' },
+    { value: '4h', label: '4 jam' },
     { value: '1d', label: 'Harian' },
   ] as const;
   const PERIODS: Record<string, number[]> = { '15m': [30, 90, 180, 365], '1h': [90, 180, 365, 730, 1095], '4h': [365, 730, 1095, 1825], '1d': [365, 730, 1095, 1825] };
@@ -111,9 +111,9 @@
     runs = await api.labRuns();
   }
 
-  const r = (x: number | null | undefined, digits = 2) => (x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}R`);
+  const r = formatR;
   const pct = (x: number | null | undefined) => (x == null ? '–' : `${Math.round(x * 100)}%`);
-  const num = (x: number | null | undefined) => (x == null ? '–' : x.toFixed(2));
+  const num = (x: number | null | undefined) => (x == null ? '–' : x.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const tone = (x: number | null | undefined) => (x == null ? '' : x > 0 ? 'text-success' : x < 0 ? 'text-error' : '');
   const tfLabel = (tf: string) => TF.find((t) => t.value === tf)?.label ?? tf;
 
@@ -129,6 +129,7 @@
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, attributionLogo: false },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true },
+      localization: { locale: 'id-ID', priceFormatter: (v: number) => `${v.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}R` },
       handleScroll: false,
       handleScale: false,
     });
@@ -293,7 +294,7 @@
             {#each result.symbols as s (s.symbol)}
               <tr>
                 <td>
-                  <span class="font-mono">{s.symbol}</span>
+                  <span>{assetCode(s.symbol)}</span>
                   {#if 'error' in s}
                     <span class="block text-xs text-error">{s.error}</span>
                   {:else}

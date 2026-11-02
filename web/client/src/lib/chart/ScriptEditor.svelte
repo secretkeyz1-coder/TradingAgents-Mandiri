@@ -48,7 +48,7 @@
   async function test() {
     error = note = '';
     if (!scripts.bars.length) {
-      error = 'Buka chart Keputusan AI (15m, 1j, 4j atau 1H) dulu: skrip diuji pada candle yang sedang dimuat.';
+      error = 'Buka chart Sinyal (15 menit, 1 jam, 4 jam, atau harian) dulu: skrip diuji pada candle yang sedang dimuat.';
       return;
     }
     busy = 'test';
@@ -59,7 +59,7 @@
   async function compare() {
     error = note = '';
     if (!ws.yahoo || !['15m', '1h', '4h', '1d'].includes(ws.timeframe)) {
-      error = 'Pilih simbol dan timeframe 15m, 1j, 4j atau 1H di chart Keputusan AI.';
+      error = 'Pilih simbol dan timeframe 15 menit, 1 jam, 4 jam, atau harian di chart Sinyal.';
       return;
     }
     busy = 'compare';
@@ -232,7 +232,7 @@
               {#if run.result.plots.length}<p class="text-base-content/70">Plot: {run.result.plots.map((p) => p.title).join(', ')}</p>{/if}
               <ul class="mt-1 font-mono">
                 {#each run.result.signals.slice(-5).reverse() as s (s.index)}
-                  <li>{s.time} · {s.label} · E {s.entry.toFixed(2)} · SL {s.stopLoss.toFixed(2)} · TP {s.takeProfit.toFixed(2)} · {OUTCOME[s.outcome]}</li>
+                  <li>{s.time} · {s.label} · E {s.entry.toLocaleString('id-ID', { maximumFractionDigits: 2 })} · SL {s.stopLoss.toLocaleString('id-ID', { maximumFractionDigits: 2 })} · TP {s.takeProfit.toLocaleString('id-ID', { maximumFractionDigits: 2 })} · {OUTCOME[s.outcome]}</li>
                 {/each}
               </ul>
             {:else}

@@ -4,6 +4,7 @@
   // (the Pemula screen) keeps only the conversation: no tool names, memory or skills.
   import { auth } from '../auth.svelte';
   import { renderMarkdown } from '../format';
+  import { assetCode } from '../tv';
   import { agent } from '../stores/agent.svelte';
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
@@ -153,7 +154,7 @@
         <ul class="flex flex-col gap-1">
           {#each agent.memories as m (m.id)}
             <li class="flex items-start gap-2 text-xs">
-              <span class="badge badge-xs badge-ghost shrink-0">{m.scope === 'user' ? 'kamu' : m.symbol}</span>
+              <span class="badge badge-xs badge-ghost shrink-0">{m.scope === 'user' ? 'kamu' : m.symbol ? assetCode(m.symbol) : ''}</span>
               <span class="min-w-0 flex-1">{m.content}</span>
               <button class="link link-hover shrink-0" onclick={() => agent.deleteMemory(m.id)}>hapus</button>
             </li>

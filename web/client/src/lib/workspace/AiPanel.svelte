@@ -9,7 +9,7 @@
   import { jobs } from '../stores/jobs.svelte';
   import { AI_MODES, ws } from '../stores/workspace.svelte';
   import StatusBadge from '../StatusBadge.svelte';
-  import { toTradingView } from '../tv';
+  import { assetCode, toTradingView } from '../tv';
   import AnalysisForm from './AnalysisForm.svelte';
   import ChatPanel from './ChatPanel.svelte';
   import PanelClose from './PanelClose.svelte';
@@ -104,7 +104,7 @@
           {/if}
           {#if run.ticker && ws.yahoo !== run.ticker}
             <p class="text-xs text-base-content/70">
-              Analisa ini untuk {run.ticker}.
+              Analisa ini untuk {assetCode(run.ticker)}.
               <button class="link" onclick={() => ws.setSymbol(toTradingView(run.ticker))}>Fokuskan</button>
             </p>
           {/if}

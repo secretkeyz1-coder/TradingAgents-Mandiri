@@ -7,13 +7,13 @@
   // simulated account counts the default source (Binance).
   import { ColorType, createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
   import { api, type Ledger, type LedgerStats } from '../../api';
-  import { formatDateTime } from '../../format';
+  import { formatDateTime, formatR, TIMEFRAME_NAMES } from '../../format';
   import { ws } from '../../stores/workspace.svelte';
   import { theme, tokenColor } from '../../theme.svelte';
-  import { cryptoBase, CRYPTO_VENUES, onVenue, toTradingView, type VenueId } from '../../tv';
+  import { assetCode, cryptoBase, CRYPTO_VENUES, onVenue, toTradingView, type VenueId } from '../../tv';
 
   const NAMES: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone', donchian: 'Donchian breakout' };
-  const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
+  const TF = TIMEFRAME_NAMES;
   const SESSION: Record<string, string> = { asia: 'Asia', london: 'London', newyork: 'New York' };
   const STATUS: Record<string, string> = { open: 'berjalan', win: 'TP', loss: 'SL', exit: 'keluar', expired: 'kedaluwarsa', replaced: 'diganti' };
   const GROUPS = [
@@ -73,7 +73,7 @@
           : g === 'byVenue'
             ? venueName(key)
             : key;
-  const r = (x: number | null | undefined, digits = 2) => (x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}R`);
+  const r = formatR;
   const pct = (x: number | null | undefined) => (x == null ? '–' : `${Math.round(x * 100)}%`);
   /** The record in a sentence or two, before the numbers: what happened, and whether costs ate it. */
   const headline = $derived.by(() => {
@@ -87,7 +87,7 @@
     }
     return lines.join(' ');
   });
-  const num = (x: number | null | undefined, digits = 2) => (x == null ? '–' : x.toFixed(digits));
+  const num = (x: number | null | undefined, digits = 2) => (x == null ? '–' : x.toLocaleString('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits }));
   const usd = (x: number) => x.toLocaleString('id-ID', { maximumFractionDigits: 0 });
   const priceText = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
   const tone = (x: number | null | undefined) => (x == null ? '' : x > 0 ? 'text-success' : x < 0 ? 'text-error' : '');
@@ -103,6 +103,8 @@
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, attributionLogo: false },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true },
+      // The simulated account in whole dollars with Indonesian separators (10.000, not 10000.00).
+      localization: { locale: 'id-ID', priceFormatter: (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: 0 }) },
       handleScroll: false,
       handleScale: false,
     });
@@ -150,12 +152,12 @@
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="flex max-w-[75ch] flex-col gap-1 text-sm">
       <p>
-        Setiap sinyal mesin bawaan dan strategi yang lolos Lab (Donchian harian) pada <strong>{data?.config.symbols.join(', ') ?? '…'}</strong> dicatat saat lahir dan dinilai otomatis di akun simulasi
+        Setiap sinyal mesin bawaan dan strategi yang lolos Uji indikator (Donchian harian) pada <strong>{data?.config.symbols.map(assetCode).join(', ') ?? '…'}</strong> dicatat saat lahir dan dinilai otomatis di akun simulasi
         {#if data}<strong>{usd(data.config.startBalance)} USD</strong>, risiko <strong>{data.config.riskPct}%</strong> ({usd(data.config.riskUsd)} USD) per sinyal{/if},
         setelah biaya trading{data ? ` (kripto ${feeText(data.config.cryptoCost)} per trade: fee taker saat masuk dan keluar)` : ''}.
       </p>
       <p class="text-xs text-base-content/70">
-        Kripto dan emas 15m/1j memakai harga real-time Binance (emas dari kontrak XAUUSDT, tanpa jam saat pasar spot tutup). Emas harian masih dari Yahoo dan ditandai "tertunda".
+        Kripto dan emas 15 menit dan 1 jam memakai harga real-time Binance (emas dari kontrak XAUUSDT, tanpa jam saat pasar spot tutup). Emas harian masih dari Yahoo dan ditandai "tertunda".
         {#if otherVenues.length}Kripto juga dicatat di {otherVenues.join(', ')} dari candle masing-masing sebagai pembanding (tab Per bursa); akun simulasi dan rekap Telegram tetap memakai Binance.{/if}
         Hasil riset dan simulasi, bukan nasihat keuangan.
       </p>
@@ -339,7 +341,7 @@
                   {#if !s.live}<span class="badge badge-xs badge-ghost">riwayat</span>{/if}
                 </td>
                 <td>
-                  <button class="link link-hover font-mono" onclick={() => ws.setSymbol(chartSymbol(s))}>{s.symbol}</button>
+                  <button class="link link-hover font-mono" onclick={() => ws.setSymbol(chartSymbol(s))}>{assetCode(s.symbol)}</button>
                   {#if s.dataSource === 'yahoo'}<span class="badge badge-xs badge-warning badge-soft" title="Data Yahoo, tertunda">tertunda</span>{/if}
                 </td>
                 <td class="whitespace-nowrap">{NAMES[s.source] ?? s.source} {TF[s.timeframe] ?? s.timeframe}</td>

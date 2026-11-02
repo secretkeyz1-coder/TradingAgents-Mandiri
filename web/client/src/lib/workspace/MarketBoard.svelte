@@ -12,7 +12,7 @@
   import { ws } from '../stores/workspace.svelte';
   import { MARKET_TABS, toYahoo } from '../tv';
 
-  const SHORT: Record<string, string> = { idx: 'IDX', us: 'US', crypto: 'Crypto', forex: 'Forex', commodities: 'Komoditas' };
+  const SHORT: Record<string, string> = { idx: 'IDX', us: 'US', crypto: 'Kripto', forex: 'Forex', commodities: 'Komoditas' };
   const active = $derived(MARKET_TABS.find((t) => t.key === ws.market) ?? MARKET_TABS[0]);
   /** The market's hours, from one of its symbols; Komoditas mixes markets with different hours. */
   const sessionSymbol = $derived(active.key === 'commodities' ? null : (active.groups[0]?.symbols[0]?.[0] ?? null));

@@ -17,12 +17,13 @@
 
   let { onclose }: { onclose?: () => void } = $props();
 
-  const SHORT: Record<string, string> = { idx: 'IDX', us: 'US', crypto: 'Crypto', forex: 'Forex', commodities: 'Komoditas' };
+  const SHORT: Record<string, string> = { idx: 'IDX', us: 'US', crypto: 'Kripto', forex: 'Forex', commodities: 'Komoditas' };
   const active = $derived(MARKET_TABS.find((t) => t.key === ws.market) ?? MARKET_TABS[0]);
   const label = $derived(SHORT[active.key] ?? active.label);
   /** The market's hours, from one of its symbols; Komoditas mixes markets with different hours. */
   const sessionSymbol = $derived(active.key === 'commodities' ? null : (active.groups[0]?.symbols[0]?.[0] ?? null));
 
+  let width = $state(0);
   let filter = $state('');
   const groups = $derived.by(() => {
     const t = filter.trim().toLowerCase();
@@ -81,10 +82,11 @@
   }
 </script>
 
-<section class="@container flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Pasar">
+<section class="@container flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label="Pasar" bind:clientWidth={width}>
   <header class="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-3">
-    <h2 class="text-sm font-semibold">Pasar</h2>
-    {#if sessionSymbol}<SessionBadge tv={sessionSymbol} />{/if}
+    <h2 class="shrink-0 text-sm font-semibold">Pasar</h2>
+    <!-- At the panel's usual width the market's state only ("IDX tutup"); the next change is in its title. -->
+    {#if sessionSymbol}<SessionBadge tv={sessionSymbol} compact={width < 420} />{/if}
     <div class="ml-auto flex items-center gap-1">
       <button class="btn btn-ghost btn-xs" onclick={screener}>Screener</button>
       {#if onclose}<PanelClose label="Tutup panel Pasar" onclick={onclose} />{/if}

@@ -159,10 +159,10 @@
                     {price(q)}
                   </td>
                   <td class="text-right tabular-nums" class:text-warning={g != null && Math.abs(g) > 0.3}>
-                    {g == null ? '–' : `${g >= 0 ? '+' : '−'}${Math.abs(g).toFixed(2)}%`}
+                    {g == null ? '–' : `${g >= 0 ? '+' : '−'}${Math.abs(g).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`}
                   </td>
                   {#if roomy}
-                    <td class="text-right tabular-nums">{s == null ? '–' : s.toFixed(1)}</td>
+                    <td class="text-right tabular-nums">{s == null ? '–' : s.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
                     <td class="text-right tabular-nums" class:text-warning={a != null && a > 30}>{a == null ? '–' : `${a} dtk`}</td>
                   {/if}
                 {/if}

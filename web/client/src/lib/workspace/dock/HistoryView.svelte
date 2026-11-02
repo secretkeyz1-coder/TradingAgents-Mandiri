@@ -5,7 +5,7 @@
   import { jobs } from '../../stores/jobs.svelte';
   import { ws } from '../../stores/workspace.svelte';
   import StatusBadge from '../../StatusBadge.svelte';
-  import { toTradingView } from '../../tv';
+  import { assetCode, toTradingView } from '../../tv';
 
   let scope = $state<'all' | 'symbol'>('all');
   const mine = $derived(scope === 'symbol' && ws.yahoo ? ws.yahoo.toUpperCase() : null);
@@ -17,7 +17,7 @@
     <div class="join">
       <button class="btn btn-xs join-item" class:btn-active={scope === 'all'} onclick={() => (scope = 'all')}>Semua</button>
       <button class="btn btn-xs join-item font-mono" class:btn-active={scope === 'symbol'} disabled={!ws.yahoo} onclick={() => (scope = 'symbol')}>
-        {ws.yahoo ?? 'Simbol ini'}
+        {ws.yahoo ? assetCode(ws.yahoo) : 'Simbol ini'}
       </button>
     </div>
     <button class="btn btn-ghost btn-xs ml-auto" onclick={() => jobs.refresh()}>Muat ulang</button>
@@ -50,7 +50,7 @@
             <tr class:bg-base-200={ws.run?.id === a.id}>
               <td>
                 <button class="link link-hover font-mono font-semibold" onclick={() => ws.openRun(a.id, { symbol: toTradingView(a.ticker) })}>
-                  {a.ticker}
+                  {assetCode(a.ticker)}
                 </button>
                 {#if a.request.indicators?.length}
                   <span class="block text-xs text-base-content/70">+ {a.request.indicators.map((i) => i.name ?? i.key).join(', ')}</span>

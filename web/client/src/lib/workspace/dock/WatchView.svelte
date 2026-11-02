@@ -1,18 +1,21 @@
 <script lang="ts">
   // Pantau → Analisa terjadwal (the server's watchlist, server/src/watch.ts): what
   // the server analyses on its own each trading day, the latest decision for each symbol, and
-  // whether Telegram gets the summary. A symbol joins from the chart's Analisa harian button.
+  // whether Telegram gets the summary. A symbol joins from the star on the chart's head or the market list.
   import { auth } from '../../auth.svelte';
   import { formatDateTime, ratingBadge } from '../../format';
   import { usage } from '../../stores/usage.svelte';
   import { watch } from '../../stores/watch.svelte';
   import { ws } from '../../stores/workspace.svelte';
+  import { assetCode } from '../../tv';
   import StatusBadge from '../../StatusBadge.svelte';
 
   watch.load();
   usage.refresh();
 
   const DAY = ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+  /** The engine's analyst teams in a member's words; members always run on the server's model, so it goes unnamed. */
+  const ANALYSTS: Record<string, string> = { market: 'pasar', social: 'sentimen', news: 'berita', fundamentals: 'fundamental' };
   const w = $derived(watch.value);
   const daysLabel = $derived.by(() => {
     const d = [...(w?.schedule.days ?? [])].sort();
@@ -34,7 +37,7 @@
           · berikutnya {formatDateTime(w.schedule.next)}.
         </p>
         <p class="text-xs text-base-content/70">
-          Analis: {w.schedule.analysts.join(', ')} · kedalaman {w.schedule.depth} · model default server. Tiap simbol memakai satu
+          Analisa lengkap AI ({w.schedule.analysts.map((a) => ANALYSTS[a] ?? a).join(', ')}), kedalaman {w.schedule.depth}. Tiap simbol memakai satu
           kuota analisa harian{room !== Infinity ? ` (sisa hari ini ${room})` : ''}.
         </p>
         {#if w.telegram.configured}
@@ -87,7 +90,7 @@
             {#each w.items as item (item.symbol)}
               <tr>
                 <td>
-                  <button class="link link-hover font-mono font-semibold" onclick={() => ws.setSymbol(item.tvSymbol)}>{item.symbol}</button>
+                  <button class="link link-hover font-mono font-semibold" onclick={() => ws.setSymbol(item.tvSymbol)}>{assetCode(item.symbol)}</button>
                 </td>
                 <td>
                   {#if item.last?.rating}

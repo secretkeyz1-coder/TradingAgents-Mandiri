@@ -27,12 +27,12 @@ const RIDGES = ['USD/IDR', 'S&P 500', 'IHSG', 'Emas', 'SOL', 'ETH', 'BTC'];
 /** The rows beside the BTC chart. */
 const WATCH = ['BTC', 'ETH', 'SOL', 'Emas', 'IHSG'];
 const LEAN: Record<Lean, [string, string]> = {
-  naik: ['condong naik', 'text-success'],
-  turun: ['condong turun', 'text-error'],
+  naik: ['cenderung naik', 'text-success'],
+  turun: ['cenderung turun', 'text-error'],
   netral: ['netral', 'text-base-content/70'],
 };
 const STATUS: Record<string, string> = { open: 'berjalan', win: 'kena TP', loss: 'kena SL', exit: 'keluar', expired: 'kedaluwarsa', replaced: 'diganti' };
-const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
+const TF: Record<string, string> = { '15m': '15 menit', '1h': '1 jam', '4h': '4 jam', '1d': 'harian' };
 
 const pick = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector);
 
@@ -437,7 +437,7 @@ async function loadLedger() {
     return box;
   };
   record.replaceChildren(
-    block('Mesin sinyal bawaan', 'PoB, Scalper, dan Fib di 15m, 1j, dan harian.', ledger.record.engines),
+    block('Mesin sinyal bawaan', 'PoB, Scalper, dan Fib di timeframe 15 menit, 1 jam, dan harian.', ledger.record.engines),
     block('Lolos Lab', 'Donchian breakout harian, dicatat live sejak lolos uji.', ledger.record.lab),
   );
 }

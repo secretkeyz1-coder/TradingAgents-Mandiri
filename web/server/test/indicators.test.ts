@@ -53,7 +53,7 @@ describe("built-in engines", () => {
     const r = await call("/api/indicators", { cookie: free.cookie });
     expect(r.status).toBe(200);
     expect(keys(r)).toEqual(["scalper", "pob", "fib"]);
-    expect(r.body.items.map((i: { name: string }) => i.name)).toEqual(["Scalper Pro+", "PoB BYSTRA", "Fib GZ"]);
+    expect(r.body.items.map((i: { name: string }) => i.name)).toEqual(["Scalper Pro+", "PoB BYSTRA", "Fib Golden Zone"]);
     expect(r.body.items.every((i: { code: string | null; defaultOn: boolean }) => i.code === null && !i.defaultOn)).toBe(true);
   });
 
@@ -109,13 +109,13 @@ describe("built-in engines", () => {
     await patch(fib.id, { active: false });
     expect(keys(await call("/api/indicators", { cookie: pro.cookie }))).not.toContain("fib");
     expect(keys(await call("/api/indicators", { cookie: await admin() }))).toContain("fib");
-    expect((await call("/api/public/indicators")).body.map((i: { name: string }) => i.name)).not.toContain("Fib GZ");
+    expect((await call("/api/public/indicators")).body.map((i: { name: string }) => i.name)).not.toContain("Fib Golden Zone");
 
     expect((await call(`/api/admin/indicators/${fib.id}`, { method: "DELETE", cookie: await admin() })).status).toBe(400);
     expect((await patch(fib.id, { code: JUMP })).status).toBe(400);
     expect((await patch(fib.id, { name: "Fibo" })).status).toBe(400);
     // Its description is the admin's to word; the same name sent back is no change.
-    const kept = await patch(fib.id, { name: "Fib GZ", description: "Area pullback Fibonacci.", active: true });
+    const kept = await patch(fib.id, { name: "Fib Golden Zone", description: "Area pullback Fibonacci.", active: true });
     expect(kept.status).toBe(200);
     expect(kept.body.description).toBe("Area pullback Fibonacci.");
   });

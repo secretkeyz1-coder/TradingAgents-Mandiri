@@ -26,7 +26,7 @@
     onclose?: () => void;
   } = $props();
 
-  const SHORT: Record<string, string> = { idx: 'IDX', us: 'US', crypto: 'Crypto', forex: 'Forex', commodities: 'Komoditas' };
+  const SHORT: Record<string, string> = { idx: 'IDX', us: 'US', crypto: 'Kripto', forex: 'Forex', commodities: 'Komoditas' };
   const NAMES = new Map(LISTED);
   const listId = `asset-finder-${++made}`;
 

@@ -5,7 +5,7 @@ import type { SignalAlert } from './api';
 /** Built-in engines by name; a user's script is named by its combo label instead. */
 export const INDICATOR_NAMES: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib Golden Zone' };
 
-export const TIMEFRAME_LABELS: Record<SignalAlert['timeframe'], string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
+export const TIMEFRAME_LABELS: Record<SignalAlert['timeframe'], string> = { '15m': '15 menit', '1h': '1 jam', '4h': '4 jam', '1d': 'harian' };
 
 export const SIGNAL_STATUS: Record<NonNullable<SignalAlert['last']>['status'], string> = {
   open: 'berjalan',

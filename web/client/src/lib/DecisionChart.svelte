@@ -35,7 +35,7 @@
   import { BandPrimitive } from './chart/rectangle';
   import { ShapesPrimitive, type Shape } from './chart/shapes';
   import { formatPercent, ratingBadge, RATING_DIRECTION } from './format';
-  import { CRYPTO_VENUES, cryptoBase, type VenueId } from './tv';
+  import { assetCode, CRYPTO_VENUES, cryptoBase, type VenueId } from './tv';
   import VenuePanel from './chart/VenuePanel.svelte';
   import { fib, fibLevel } from './indicators/fib';
   import { pob, SETUPS } from './indicators/pob';
@@ -100,7 +100,7 @@
   type Range = (typeof RANGES)[number]['value'];
   // Words, not "1h": in TradingView beside this chart 1h is an hour, so a short "1h" for a day misleads.
   const TIMEFRAMES: { value: Interval; label: string; title: string }[] = [
-    { value: '15m', label: '15m', title: '15 menit (1 bulan terakhir)' },
+    { value: '15m', label: '15 menit', title: '15 menit (1 bulan terakhir)' },
     { value: '1h', label: '1 jam', title: '1 jam' },
     { value: '4h', label: '4 jam', title: '4 jam' },
     { value: '1d', label: 'Harian', title: '1 hari' },
@@ -271,10 +271,13 @@
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false },
       crosshair: { mode: 0 },
+      // Month names and the crosshair's date in Indonesian, as on the Pemula chart (Okt, not Oct).
+      localization: { locale: 'id-ID' },
     });
-    // Prices read as everywhere else in the app (77.954,01); the volume scale keeps its own short form.
+    // Prices read as everywhere else in the app (77.954,01); volume in Indonesian short form (5,6 rb, 196,6 jt).
     candleSeries = chart.addSeries(CandlestickSeries, { borderVisible: false, priceFormat: { type: 'custom', formatter: (p: number) => priceText(p), minMove: 0.00001 } });
-    volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
+    const compact = new Intl.NumberFormat('id-ID', { notation: 'compact', maximumFractionDigits: 1 });
+    volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: 'custom', formatter: (v: number) => compact.format(v), minMove: 1 }, priceScaleId: '' });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     markers = createSeriesMarkers(candleSeries, []);
     candleSeries.attachPrimitive(band);
@@ -614,7 +617,7 @@
     const pobOpen = pobRes?.signals.findLast((s) => s.outcome === 'open');
     if (pobOpen) out.push({ key: 'pob', source: `PoB BYSTRA · ${pobOpen.label}`, side: pobOpen.side, entry: pobOpen.entry, stopLoss: pobOpen.stopLoss, takeProfit: pobOpen.takeProfit, time: at(pobOpen.index) });
     const fibOpen = fibRes?.signals.findLast((s) => s.outcome === 'open');
-    if (fibOpen) out.push({ key: 'fib', source: 'Fib GZ', side: fibOpen.side, entry: fibOpen.entry, stopLoss: fibOpen.stopLoss, takeProfit: fibOpen.takeProfit, time: at(fibOpen.index) });
+    if (fibOpen) out.push({ key: 'fib', source: 'Fib Golden Zone', side: fibOpen.side, entry: fibOpen.entry, stopLoss: fibOpen.stopLoss, takeProfit: fibOpen.takeProfit, time: at(fibOpen.index) });
     for (const card of scriptCards) {
       if ('open' in card && card.open) {
         const o = card.open;
@@ -899,7 +902,7 @@
         {/if}
       {/if}
       <!-- The workspace's chart head already names the asset; elsewhere the code says which chart this is. -->
-      {#if !tools}<span class="font-mono font-semibold text-base-content">{symbol}</span>{/if}
+      {#if !tools}<span class="font-semibold text-base-content">{assetCode(symbol)}</span>{/if}
       {#if currency}<span>· {currency}</span>{/if}
       {#if source && source !== 'yahoo'}
         <span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari {sourceLabel}">{sourceLabel} · real-time</span>

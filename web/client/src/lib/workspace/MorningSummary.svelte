@@ -11,7 +11,7 @@
   import Sparkline from '../Sparkline.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
-  import { toYahoo } from '../tv';
+  import { assetCode, toYahoo } from '../tv';
 
   /** The strip's markets in reading order, with the chart each opens. */
   const STRIP: [site: string, tv: string, name: string][] = [
@@ -21,7 +21,7 @@
     ['IDR=X', 'FX_IDC:USDIDR', 'USD/IDR'],
     ['^GSPC', 'SP:SPX', 'S&P 500'],
   ];
-  const LEAN: Record<string, [string, string]> = { naik: ['condong naik', 'text-success'], turun: ['condong turun', 'text-error'], netral: ['netral', 'text-base-content/70'] };
+  const LEAN: Record<string, [string, string]> = { naik: ['cenderung naik', 'text-success'], turun: ['cenderung turun', 'text-error'], netral: ['netral', 'text-base-content/70'] };
   /** The brief names assets by their short label (server site.ts ASSETS). */
   const BRIEF_NAMES: Record<string, string> = { BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana' };
 
@@ -130,7 +130,7 @@
         {#each since.analyses as a (a.id)}
           <li>
             <span class="badge badge-sm badge-success badge-soft">Analisa selesai</span>
-            <button class="link link-hover" onclick={() => ws.openRun(a.id, {})}>{a.ticker}</button>
+            <button class="link link-hover" onclick={() => ws.openRun(a.id, {})}>{assetCode(a.ticker)}</button>
             {#if a.rating}<span class="badge badge-sm {ratingBadge(a.rating)}">{a.rating}</span>{/if}
           </li>
         {/each}

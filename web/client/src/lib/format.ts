@@ -67,6 +67,19 @@ export function formatPercent(fraction: number | null | undefined, signed = true
   return signed && fraction > 0 ? `+${text}%` : `${text}%`;
 }
 
+/** A result in R (multiples of the risk taken), signed, with the Indonesian decimal comma: +1,25R, −0,96R. */
+export function formatR(x: number | null | undefined, digits = 2): string {
+  if (x == null || Number.isNaN(x)) return '–';
+  const text = Math.abs(x).toLocaleString('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  return `${x > 0 ? '+' : x < 0 ? '−' : ''}${text}R`;
+}
+
+/**
+ * Every candle timeframe in the same words on every screen: the chart's buttons, alerts, records,
+ * the AI form. Lower case for running text; a button capitalises it.
+ */
+export const TIMEFRAME_NAMES: Record<string, string> = { '15m': '15 menit', '1h': '1 jam', '4h': '4 jam', '1d': 'harian', '1wk': 'mingguan', '1mo': 'bulanan' };
+
 /** What a rating claims will happen (as in tradingagents.backtest): up, down, or no direction. */
 export const RATING_DIRECTION: Record<string, number> = { Buy: 1, Overweight: 1, Hold: 0, Underweight: -1, Sell: -1 };
 
@@ -89,8 +102,7 @@ export function today(): string {
   return new Date().toLocaleDateString('en-CA');
 }
 
-const READ_ON: Record<string, string> = { '15m': '15 menit', '1h': '1 jam', '1d': 'harian' };
 /** The indicators a run read (ADR 0017), in words: "PoB BYSTRA (1 jam), Lompat (harian)"; empty for none. */
 export function readIndicators(request: { indicators?: { key: string; name?: string; timeframe: string }[] }): string {
-  return (request.indicators ?? []).map((i) => `${i.name ?? i.key} (${READ_ON[i.timeframe] ?? i.timeframe})`).join(', ');
+  return (request.indicators ?? []).map((i) => `${i.name ?? i.key} (${TIMEFRAME_NAMES[i.timeframe] ?? i.timeframe})`).join(', ');
 }

@@ -143,6 +143,21 @@ export function resolveSymbol(input: string): { tv: string; yahoo: string | null
   return { tv: toTradingView(s), yahoo: s };
 }
 
+/**
+ * An engine symbol (BBCA.JK, BTC-USD, GC=F) as a member reads it in a list: the stock or coin code
+ * traders know (BBCA, BTC), and for an index, a future or a currency pair its name (IHSG, Emas,
+ * USD/IDR), since ^JKSE or GC=F mean nothing outside the engine.
+ */
+export function assetCode(yahoo: string): string {
+  if (yahoo.endsWith('.JK')) return yahoo.slice(0, -3);
+  if (yahoo.endsWith('-USD')) return yahoo.slice(0, -4);
+  if (/^\^|=[FX]$/.test(yahoo)) {
+    const name = nameOf(toTradingView(yahoo));
+    if (name) return name.split(' · ').pop()!;
+  }
+  return yahoo;
+}
+
 /** The market list's own name for a symbol ("Emas", "Bank Central Asia"), when the list has it. */
 export function nameOf(tv: string): string | null {
   for (const tab of MARKET_TABS) for (const group of tab.groups) for (const [symbol, name] of group.symbols) if (symbol === tv) return name;
@@ -336,7 +351,7 @@ export const MARKET_TABS: MarketTab[] = [
   },
   {
     key: 'crypto',
-    label: 'Crypto',
+    label: 'Kripto',
     groups: [
       {
         name: 'Utama',
