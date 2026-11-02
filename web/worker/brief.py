@@ -18,6 +18,8 @@ Aturan:
 - Jangan menyuruh membeli atau menjual. Tulis sebagai bacaan kondisi pasar, bukan saran.
 - Kalau data_tertunda bernilai true, jangan menyebut harga itu sebagai harga sekarang.
 - Tulis angka dengan format Indonesia (titik pemisah ribuan, koma desimal).
+- Tulis untuk pembaca awam. Jangan memakai kode atau istilah mesin dari data (BUY, SELL, open, status, timeframe, 15m, 1h, nama indikator seperti Scalper Pro+, PoB, Fib); ubah ke kata biasa, misalnya "sinyal beli dari indikator di grafik 15 menit masih berjalan".
+- Kalimat watch langsung menyebut level atau kondisinya, tanpa diawali kata "Pantau".
 
 Balas HANYA dengan satu objek JSON valid, tanpa teks lain, berbentuk:
 {"headline": "satu kalimat, paling panjang 90 karakter, tentang suasana pasar hari ini",

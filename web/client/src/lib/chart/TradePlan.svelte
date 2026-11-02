@@ -124,7 +124,7 @@
           : kind === 'crypto'
             ? `${size.units.toLocaleString('id-ID', { maximumFractionDigits: 6 })} ${symbol.split('-')[0]}`
             : `${size.units.toLocaleString('id-ID')} unit`;
-    return `${amount} · nilai posisi ${rupiah(size.value)} · rugi maksimal ${rupiah(size.loss)}`;
+    return `${amount} · nilai posisi ${rupiah(size.value)} · rugi maksimal ${rupiah(size.loss)} sebelum fee broker`;
   });
 
   async function alertLevels() {
@@ -275,7 +275,15 @@
         <div class="flex flex-wrap items-end gap-3">
           <label class="flex flex-col gap-0.5 text-xs">
             Modal (Rp)
-            <input class="input input-xs w-36 tabular-nums" type="number" min="0" step="100000" bind:value={capital} />
+            <!-- Dots between thousands (10.000.000), so a zero too many shows; only the digits count. -->
+            <input
+              class="input input-xs w-36 tabular-nums"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              value={capital > 0 ? capital.toLocaleString('id-ID') : ''}
+              oninput={(e) => (capital = Number(e.currentTarget.value.replace(/\D/g, '')) || 0)}
+            />
           </label>
           <label class="flex flex-col gap-0.5 text-xs">
             Risiko per trade (%)

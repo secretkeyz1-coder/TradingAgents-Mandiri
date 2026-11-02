@@ -76,12 +76,17 @@
   const percent = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${(Math.abs(x) * 100).toFixed(2).replace('.', ',')}%`;
   const tone = (x: number | null | undefined) => (x == null ? 'text-base-content/70' : x > 0 ? 'text-success' : x < 0 ? 'text-error' : 'text-base-content/70');
   const rtf = new Intl.RelativeTimeFormat('id', { numeric: 'auto' });
+  /** The calendar day in WIB, as a count: a brief from yesterday afternoon is yesterday's, however many hours ago. */
+  const wibDay = (t: number) => Math.floor((t + 7 * 3_600_000) / 86_400_000);
   function ago(iso: string) {
-    const minutes = Math.round((Date.now() - Date.parse(iso)) / 60_000);
-    if (minutes < 60) return rtf.format(-minutes, 'minute');
-    if (minutes < 1440) return rtf.format(-Math.round(minutes / 60), 'hour');
-    return rtf.format(-Math.round(minutes / 1440), 'day');
+    const at = Date.parse(iso);
+    const days = wibDay(Date.now()) - wibDay(at);
+    if (days > 0) return rtf.format(-days, 'day');
+    const minutes = Math.round((Date.now() - at) / 60_000);
+    return minutes < 60 ? rtf.format(-minutes, 'minute') : rtf.format(-Math.round(minutes / 60), 'hour');
   }
+  /** The model sometimes opens its watch line with the label the card already shows. */
+  const watchText = (s: string) => s.replace(/^pantau(lah)?\s+/i, '');
   const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Jakarta' });
   const indicatorName = (key: string) => INDICATOR_NAMES[key] ?? (key.startsWith('catalog:') ? 'Indikator' : 'Skrip');
 </script>
@@ -191,12 +196,15 @@
             <li>
               <span class="font-medium">{BRIEF_NAMES[a.symbol] ?? a.symbol}</span>
               <span class={LEAN[a.bias]?.[1]}>· {LEAN[a.bias]?.[0] ?? a.bias}</span>
-              <span class="block text-base-content/70">Pantau: {a.watch}</span>
+              <span class="block text-base-content/70">Pantau: {watchText(a.watch)}</span>
             </li>
           {/each}
         </ul>
         {#if brief.content.assets.length > 3}
           <button class="link link-hover self-start text-xs" onclick={() => (allAssets = !allAssets)}>{allAssets ? 'Lebih sedikit' : 'Semua aset'}</button>
+        {/if}
+        {#if wibDay(Date.now()) > wibDay(Date.parse(brief.createdAt))}
+          <p class="text-xs text-warning">Ringkasan ini ditulis {ago(brief.createdAt)}; harga di atas lebih baru, jadi angkanya bisa sudah berbeda.</p>
         {/if}
         <p class="text-xs text-base-content/60">Riset otomatis, bukan saran investasi.</p>
       {/if}

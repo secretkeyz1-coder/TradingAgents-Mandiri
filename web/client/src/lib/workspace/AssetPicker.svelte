@@ -3,7 +3,8 @@
   // beside the AI panel, which names the asset it works on until one is picked here (ADR 0018); on
   // a phone it is the whole screen. The last asset opened is one click away (stores/workspace
   // recent), then Pantauanku, well-known assets and the latest analyses with their rating; the
-  // search box (AssetFinder) takes anything else. Picking one opens its chart in this place.
+  // search box (AssetFinder) takes anything else, and on a wide screen it lists each market with its
+  // prices (IDX to Komoditas) so a first visit is not an empty page. Picking one opens its chart here.
   import { friendlyName, STARTERS } from '../beginner/plain';
   import { ratingBadge } from '../format';
   import { jobs } from '../stores/jobs.svelte';
@@ -31,10 +32,12 @@
   <section class="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 py-8 sm:py-12" aria-labelledby="picker-title">
     <div class="flex flex-col gap-3">
       <h1 id="picker-title" class="text-xl font-semibold tracking-tight sm:text-2xl">Aset mana yang mau diriset?</h1>
-      <AssetFinder autofocus={wide} onpick={(tv) => ws.research(tv)} />
       {#if last}
         <div><button class="btn btn-primary btn-sm" onclick={() => ws.research(last)}>Lanjutkan: {friendlyName(last)}</button></div>
       {/if}
+      <div class="flex min-h-0 flex-col {wide ? 'max-h-[26rem]' : ''}">
+        <AssetFinder autofocus={wide} browse={wide} onpick={(tv) => ws.research(tv)} />
+      </div>
     </div>
 
     {#if watched.length}
@@ -48,7 +51,8 @@
       </div>
     {/if}
 
-    <div class="flex flex-col gap-2">
+    <!-- The market lists above cover these on a wide screen. -->
+    <div class="flex flex-col gap-2" class:hidden={wide}>
       <h2 class="text-xs font-semibold text-base-content/70">Populer</h2>
       <div class="flex flex-wrap gap-1.5">
         {#each STARTERS as [tv, name] (tv)}

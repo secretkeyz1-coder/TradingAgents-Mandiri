@@ -106,10 +106,10 @@
                 {@const q = item.yahoo ? quotes[item.yahoo] : null}
                 {@const watched = watch.has(item.yahoo)}
                 <tr class="cursor-pointer hover:bg-base-200" class:bg-base-200={ws.symbol === item.tv} onclick={() => ws.setSymbol(item.tv)}>
-                  <td class="max-w-0 min-w-40">
-                    <button class="block w-full truncate text-left" onclick={(e) => (e.stopPropagation(), ws.setSymbol(item.tv))}>
-                      <span class="font-medium">{item.name}</span>
-                      <span class="ml-1 font-mono text-xs text-base-content/60">{item.tv.split(':').pop()}</span>
+                  <td class="max-w-0 min-w-32">
+                    <button class="block w-full text-left" onclick={(e) => (e.stopPropagation(), ws.setSymbol(item.tv))}>
+                      <span class="block truncate font-medium">{item.name}</span>
+                      <span class="block truncate font-mono text-xs text-base-content/60">{item.tv.split(':').pop()}</span>
                     </button>
                   </td>
                   <td class="text-right whitespace-nowrap tabular-nums">
