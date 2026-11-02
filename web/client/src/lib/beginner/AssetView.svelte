@@ -223,9 +223,10 @@
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <div role="tablist" class="tabs tabs-box tabs-sm" aria-label="Rentang waktu grafik">
+      <!-- Buttons that pick the span (aria-pressed): one chart, so no tab panels. -->
+      <div role="group" class="tabs tabs-box tabs-sm" aria-label="Rentang waktu grafik">
         {#each SPANS as s (s.key)}
-          <button role="tab" class="tab" class:tab-active={s.key === span.key} aria-selected={s.key === span.key} onclick={() => pick(s.key)}>
+          <button class="tab" class:tab-active={s.key === span.key} aria-pressed={s.key === span.key} onclick={() => pick(s.key)}>
             <span class="sm:hidden">{s.short}</span><span class="hidden sm:inline">{s.label}</span>
           </button>
         {/each}

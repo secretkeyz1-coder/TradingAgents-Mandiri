@@ -77,16 +77,11 @@
         <section class="flex min-h-0 flex-1 flex-col gap-2 p-4" aria-label="Tanya AI">{@render chat()}</section>
       {/if}
     </div>
+    <!-- Pro's phone tab bar (app.css .ta-tab): the current tab's icon sits on a tint, not only in another colour. -->
     <nav class="grid shrink-0 grid-cols-3 border-t border-base-300 bg-base-100" aria-label="Bagian">
       {#each TABS as t (t.key)}
-        <button
-          class="flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs font-medium"
-          class:text-primary={tab === t.key}
-          class:text-base-content={tab !== t.key}
-          aria-current={tab === t.key ? 'page' : undefined}
-          onclick={() => (tab = t.key)}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={t.icon} /></svg>
+        <button class="ta-tab" aria-current={tab === t.key ? 'page' : undefined} onclick={() => (tab = t.key)}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={t.icon} /></svg>
           {t.label}
         </button>
       {/each}

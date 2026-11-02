@@ -91,9 +91,10 @@
       <Logo />
       <span class="hidden {pro ? 'xl:inline' : 'md:inline'}">TradingAgents</span>
     </a>
-    <div role="tablist" class="tabs tabs-box tabs-sm shrink-0" aria-label="Tampilan">
-      <button role="tab" class="tab" class:tab-active={mode.value === 'pemula'} aria-selected={mode.value === 'pemula'} title="Satu aset, bahasa sederhana" onclick={() => mode.set('pemula')}>Pemula</button>
-      <button role="tab" class="tab" class:tab-active={mode.value === 'pro'} aria-selected={mode.value === 'pro'} title="Semua alat: chart, analisa, backtest, sinyal" onclick={() => mode.set('pro')}>Pro</button>
+    <!-- Two buttons that pick the mode, not tabs over panels: Tab reaches each, Enter or Space picks it. -->
+    <div role="group" class="tabs tabs-box tabs-sm shrink-0" aria-label="Tampilan">
+      <button class="tab" class:tab-active={mode.value === 'pemula'} aria-pressed={mode.value === 'pemula'} title="Satu aset, bahasa sederhana" onclick={() => mode.set('pemula')}>Pemula</button>
+      <button class="tab" class:tab-active={mode.value === 'pro'} aria-pressed={mode.value === 'pro'} title="Semua alat: chart, analisa, backtest, sinyal" onclick={() => mode.set('pro')}>Pro</button>
     </div>
     {#if pro && !narrow}
       <nav class="flex min-w-0 items-center gap-0.5" aria-label="Menu utama">
