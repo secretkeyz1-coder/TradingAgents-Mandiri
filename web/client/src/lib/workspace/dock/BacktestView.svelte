@@ -5,7 +5,7 @@
   // failed one says why in the list. Opening one shows its result in place; "Semua backtest" goes
   // back to the form and the list.
   import DecisionChart from '../../DecisionChart.svelte';
-  import { formatDateTime, formatPercent, ratingBadge } from '../../format';
+  import { formatDateTime, formatPercent, ratingBadge, readIndicators } from '../../format';
   import { jobs } from '../../stores/jobs.svelte';
   import { ws } from '../../stores/workspace.svelte';
   import StatusBadge from '../../StatusBadge.svelte';
@@ -121,6 +121,9 @@
             {b.request.start} – {b.request.end} · tiap {b.request.everyNDays} hari · {b.request.provider} · {b.request.deepModel} · dibuat
             {formatDateTime(b.createdAt)}
           </p>
+          {#if b.request.indicators?.length}
+            <p class="text-sm text-base-content/70">Indikator yang dibaca AI: {readIndicators(b.request)}</p>
+          {/if}
         </div>
         <div class="flex flex-wrap gap-1.5">
           {#if bt.live}

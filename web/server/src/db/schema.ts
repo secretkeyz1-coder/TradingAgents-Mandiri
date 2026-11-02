@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { Period, PlanId } from "../../../shared/plans";
+import type { IndicatorReading } from "../../../shared/readings";
 import type { ScalperSignalSettings } from "../../../shared/scalper";
 
 export type AnalysisStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -15,6 +16,8 @@ export type AnalysisRequest = {
   deepModel: string;
   language: string;
   backendUrl?: string;
+  /** Indicators the Market Analyst reads, computed up to the analysis date (server/src/readings.ts). */
+  indicators?: IndicatorReading[];
 };
 
 /** A sweep of full analyses over tickers x dates, scored later (tradingagents.backtest). */

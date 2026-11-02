@@ -31,6 +31,8 @@ export type AnalysisRequest = {
   deepModel: string;
   language: string;
   backendUrl?: string;
+  /** Indicators the Market Analyst reads up to the analysis date: sent as key and timeframe, answered with their name too. */
+  indicators?: { key: string; timeframe: ReadingTimeframe; name?: string; engine?: string }[];
 };
 
 export type AnalysisStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -134,6 +136,7 @@ export type Backtest = BacktestSummary & {
 };
 
 import type { PlanId, PlanLimits } from '../../../shared/plans';
+import type { ReadingTimeframe } from '../../../shared/readings';
 import { auth } from './auth.svelte';
 
 export type { PlanId, PlanLimits };

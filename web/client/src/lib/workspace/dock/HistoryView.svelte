@@ -52,6 +52,9 @@
                 <button class="link link-hover font-mono font-semibold" onclick={() => ws.openRun(a.id, { symbol: toTradingView(a.ticker) })}>
                   {a.ticker}
                 </button>
+                {#if a.request.indicators?.length}
+                  <span class="block text-xs text-base-content/70">+ {a.request.indicators.map((i) => i.name ?? i.key).join(', ')}</span>
+                {/if}
               </td>
               {#if jobs.everyone}<td class="font-mono text-xs">{a.owner ?? '–'}</td>{/if}
               <td class="tabular-nums">{a.tradeDate}</td>

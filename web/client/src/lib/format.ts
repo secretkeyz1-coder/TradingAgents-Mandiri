@@ -88,3 +88,9 @@ export function gridDates(start: string, end: string, everyNDays: number): strin
 export function today(): string {
   return new Date().toLocaleDateString('en-CA');
 }
+
+const READ_ON: Record<string, string> = { '15m': '15 menit', '1h': '1 jam', '1d': 'harian' };
+/** The indicators a run read (ADR 0017), in words: "PoB BYSTRA (1 jam), Lompat (harian)"; empty for none. */
+export function readIndicators(request: { indicators?: { key: string; name?: string; timeframe: string }[] }): string {
+  return (request.indicators ?? []).map((i) => `${i.name ?? i.key} (${READ_ON[i.timeframe] ?? i.timeframe})`).join(', ');
+}

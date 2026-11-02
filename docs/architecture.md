@@ -58,6 +58,7 @@ Kode bersama server dan klien ada di `web/shared` (paket dan batasnya, sandbox s
 ## Alur satu analisa
 
 1. Klien memanggil `POST /api/analyses`. `requireAuth` memeriksa cookie sesi, `routes.ts` memvalidasi body dengan zod, mengganti provider dan model anggota dengan bawaan server, dan mengecek kuota.
+   Indikator pilihan pengguna diperiksa dan disalin ke request (`readings.ts`), lalu dihitung worker sampai tanggal analisa untuk Market Analyst ([ADR 0017](adr/0017-ai-membaca-indikator-pilihan.md)).
 2. Baris `analyses` ditulis berstatus `queued`; `enqueue()` mengirim `NOTIFY ta_jobs`.
 3. Worker yang bebas mengambil baris tertua dengan `FOR UPDATE SKIP LOCKED` (status `running`, heartbeat), lalu menjalankan `python web/worker/ta_worker.py run`.
 4. Setiap event engine disimpan di `analysis_events` dan diumumkan; baris `analyses` diperbarui (progres, laporan per bagian).

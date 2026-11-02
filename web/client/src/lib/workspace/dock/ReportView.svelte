@@ -1,7 +1,7 @@
 <script lang="ts">
   // The open analysis in full: the verdict first, then each analyst's report.
   import { api } from '../../api';
-  import { formatDateTime, formatNumber, ratingTone, renderMarkdown, SECTION_LABELS } from '../../format';
+  import { formatDateTime, formatNumber, ratingTone, readIndicators, renderMarkdown, SECTION_LABELS } from '../../format';
   import { ws } from '../../stores/workspace.svelte';
   import StatusBadge from '../../StatusBadge.svelte';
 
@@ -25,6 +25,9 @@
           Tanggal {a.tradeDate} · {a.request.provider} · {a.request.quickModel} / {a.request.deepModel} · {a.request.language} ·
           dibuat {formatDateTime(a.createdAt)}
         </p>
+        {#if a.request.indicators?.length}
+          <p class="text-sm text-base-content/70">Indikator yang dibaca AI: {readIndicators(a.request)}</p>
+        {/if}
         <p class="font-mono text-xs tabular-nums text-base-content/70">
           {run.elapsed} · {formatNumber(run.stats?.llmCalls)} panggilan LLM · {formatNumber(run.stats?.toolCalls)} tool ·
           {formatNumber((run.stats?.tokensIn ?? 0) + (run.stats?.tokensOut ?? 0))} token

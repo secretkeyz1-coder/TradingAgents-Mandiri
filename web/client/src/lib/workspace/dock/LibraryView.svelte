@@ -46,7 +46,10 @@
 <div class="flex flex-col gap-5 p-4">
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div class="flex max-w-[70ch] flex-col gap-1 text-sm">
-      <p>Semua indikator yang bisa dipakai akunmu. Tiap indikator bisa tampil di chart, mengirim notifikasi sinyal, dan diuji di Uji indikator.</p>
+      <p>
+        Semua indikator yang bisa dipakai akunmu. Tiap indikator bisa tampil di chart, mengirim notifikasi sinyal, diuji di Uji indikator, dan
+        dibaca AI saat Riset AI atau Uji saran AI.
+      </p>
       <p class="text-xs text-base-content/70">Indikator buatanmu hanya terlihat olehmu. Admin bisa menerbitkan indikator untuk semua member di paket tertentu.</p>
     </div>
     <div class="flex shrink-0 flex-wrap gap-2">

@@ -104,7 +104,7 @@ client/src/lib/
    ├─ PageScreen.svelte     Pantau dan Uji strategi; PhoneScreen.svelte: Pasar dan Riset AI di ponsel
    ├─ MarketPanel · ChartPanel · AiPanel · Dock (panel bawah) · TabView (isi satu tab)
    ├─ ChatPanel.svelte      chat agent; SkillsPanel.svelte untuk meninjau skill
-   ├─ AnalysisForm.svelte   form analisa (Riset AI) dan uji saran AI (Uji strategi)
+   ├─ AnalysisForm.svelte   form analisa (Riset AI) dan uji saran AI (Uji strategi), dengan indikator yang dibaca AI
    └─ dock/  HistoryView · ReportView · LogView · WatchView · SignalsView · AlertsView · BacktestView · LabView
 ```
 
@@ -116,6 +116,24 @@ Backtest memakai `tradingagents.backtest.run_backtest` milik engine: tim agent d
 - Chart keputusan (TradingView Lightweight Charts) memakai candle Yahoo dari `GET /api/candles` (cache 15 menit) dan menandai setiap keputusan dari `GET /api/decisions` (analisa selesai + sel backtest). Hasil backtest dinilai dengan alpha engine; analisa tunggal dinilai dari arah harga 5 hari bursa sesudahnya. Hold tidak punya arah, jadi tidak dinilai.
 - **Timeframe** 1j · 4j · 1H · 1M · 1B (parameter `interval`: `1h`, `4h`, `1d`, `1wk`, `1mo`; di URL `tf=`). 4j digabung server dari candle 1 jam, sejajar tengah malam zona waktu bursa. Candle per jam hanya tersedia sampai 1 tahun ke belakang (batas Yahoo), jadi rentang 2T/5T mati di sana. Engine, marker keputusan, dan gambar agent tetap harian: di timeframe lain sebuah tanggal ditaruh di candle pertama hari itu, dan "harga 5 hari" dihitung dari penutupan harian (kosong di mingguan/bulanan).
 - Chart ini ada di chart Keputusan AI dan di hasil backtest (Uji strategi → Uji saran AI).
+
+### Indikator yang dibaca AI (Riset AI dan Uji saran AI)
+
+- Form **Jalankan** di Riset AI dan form **Uji saran AI** punya pilihan "Indikator yang ikut dibaca AI". Pilihannya sampai 3 indikator dari Indikator saya (bawaan, terbitan admin untuk paketnya, buatan sendiri), dengan satu timeframe candle: 15 menit, 1 jam, atau harian.
+  - Yang terpilih di awal adalah indikator yang sedang tampil di chart, dengan timeframe chart. Uji saran AI mulai dari harian.
+  - PoB BYSTRA tidak punya setup harian, jadi dibaca dari candle 1 jam.
+- **Server** (`server/src/readings.ts`) memeriksa tiap indikator terhadap hak akun, lalu menyalinnya ke request.
+  - Mesin bawaan disalin dengan pengaturan Scalper akun dari chart; skrip disalin beserta kodenya saat itu. Jadi semua sel satu uji membaca kode yang sama.
+  - API tidak pernah mengirim balik kode dan pengaturan itu (`publicRequest`). Riwayat, laporan, dan hasil uji hanya menyebut nama dan timeframe-nya.
+- **Worker** (`worker/readings.py`) menghitung tiap indikator sebelum engine mulai.
+  - Candle dimuat sekali per aset dan timeframe lewat `server/src/script-cli.ts`. Sumbernya sama dengan Uji indikator: Binance untuk kripto, Yahoo untuk lainnya.
+  - Candle dipotong di tiap tanggal analisa, jadi bacaan di tanggal lampau tidak melihat candle sesudahnya. Panjang jendelanya: 15 menit sebulan, 1 jam setahun, harian dua tahun.
+  - Mesin bawaan berjalan seperti di agent chart; skrip berjalan di sandbox chart.
+- **Hanya Market Analyst** yang menerima hasilnya, bersama konteks instrumennya. Ia diminta menyebut apa kata tiap indikator per tanggal itu dan memberi tiap indikator satu baris di tabel laporannya. Agen lain membaca laporan itu.
+  - Engine tidak diubah: worker membungkus `create_market_analyst` di prosesnya sendiri ([ADR 0017](../docs/adr/0017-ai-membaca-indikator-pilihan.md)).
+  - Admin yang mematikan Market Analyst di Pengaturan analisa tidak bisa memakai indikator; server menolak request seperti itu.
+- **Log** analisa menulis apa yang dibaca, misalnya "Indikator yang dibaca AI untuk BTC-USD, dari candle sampai …". Untuk uji saran AI, log menulis berapa sel yang terbaca per indikator.
+  - Indikator yang gagal dihitung (candle belum ada, skrip error) disebut beserta alasannya, dan analisanya jalan terus tanpa indikator itu.
 
 ### Analisa terjadwal dan Telegram
 
@@ -204,6 +222,7 @@ API:
 - Semua indikator yang bisa dipakai akun: bawaan, yang diterbitkan admin untuk paketnya, dan buatan sendiri. Tiap baris punya sakelar **Di chart** dan tombol **Uji** yang membuka Uji indikator dengan indikator itu; buatan sendiri juga bisa diedit dan dihapus.
 - Indikator baru dibuat dari template, dari kode Pine TradingView (diterjemahkan AI), atau ditulis sendiri. Editor skrip kini bisa dibuka dari layar mana pun; sebelumnya hanya dari chart, sehingga "Buat skrip" di Lab tidak membuka apa-apa.
 - Jumlah indikator buatan sendiri mengikuti paket (`scripts` di `shared/plans.ts`).
+- Indikator yang sama bisa dibaca AI saat Riset AI dan Uji saran AI (lihat "Indikator yang dibaca AI").
 
 ### Rekam jejak live (Uji strategi → Rekam jejak live, dulu Strategi live)
 
@@ -279,7 +298,7 @@ cd web/client && bun run test   # paritas indikator: grafik vs notifikasi
 bun run dev:demo
 ```
 
-Server memakai `worker/demo_worker.py`, yang memutar ulang analisa tiruan dengan format event yang sama. Cocok untuk mengerjakan UI.
+Server memakai `worker/demo_worker.py`, yang memutar ulang analisa tiruan dengan format event yang sama. Cocok untuk mengerjakan UI. Indikator yang dipilih tetap dihitung sungguhan (butuh internet untuk candle) dan dikutip di laporan Market Analyst tiruan.
 
 ## Menjalankan (satu proses)
 

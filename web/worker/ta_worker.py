@@ -269,6 +269,20 @@ def _resolve(raw_ticker: str, requested: list[str]) -> tuple[str, str, list[str]
     return ticker, asset_type.value, analysts
 
 
+def _read_indicators(job: dict, tickers: list[str], days: list[str]):
+    """The indicators the user picked, read up to each date and given to the Market Analyst (readings.py); None for none."""
+    picks = job.get("indicators") or []
+    if not picks:
+        return None
+    from readings import Readings, install
+
+    names = ", ".join(p["name"] for p in picks)
+    emit("message", kind="System", content=f"Menghitung indikator pilihanmu ({names}) sampai tanggal analisa…")
+    readings = Readings(picks, tickers, days)
+    install(readings)
+    return readings
+
+
 def run(job: dict) -> int:
     from cli.display import classify_message_type
     from cli.stats_handler import StatsCallbackHandler
@@ -281,6 +295,9 @@ def run(job: dict) -> int:
     config = _build_config(job)
     stats = StatsCallbackHandler()
     emit("started", ticker=ticker, assetType=asset_type, date=trade_date, analysts=analysts)
+    readings = _read_indicators(job, [ticker], [trade_date])
+    if readings:
+        emit("message", kind="Data", content=readings.summary(ticker, trade_date))
 
     graph = TradingAgentsGraph(analysts, config=config, debug=True, callbacks=[stats])
     progress = Progress(analysts)
@@ -408,6 +425,9 @@ def backtest(job: dict) -> int:
     config = _build_config(job)
     total = len(resolved) * len(dates)
     emit("started", tickers=[r[0] for r in resolved], dates=dates, total=total, everyNDays=every)
+    readings = _read_indicators(job, [r[0] for r in resolved], dates)
+    if readings:
+        emit("message", kind="Data", content=readings.overview())
 
     def progress_from(offset: int):
         # run_backtest counts only the cells it still has to run for one ticker:

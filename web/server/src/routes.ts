@@ -4,13 +4,15 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { track } from "./activity";
-import { isAdmin, type AppEnv } from "./auth";
+import { isAdmin, type AppEnv, type User } from "./auth";
 import { backendUrlRefused } from "./config";
 import { db } from "./db";
 import { analyses, analysisEvents, users, type JobKind } from "./db/schema";
+import type { IndicatorReading } from "../../shared/readings";
 import { cancel, enqueue, subscribe, TERMINAL, type LiveEvent } from "./jobs";
 import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./market";
 import { catalogFor, modelsFor, standardFor } from "./models";
+import { publicRequest, readingsSchema, snapshotReadings } from "./readings";
 import { briefFor } from "./site";
 import { overLimit, room, usage } from "./usage";
 import { isVenue } from "./venues";
@@ -40,6 +42,8 @@ export const createSchema = z.object({
   deepModel: z.string().trim().min(1).max(120),
   language: z.string().trim().min(1).max(40),
   backendUrl: z.url().max(300).optional().or(z.literal("").transform(() => undefined)),
+  /** Indicators the Market Analyst reads (readings.ts); stored with their source, answered without it. */
+  indicators: readingsSchema.optional(),
 });
 
 export const backtestSchema = createSchema.omit({ ticker: true, date: true }).extend({
@@ -73,6 +77,20 @@ function checkProvider(catalog: Catalog, request: { provider: string; backendUrl
 }
 
 const issues = (error: z.ZodError) => error.issues.map((i) => i.message).join("; ");
+
+/** The request as it is stored: its indicators checked and copied in (readings.ts), or why they cannot be read. */
+async function withReadings<T extends { analysts: string[]; indicators?: { key: string; timeframe: "15m" | "1h" | "1d" }[] }>(
+  user: User,
+  request: T,
+): Promise<{ request: Omit<T, "indicators"> & { indicators?: IndicatorReading[] } } | { error: string }> {
+  const { indicators: picks, ...rest } = request;
+  if (!picks?.length) return { request: rest };
+  // Only the Market Analyst reads them; a member's standard analysis always has it.
+  if (!request.analysts.includes("market")) return { error: "Indikator dibaca oleh Market Analyst. Nyalakan Market Analyst di Konsol admin → Pengaturan analisa." };
+  const snapshot = await snapshotReadings(user, picks);
+  if ("error" in snapshot) return snapshot;
+  return { request: { ...rest, indicators: snapshot.readings } };
+}
 
 export const api = new Hono<AppEnv>();
 
@@ -146,13 +164,15 @@ api.get("/analyses", async (c) => {
     .where(and(eq(analyses.kind, kind), all ? undefined : eq(analyses.userId, user.id)))
     .orderBy(desc(analyses.createdAt))
     .limit(100);
-  return c.json(rows);
+  return c.json(rows.map((r) => ({ ...r, request: publicRequest(r.request) })));
 });
 
 api.post("/backtests", async (c) => {
   const parsed = backtestSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: issues(parsed.error) }, 400);
-  const request = standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), parsed.data.tickers);
+  const read = await withReadings(c.get("user"), standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), parsed.data.tickers));
+  if ("error" in read) return c.json({ error: read.error }, 400);
+  const request = read.request;
   if (request.end < request.start) return c.json({ error: "Tanggal akhir sebelum tanggal mulai" }, 400);
   const cells = new Set(request.tickers.map((t) => t.toUpperCase())).size * gridDates(request.start, request.end, request.everyNDays).length;
   if (cells === 0) return c.json({ error: "Rentang tanggal tidak menghasilkan sel" }, 400);
@@ -318,7 +338,9 @@ api.get("/verdict", async (c) => {
 api.post("/analyses", async (c) => {
   const parsed = createSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: issues(parsed.error) }, 400);
-  const request = standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), [parsed.data.ticker]);
+  const read = await withReadings(c.get("user"), standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), [parsed.data.ticker]));
+  if ("error" in read) return c.json({ error: read.error }, 400);
+  const request = read.request;
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
   const quota = await overLimit(c.get("user"), "analyses");
@@ -339,7 +361,7 @@ api.get("/analyses/:id", async (c) => {
   const [row] = await db.select().from(analyses).where(eq(analyses.id, id));
   if (!row) return c.json({ error: "Not found" }, 404);
   const { reportHtml, ...rest } = row;
-  return c.json({ ...rest, hasReportHtml: Boolean(reportHtml) });
+  return c.json({ ...rest, request: publicRequest(rest.request), hasReportHtml: Boolean(reportHtml) });
 });
 
 api.get("/analyses/:id/report", async (c) => {

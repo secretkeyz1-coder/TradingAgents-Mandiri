@@ -1476,6 +1476,32 @@
                         "const": ""
                       }
                     ]
+                  },
+                  "indicators": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        },
+                        "timeframe": {
+                          "type": "string",
+                          "enum": [
+                            "15m",
+                            "1h",
+                            "1d"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "timeframe"
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -1801,6 +1827,32 @@
                         "const": ""
                       }
                     ]
+                  },
+                  "indicators": {
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        },
+                        "timeframe": {
+                          "type": "string",
+                          "enum": [
+                            "15m",
+                            "1h",
+                            "1d"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "timeframe"
+                      ]
+                    }
                   },
                   "tickers": {
                     "minItems": 1,

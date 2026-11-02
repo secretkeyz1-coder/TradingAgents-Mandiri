@@ -1,7 +1,8 @@
 """A stand-in for ta_worker.py that replays a scripted run: no LLM calls, no API keys.
 
 For working on the web UI. Start the server with
-``TA_WORKER_SCRIPT=web/worker/demo_worker.py``. ``catalog`` is the real one.
+``TA_WORKER_SCRIPT=web/worker/demo_worker.py``. ``catalog`` is the real one, and so are the
+indicator readings a request asks for (readings.py): the market report quotes them.
 """
 
 from __future__ import annotations
@@ -20,6 +21,9 @@ def run(job: dict) -> int:
     ticker = job["ticker"].upper()
     analysts = [a for a in ANALYST_ORDER if a in job["analysts"]]
     emit("started", ticker=ticker, assetType="stock", date=job["date"], analysts=analysts)
+    readings = ta_worker._read_indicators(job, [ticker], [job["date"]])
+    if readings:
+        emit("message", kind="Data", content=readings.summary(ticker, job["date"]))
 
     status = {ANALYST_LABELS[a]: "in_progress" for a in analysts}
     for _team, agents in FIXED_AGENTS:
@@ -33,8 +37,9 @@ def run(job: dict) -> int:
         emit("message", kind="Data", content=f"(demo) data harga {ticker} 90 hari terakhir")
         time.sleep(STEP_SECONDS)
         emit("message", kind="Agent", content=f"(demo) {ANALYST_LABELS[key]} menyusun laporan.")
+        read = f" {readings.summary(ticker, job['date'])}" if readings and key == "market" else ""
         emit("report", section=ANALYST_REPORTS[key],
-             content=f"## {ANALYST_LABELS[key]}\n\n(demo) Ringkasan untuk **{ticker}**.\n\n"
+             content=f"## {ANALYST_LABELS[key]}\n\n(demo) Ringkasan untuk **{ticker}**.{read}\n\n"
                      "| Indikator | Nilai |\n|---|---|\n| RSI | 54 |\n| MACD | positif |")
         status[ANALYST_LABELS[key]] = "completed"
         calls += 3
@@ -82,6 +87,9 @@ def backtest(job: dict) -> int:
     tickers = [t.upper() for t in job["tickers"]]
     total = len(tickers) * len(dates)
     emit("started", tickers=tickers, dates=dates, total=total, everyNDays=step)
+    readings = ta_worker._read_indicators(job, tickers, dates)
+    if readings:
+        emit("message", kind="Data", content=readings.overview())
 
     ratings = ["Buy", "Overweight", "Hold", "Underweight", "Sell"]
     cells, done = [], 0
