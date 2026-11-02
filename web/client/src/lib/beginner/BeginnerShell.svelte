@@ -74,7 +74,7 @@
       {:else if tab === 'asset'}
         <div class="p-4">{@render asset()}</div>
       {:else}
-        <section class="flex min-h-0 flex-1 flex-col gap-2 p-4" aria-label="Tanya AI">{@render chat()}</section>
+        <section class="flex flex-1 flex-col gap-2 p-4" aria-label="Tanya AI">{@render chat()}</section>
       {/if}
     </div>
     <!-- Pro's phone tab bar (app.css .ta-tab): the current tab's icon sits on a tint, not only in another colour. -->
@@ -95,7 +95,7 @@
     <main class="min-h-0 overflow-y-auto px-6 py-5">
       <div class="mx-auto max-w-4xl">{@render asset()}</div>
     </main>
-    <section class="flex min-h-0 flex-col gap-2 border-l border-base-300 p-3" aria-labelledby="chat-title">
+    <section class="flex min-h-0 flex-col gap-2 overflow-y-auto border-l border-base-300 p-3" aria-labelledby="chat-title">
       <h2 id="chat-title" class="text-sm font-semibold">Tanya AI</h2>
       {@render chat()}
     </section>

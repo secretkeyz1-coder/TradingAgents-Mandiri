@@ -2,7 +2,9 @@
   // What the user is told about the asset in focus: the daily AI summary (the asset on
   // Pantauanku, analysed each trading day, the result sent to Telegram), a message when
   // the price reaches a level, and whether Telegram is connected. `onprofile` opens the
-  // profile, where Telegram is linked.
+  // profile, where Telegram is linked. An account still waiting for verification is told the daily
+  // analysis starts once it is verified: until then the server skips it (watch.ts).
+  import { auth } from '../auth.svelte';
   import PriceLevels from '../PriceLevels.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
@@ -49,7 +51,11 @@
         <span class="font-medium">Pantauanku: analisa AI harian</span>
         <span class="text-sm text-base-content/70">
           {#if ws.yahoo}
-            {name} dianalisa AI {days} pukul {w.schedule.time.replace(':', '.')} WIB{w.telegram.configured ? ', lalu hasilnya dikirim ke Telegram-mu' : ''}.
+            {name} dianalisa AI {days} pukul {w.schedule.time.replace(':', '.')} WIB{auth.unverified
+              ? ', mulai setelah akunmu diverifikasi'
+              : w.telegram.configured
+                ? ', lalu hasilnya dikirim ke Telegram-mu'
+                : ''}.
           {:else}
             Aset ini belum bisa dianalisa AI.
           {/if}

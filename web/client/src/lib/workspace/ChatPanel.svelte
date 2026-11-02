@@ -1,7 +1,8 @@
 <script lang="ts">
   // Ask the chart agent about the symbol in focus. It answers, draws on the
   // chart, and remembers what you tell it; all of that is listed here. `simple`
-  // (the Pemula screen) keeps only the conversation: no tool names, memory or skills.
+  // (the Pemula screen) keeps only the conversation: no tool names, memory or skills, and its
+  // messages keep at least 8rem, so on a short screen (200% zoom) the panel around it scrolls instead.
   import { auth } from '../auth.svelte';
   import { renderMarkdown } from '../format';
   import { assetCode } from '../tv';
@@ -49,7 +50,7 @@
   }
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col gap-2">
+<div class="flex flex-1 flex-col gap-2" class:min-h-0={!simple}>
   <div class="flex flex-wrap items-center gap-1.5">
     <select
       class="select select-xs min-w-0 flex-1"
@@ -65,7 +66,7 @@
     {#if agent.session}<button class="btn btn-ghost btn-xs" onclick={() => agent.deleteSession()} disabled={agent.sending}>Hapus</button>{/if}
   </div>
 
-  <div bind:this={list} class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto" aria-live="polite">
+  <div bind:this={list} class="flex flex-1 flex-col gap-3 overflow-y-auto" class:min-h-0={!simple} class:min-h-32={simple} aria-live="polite">
     {#if agent.messages.length === 0 && !agent.sending}
       <p class="text-sm text-base-content/70">{intro || `Tanya soal chart ${ws.yahoo}. Agent menghitung level dari data harga, lalu menggambarnya di chart.`}</p>
       <div class="flex flex-col gap-1.5">
@@ -100,7 +101,7 @@
         {#if agent.liveText}
           <div class="md text-sm">{@html renderMarkdown(agent.liveText)}</div>
         {:else}
-          <span class="loading loading-dots loading-sm" aria-label="Agent sedang bekerja"></span>
+          <span class="loading loading-dots loading-sm" aria-label={simple ? 'AI sedang menjawab' : 'Agent sedang bekerja'}></span>
         {/if}
       </div>
     {/if}
@@ -113,7 +114,7 @@
       bind:value={draft}
       onkeydown={onKey}
       placeholder={simple ? 'Tulis pertanyaanmu…' : 'Gambar support resistance dan jelaskan…'}
-      aria-label="Pesan untuk agent"
+      aria-label={simple ? 'Pertanyaan untuk AI' : 'Pesan untuk agent'}
       maxlength="4000"
     ></textarea>
     <!-- Wraps in a narrow (floating) panel, so Kirim never slides out of view. -->

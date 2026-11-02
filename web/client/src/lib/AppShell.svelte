@@ -144,7 +144,7 @@
     <div class="alert alert-soft alert-warning shrink-0 flex-wrap justify-between gap-2 rounded-none border-x-0 border-t-0 px-4 py-2 text-sm">
       {#if auth.config.mail}
         <span>
-          Verifikasi <strong>{auth.user.email}</strong> untuk memakai analisa AI dan chat agent{auth.user.trialUsed ? '' : ', sekaligus mengaktifkan trial Pro'}. Cek kotak masuk dan
+          Verifikasi <strong>{auth.user.email}</strong> untuk memakai analisa AI dan Tanya AI{auth.user.trialUsed ? '' : ', sekaligus mengaktifkan trial Pro'}. Cek kotak masuk dan
           folder spam.
         </span>
         {#if resent}<span class="text-xs">{resent}</span>{:else}<button class="btn btn-xs" onclick={resend}>Kirim ulang tautan</button>{/if}
@@ -152,7 +152,7 @@
         <!-- One line on a phone, where every line above the chart counts. -->
         <span class="sm:hidden">Menunggu verifikasi admin; fitur AI terbuka setelahnya.</span>
         <span class="hidden sm:inline">
-          Akunmu menunggu verifikasi admin. Setelah itu analisa AI dan chat agent bisa dipakai{auth.user.trialUsed ? '' : ', dan trial Pro aktif'}.
+          Akunmu menunggu verifikasi admin. Setelah itu analisa AI dan Tanya AI bisa dipakai{auth.user.trialUsed ? '' : ', dan trial Pro aktif'}.
         </span>
       {/if}
     </div>
