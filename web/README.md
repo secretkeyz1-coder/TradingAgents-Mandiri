@@ -28,7 +28,7 @@ Mode Pro punya lima layar, dipilih dari menu di bilah atas (di ponsel dari tab b
 | Pasar | Dibuka sebagai **papan pasar** selebar layar (`MarketBoard.svelte`): tab IDX, US, Crypto, Forex, Komoditas, status sesi pasar, cari di daftar, lalu nama, harga terakhir, perubahan hari ini, garis 30 hari dan perubahannya (`GET /api/quotes?spark=1`, data harian yang sama dengan chart), dan bintang Pantauanku; Screener pasar itu di panel bawah. Klik aset membuka chart-nya: daftar menyempit ke kiri ("Semua pasar" untuk kembali), chart di tengah ("Sinyal", bawaan: harga terakhir dan perubahan hari ini, candle, Indikator dan Notifikasi, dan kartu Rencana trading: setup indikator terbaru yang masih terbuka sebagai entry, SL, TP, dan R:R, kalkulator ukuran posisi dari modal dan risiko per trade (lot IDX, oz emas, unit kripto), alert harga di ketiga level sekali tekan, dan salin rencana; atau TradingView), tanpa marker keputusan AI, dengan tombol **Riset AI** untuk meriset aset itu |
 | Riset AI | Dibuka dengan **pemilih aset** (`AssetPicker.svelte`): cari, "Lanjutkan: aset terakhir", Pantauanku, aset populer, riset terakhir, dan kuota. Setelah memilih: chart dengan marker setiap keputusan AI, panel **Tanya** (agent chart) dan **Jalankan** (analisa yang terbuka, keputusan terakhir, form analisa) di kanan, dan Riwayat, Laporan, Log di panel bawah. Pindah aset dari kepala chart: klik nama aset untuk mencari atau memilih dari daftar pasar dengan harganya, klik salah satu aset terakhir, atau Alt+↑/↓ untuk aset sebelah di daftar pasarnya; semuanya (chart, percakapan, form, riwayat) ikut pindah |
 | Pantau | Hanya yang kamu pantau: Analisa terjadwal, Alert (semua alert harga dan sinyal), dan Jurnal (trade yang kamu ambil) |
-| Uji strategi | Backtest (form, daftar, hasil), Lab, dan Strategi live (buku sinyal strategi bawaan) |
+| Uji strategi | Empat tab yang dinamai menurut pertanyaannya: **Uji indikator** (dulu Lab: untung tidaknya indikator di masa lalu setelah biaya), **Uji saran AI** (dulu Backtest: seberapa sering saran AI benar), **Rekam jejak live** (dulu Strategi live: sinyal sungguhan mesin bawaan), dan **Indikator saya** (semua indikator akun: bawaan, dari admin, buatan sendiri) |
 
 Di Pasar dan Riset AI tiap panel bisa menempel, melayang di atas chart, atau ditutup (tombol × di kepalanya; tombolnya menunggu di pojok chart sampai dibuka lagi), dan menu Tata letak menyimpan susunannya. Mode fokus (tombol F) memberi chart seluruh jendela. Tiap layar ingat tab terakhirnya.
 
@@ -104,7 +104,7 @@ client/src/lib/
    ├─ PageScreen.svelte     Pantau dan Uji strategi; PhoneScreen.svelte: Pasar dan Riset AI di ponsel
    ├─ MarketPanel · ChartPanel · AiPanel · Dock (panel bawah) · TabView (isi satu tab)
    ├─ ChatPanel.svelte      chat agent; SkillsPanel.svelte untuk meninjau skill
-   ├─ AnalysisForm.svelte   form analisa (Riset AI) dan backtest (Uji strategi)
+   ├─ AnalysisForm.svelte   form analisa (Riset AI) dan uji saran AI (Uji strategi)
    └─ dock/  HistoryView · ReportView · LogView · WatchView · SignalsView · AlertsView · BacktestView · LabView
 ```
 
@@ -115,7 +115,7 @@ Backtest memakai `tradingagents.backtest.run_backtest` milik engine: tim agent d
 - Worker web menambahkan benchmark `.JK` → `^JKSE` (IHSG). Peta benchmark engine tidak punya IDX, sehingga tanpa ini saham IDX dinilai terhadap SPY. Crypto dan forex masih memakai default engine (SPY).
 - Chart keputusan (TradingView Lightweight Charts) memakai candle Yahoo dari `GET /api/candles` (cache 15 menit) dan menandai setiap keputusan dari `GET /api/decisions` (analisa selesai + sel backtest). Hasil backtest dinilai dengan alpha engine; analisa tunggal dinilai dari arah harga 5 hari bursa sesudahnya. Hold tidak punya arah, jadi tidak dinilai.
 - **Timeframe** 1j · 4j · 1H · 1M · 1B (parameter `interval`: `1h`, `4h`, `1d`, `1wk`, `1mo`; di URL `tf=`). 4j digabung server dari candle 1 jam, sejajar tengah malam zona waktu bursa. Candle per jam hanya tersedia sampai 1 tahun ke belakang (batas Yahoo), jadi rentang 2T/5T mati di sana. Engine, marker keputusan, dan gambar agent tetap harian: di timeframe lain sebuah tanggal ditaruh di candle pertama hari itu, dan "harga 5 hari" dihitung dari penutupan harian (kosong di mingguan/bulanan).
-- Chart ini ada di chart Keputusan AI dan di hasil backtest (Uji strategi → Backtest).
+- Chart ini ada di chart Keputusan AI dan di hasil backtest (Uji strategi → Uji saran AI).
 
 ### Analisa terjadwal dan Telegram
 
@@ -184,7 +184,9 @@ API:
 - Riwayat candle per bursa berbeda: Kraken hanya 720 candle terakhir, Indodax sekitar 9 hari candle 15m. Lab bisa memilih bursa untuk simbol kripto; notifikasi dan buku catatan juga bisa per bursa (lihat bagian masing-masing).
 - Gambar agent (dalam dolar) disembunyikan pada bursa rupiah.
 
-### Lab strategi (Uji strategi → Lab)
+### Uji indikator (Uji strategi → Uji indikator, dulu Lab)
+
+- Tiga langkah: indikator, aset (dipilih dari pencari aset, bukan diketik kodenya), dan timeframe dengan periodenya. Biaya, bagian data uji, kedaluwarsa sinyal, dan bursa kripto ada di "Pengaturan lanjutan" dengan nilai bawaan. Hasilnya dibuka dengan putusan dan kalimat berisi angkanya (jumlah trade, persentase untung, dan rata-rata R per trade setelah biaya di data uji).
 
 - Uji mesin bawaan (PoB, Scalper, Fib), indikator yang diterbitkan admin, atau skrip sendiri pada riwayat panjang: kripto dari Binance (15m s.d. 1 tahun, 1j s.d. 3 tahun, 4j/harian s.d. 5 tahun), emas intraday dari XAUUSDT, lainnya dari Yahoo. Daftarnya hanya berisi yang dibuka katalog indikator untuk akun itu.
 - Setiap trade dipotong biaya taker atau maker (`tradeCost` di `server/src/ledger.ts`). Untuk kripto keduanya 0,2% per trade, karena fee maker dasar Binance juga 0,1% per sisi (sebelum 1 November 2026 maker dihitung 0,05%); emas 0,40 USD; lainnya taker 0,10%, maker 0,05%. Riwayat dibagi: data awal untuk membentuk strategi, data uji (20/30/40% terakhir) untuk memeriksa. Strategi "lolos" hanya bila positif setelah biaya di keduanya dengan minimal 30 trade di data uji.
@@ -197,7 +199,15 @@ API:
 - Hasil baru `exit` (keluar oleh kondisi) tampil di chart, editor, notifikasi, Lab dan buku catatan. Win rate di buku catatan dan Lab dihitung dari trade yang untung setelah biaya, bukan dari TP yang tersentuh; jumlah TP dan SL tetap ditampilkan terpisah.
 - Template "RSI(2) pullback" dan "Bollinger revert" (mean reversion: beli saat harga terlalu jauh di bawah rata-rata dalam tren naik, keluar saat kembali ke rata-rata). Di Lab, RSI(2) harian pada S&P 500 menang 78-80% dengan hasil positif setelah biaya, tetapi baru 43 trade dalam 5 tahun.
 
-### Buku catatan sinyal (tab Sinyal)
+### Indikator saya (Uji strategi → Indikator saya)
+
+- Semua indikator yang bisa dipakai akun: bawaan, yang diterbitkan admin untuk paketnya, dan buatan sendiri. Tiap baris punya sakelar **Di chart** dan tombol **Uji** yang membuka Uji indikator dengan indikator itu; buatan sendiri juga bisa diedit dan dihapus.
+- Indikator baru dibuat dari template, dari kode Pine TradingView (diterjemahkan AI), atau ditulis sendiri. Editor skrip kini bisa dibuka dari layar mana pun; sebelumnya hanya dari chart, sehingga "Buat skrip" di Lab tidak membuka apa-apa.
+- Jumlah indikator buatan sendiri mengikuti paket (`scripts` di `shared/plans.ts`).
+
+### Rekam jejak live (Uji strategi → Rekam jejak live, dulu Strategi live)
+
+- Dibuka dengan satu atau dua kalimat: berapa sinyal selesai, berapa persen untung setelah biaya, rata-rata R per sinyal, dan, bila untung kotornya positif tapi bersihnya negatif, bahwa biaya lebih besar dari untungnya. "Apa arti angka-angka ini?" menjelaskan R, win rate, expectancy, profit factor, dan drawdown.
 
 - Setiap sinyal mesin bawaan (PoB 15m/1j, Scalper 15m, Fib 15m/1j/harian) pada `SIGNAL_LEDGER_SYMBOLS` (default BTC-USD, ETH-USD, GC=F) dicatat sekali saat lahir, beku, lalu dinilai saat candle berikutnya tutup, oleh pemindai yang sama dengan notifikasi.
 - Akun simulasi `SIGNAL_PAPER_BALANCE` (10.000 USD), risiko `SIGNAL_PAPER_RISK_PCT` (1%) per sinyal, dikurangi biaya pulang-pergi: kripto 0,2% (fee taker dasar Binance 0,1% saat masuk dan keluar; slippage belum termasuk), emas 0,40 USD, lainnya 0,10%; ubah per simbol lewat `SIGNAL_COSTS`.
@@ -207,7 +217,7 @@ API:
 - Tab "Per bursa" bisa beralih ke biaya nyata: fee taker dasar tiap bursa (Binance, Bybit, OKX 0,1%; Indodax 0,2% dari API-nya) dibayar saat masuk dan keluar, dihitung ulang dari entry dan SL yang tersimpan, tanpa diskon VIP atau token; slippage dan pajak kripto belum termasuk. Fee bursa lain, atau koreksi, lewat `SIGNAL_VENUE_FEES` (per sisi, misalnya `{"gate": 0.002}`).
 - Sampai 1 November 2026 biaya kripto diasumsikan 0,12%; biaya sinyal lama dihitung ulang ke 0,2% dari entry dan SL masing-masing (migrasi `0013_crypto_cost`), dan Lab memakai biaya taker yang sama.
 - Biaya default sama di semua bursa (0,2%) supaya yang dibandingkan hanya harganya. Biaya nyata satu bursa diatur lewat `SIGNAL_COSTS` dengan kunci `SIMBOL@bursa`, misalnya `{"BTC-USD@indodax": {"pct": 0.006}}` untuk taker Indodax 0,3% per sisi (angka bawaan CCXT; biaya `abs` dalam mata uang bursa itu).
-- Rekap harian ke Telegram pukul `SIGNAL_RECAP_TIME` WIB (05:15, setelah New York tutup), mingguan tiap Sabtu; dikirim ke admin dan pengguna yang punya notifikasi. Admin bisa mengirim rekap tes dari tab Sinyal.
+- Rekap harian ke Telegram pukul `SIGNAL_RECAP_TIME` WIB (05:15, setelah New York tutup), mingguan tiap Sabtu; dikirim ke admin dan pengguna yang punya notifikasi. Admin bisa mengirim rekap tes dari Konsol admin → Status layanan → Tes pesan.
 - Emas harian dari Yahoo (futures `GC=F`) bisa tertunda beberapa menit.
 - Rekam jejak tampil di tempat trader memilih: di menu Indikator dan Notifikasi chart, tiap mesin bawaan diberi satu baris, misalnya "15m: 58% untung bersih · rata-rata +0,12R · 120 sinyal" (sinyal live 90 hari di sumber default, setelah biaya; "untung bersih" berarti hasilnya di atas nol setelah biaya). Kurang dari 10 sinyal selesai ditulis "belum cukup untuk dinilai". Kartu Rencana trading menampilkan rekam jejak mesin rencana itu, hanya bila timeframe-nya sama, dengan menyebut simbol yang dihitung. Bila simbol di chart termasuk yang dicatat dan punya cukup sinyal, rekam jejak simbol itu yang dipakai. Kaki menu menjelaskan R (risiko satu trade, jarak entry ke SL).
 
@@ -309,9 +319,9 @@ docker compose up -d --build
 - **Pendaftaran:** dengan `SIGNUP=open`, orang mendaftar sendiri di `/app#/signup` (email, kata sandi, nomor WhatsApp opsional, setuju S&K) atau dengan Google (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, redirect `PUBLIC_URL/api/auth/google/callback`). Tanpa `SIGNUP=open` hanya admin yang membuat akun. Masuk bisa dengan email atau nama pengguna. Akun yang masuk dengan Google wajib mengisi nomor WhatsApp dulu di layar "Satu langkah lagi"; sampai terisi, server menahan analisa AI dan chat agent, dan nomornya tidak bisa dihapus lagi dari Profil. Cara memasang kunci Google: [docs/runbooks/google-auth.md](../docs/runbooks/google-auth.md).
 - **Verifikasi email:** tautan sekali pakai (24 jam). Sebelum terverifikasi, analisa AI, chat agent, dan watchlist terjadwal belum jalan; setelahnya trial Pro 7 hari aktif, sekali per akun. Masuk dengan Google langsung terverifikasi. Lupa kata sandi: tautan 1 jam, dan mengatur ulang mengeluarkan semua sesi lain. Tanpa SMTP tautan tidak terkirim: pendaftar diberi tahu bahwa akunnya menunggu verifikasi admin, Konsol admin → Ringkasan menghitung akun yang menunggu, dan **verifikasi manual** di Pengguna langsung mengaktifkan trial Pro.
 - **Email** lewat SMTP penyedia apa pun (`SMTP_URL`, `MAIL_FROM`). Tanpa SMTP tidak ada email yang terkirim (log menyebut penerima dan judulnya; `MAIL_LOG=1` menulis isinya, untuk pengembangan saja), dan admin bisa menandai email terverifikasi di Konsol admin → Pengguna.
-- **Konsol admin** (`/app#/admin`, menu akun → Konsol admin; hanya admin) memisahkan pekerjaan admin dari layar trading. Isinya delapan halaman: Ringkasan (angka bisnis dan daftar "Perlu tindakan": pembayaran menunggu dan layanan yang belum diatur atau bermasalah), Pengguna, Aktivitas, Pembayaran, Kupon, Indikator, Status layanan, dan Pengaturan server. Pengaturan server hanya bisa dibaca: isinya apa yang sudah aktif dan nama variabelnya, tanpa kunci atau alamat backend (`GET /api/admin/config`). Anggota tidak melihat menu ini, dan anggota yang membuka `#/admin` dibawa ke aplikasi.
+- **Konsol admin** (`/app#/admin`, menu akun → Konsol admin; hanya admin) memisahkan pekerjaan admin dari layar trading. Isinya sepuluh halaman: Ringkasan (angka bisnis dan daftar "Perlu tindakan": pembayaran menunggu dan layanan yang belum diatur atau bermasalah), Pengguna, Aktivitas, **Analisa & backtest** (seratus terakhir dari semua akun, dengan akun dan alasan gagal), Pembayaran, Kupon, Indikator, **Pengaturan analisa** (tim analis, kedalaman, bahasa, provider, model, dan backend URL untuk analisa, uji saran AI, dan Tanya AI yang dijalankan admin; disimpan di browser itu), Status layanan (termasuk Tes pesan: rekap sinyal tes ke Telegram admin), dan Pengaturan server. Pengaturan server hanya bisa dibaca: isinya apa yang sudah aktif dan nama variabelnya, tanpa kunci atau alamat backend (`GET /api/admin/config`). Anggota tidak melihat menu ini, dan anggota yang membuka `#/admin` dibawa ke aplikasi. **Peran:** layar trading tampil sama untuk member dan admin; semua kontrol admin hanya ada di Konsol, dan nama variabel server tidak tampil di layar trading ([ADR 0016](../docs/adr/0016-peran-member-dan-admin.md)).
 - **Admin** membuat akun di Konsol admin → **Pengguna**: nama pengguna, kata sandi awal, peran (anggota/admin). Di sana juga: paket dan masa berlakunya, verifikasi email manual, nonaktifkan/aktifkan, reset kata sandi, ubah peran, dan kuota harian per orang (kosong = kuota paketnya). Admin tidak bisa menonaktifkan atau menurunkan dirinya sendiri, dan selalu harus ada satu admin aktif.
-- **Data pribadi per akun:** riwayat analisa dan backtest, marker keputusan, sesi chat agent, memori, gambar di chart, skill, watchlist. Admin bisa melihat riwayat semua akun (tombol **Semua pengguna** di Riwayat, dengan kolom pemilik) dan membuka laporannya; chat, memori, dan skill tetap pribadi, termasuk dari admin.
+- **Data pribadi per akun:** riwayat analisa dan backtest, marker keputusan, sesi chat agent, memori, gambar di chart, skill, watchlist. Admin bisa melihat riwayat semua akun di Konsol admin → **Analisa & backtest** dan membuka laporannya; chat, memori, dan skill tetap pribadi, termasuk dari admin.
 - **Tetap bersama:** memori keputusan engine TradingAgents (satu file log di engine yang dipakai agent untuk belajar dari keputusan lama).
 - **Kuota:** tiap akun mengikuti paketnya (atau kuota khusus dari admin), dan `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` membatasi semua akun bersama.
 - **Sesi:** kata sandi diganti atau akun dinonaktifkan → semua sesi akun itu langsung berakhir (browser yang mengganti kata sandinya tetap masuk).

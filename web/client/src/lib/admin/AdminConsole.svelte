@@ -8,10 +8,12 @@
   import Logo from '../Logo.svelte';
   import ActivityPage from './ActivityPage.svelte';
   import BusinessPage from './BusinessPage.svelte';
+  import AnalysisSettingsPage from './AnalysisSettingsPage.svelte';
   import ConfigPage from './ConfigPage.svelte';
   import CouponsPage from './CouponsPage.svelte';
   import IndicatorsPage from './IndicatorsPage.svelte';
   import PaymentsPage from './PaymentsPage.svelte';
+  import JobsPage from './JobsPage.svelte';
   import StatusPage from './StatusPage.svelte';
   import UsersPage from './UsersPage.svelte';
 
@@ -19,9 +21,11 @@
     { key: 'ringkasan', label: 'Ringkasan', icon: 'M4 4h7v9H4zM15 4h5v5h-5zM15 13h5v7h-5zM4 17h7v3H4z' },
     { key: 'pengguna', label: 'Pengguna', icon: 'M9 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5' },
     { key: 'aktivitas', label: 'Aktivitas', icon: 'M5 20V11M12 20V5M19 20v-6M3 20h18' },
+    { key: 'pekerjaan', label: 'Analisa & backtest', icon: 'M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01' },
     { key: 'pembayaran', label: 'Pembayaran', icon: 'M2.5 7a2 2 0 0 1 2-2h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2zM2.5 10h19' },
     { key: 'kupon', label: 'Kupon', icon: 'M3 7h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4zM14 7v12' },
     { key: 'indikator', label: 'Indikator', icon: 'M3 17c3 0 3-10 6-10s3 10 6 10 3-6 6-6' },
+    { key: 'analisa', label: 'Pengaturan analisa', icon: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z' },
     { key: 'status', label: 'Status layanan', icon: 'M3 12h4l3-8 4 16 3-8h4' },
     { key: 'pengaturan', label: 'Pengaturan server', icon: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4' },
   ] as const;
@@ -98,6 +102,10 @@
           <CouponsPage />
         {:else if page === 'indikator'}
           <IndicatorsPage />
+        {:else if page === 'pekerjaan'}
+          <JobsPage />
+        {:else if page === 'analisa'}
+          <AnalysisSettingsPage />
         {:else if page === 'status'}
           <StatusPage />
         {:else}

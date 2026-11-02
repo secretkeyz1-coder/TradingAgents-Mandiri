@@ -41,7 +41,7 @@
           <p class="text-xs"><span class="status status-success status-xs" aria-hidden="true"></span> Ringkasan dikirim ke Telegram saat semua analisa selesai.</p>
         {:else if !w.telegram.bot}
           <p class="text-xs text-warning">
-            {#if auth.isAdmin}Bot Telegram belum diatur di server (<code>TELEGRAM_BOT_TOKEN</code>).{:else}Notifikasi Telegram belum tersedia di server ini.{/if}
+            Notifikasi Telegram belum tersedia di server ini.
             Analisa tetap berjalan dan hasilnya ada di Riwayat.
           </p>
         {:else}

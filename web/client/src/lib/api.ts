@@ -82,6 +82,8 @@ export type AnalysisSummary = {
   progress: BacktestProgress | null;
   createdAt: string;
   finishedAt: string | null;
+  /** Why it failed, when it did. */
+  error?: string | null;
   /** Who started it; filled in when an admin lists everyone's. */
   owner?: string | null;
 };

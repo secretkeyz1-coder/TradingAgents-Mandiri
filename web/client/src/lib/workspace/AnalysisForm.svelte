@@ -1,18 +1,22 @@
 <script lang="ts">
-  // Start an analysis or a backtest for the symbol in focus. Only admins see the
-  // settings (team, depth, language, provider, models, backend URL), folded away
-  // and remembered between visits. Members see none: they run the standard
-  // analysis on the server's models (shared/analysis.ts, server/src/models.ts).
-  import { api, type Catalog, type Provider } from '../api';
+  // Start an analysis, or an Uji saran AI (a backtest of the AI's calls), for the symbol in focus. A
+  // backtest's assets are chips picked from the asset finder (AssetChips), its frequency is said in
+  // words, and what it costs in quota is said before it starts. Members run the standard analysis on
+  // the server's models (shared/analysis.ts, server/src/models.ts); an admin's own team, depth,
+  // language, provider and models are set in the admin console (stores/analysisSettings) and only
+  // named here in one line.
+  import { api } from '../api';
   import { auth } from '../auth.svelte';
+  import { friendlyName } from '../beginner/plain';
   import { gridDates, today } from '../format';
+  import { analysisSettings as adminSettings } from '../stores/analysisSettings.svelte';
   import { catalog } from '../stores/catalog.svelte';
   import { jobs } from '../stores/jobs.svelte';
   import { usage } from '../stores/usage.svelte';
   import { ws } from '../stores/workspace.svelte';
-  import { hasNoFundamentals, STANDARD_DEPTH, STANDARD_LANGUAGE, standardAnalysts } from '../../../../shared/analysis';
-  import { friendlyName } from '../beginner/plain';
   import VerifyNote from '../VerifyNote.svelte';
+  import { STANDARD_DEPTH, STANDARD_LANGUAGE, standardAnalysts } from '../../../../shared/analysis';
+  import AssetChips from './AssetChips.svelte';
 
   /** "2026-11-02" → "Senin, 2 November 2026". */
   const longDate = (day: string) =>
@@ -22,41 +26,30 @@
 
   // Must match MAX_BACKTEST_CELLS on the server (default 40).
   const MAX_CELLS = 40;
-  const STORAGE_KEY = 'tradingagents.form';
-  const CUSTOM = 'custom';
+  /** How often a backtest analyses, in words. */
+  const EVERY: [days: number, label: string][] = [
+    [1, 'Tiap hari'],
+    [3, 'Tiap 3 hari'],
+    [7, 'Tiap minggu'],
+    [14, 'Tiap 2 minggu'],
+    [30, 'Tiap bulan'],
+  ];
 
   let submitting = $state(false);
   let submitError = $state('');
 
   let date = $state(today());
-  let analysts = $state<string[]>(['market', 'social', 'news', 'fundamentals']);
-  let depth = $state(1);
-  let language = $state('Indonesian');
-  let providerKey = $state('');
-  let quickChoice = $state('');
-  let deepChoice = $state('');
-  let quickCustom = $state('');
-  let deepCustom = $state('');
-  let backendUrl = $state('');
-
-  let tickersText = $state('');
+  // A backtest starts on the asset in focus; more are added as chips.
+  let tickers = $state<string[]>(ws.yahoo ? [ws.yahoo] : []);
   let start = $state(new Date(Date.now() - 90 * 86_400_000).toLocaleDateString('en-CA'));
   let end = $state(today());
   let everyNDays = $state(14);
 
   const options = $derived(catalog.value);
-  const provider = $derived<Provider | undefined>(options?.providers.find((p) => p.key === providerKey));
   const ticker = $derived(ws.yahoo ?? '');
-  const tickers = $derived([...new Set(tickersText.split(/[\s,]+/).map((t) => t.trim().toUpperCase()).filter(Boolean))]);
-  const cellCount = $derived(tickers.length * gridDates(start, end, everyNDays).length);
-  const noFundamentals = $derived(
-    mode === 'analysis' ? hasNoFundamentals(ticker) : tickers.length > 0 && tickers.every(hasNoFundamentals),
-  );
-  const showUrl = $derived(
-    !!provider && (provider.needsUrl || provider.key === 'ollama' || provider.key === 'openai_compatible'),
-  );
-  const depthLabel = $derived(options?.depths.find((d) => d.value === depth)?.label ?? '');
-  const modelLabel = $derived(deepChoice === CUSTOM ? deepCustom || 'model kustom' : deepChoice);
+  const dates = $derived(gridDates(start, end, everyNDays).length);
+  const cellCount = $derived(tickers.length * dates);
+  const depthLabel = $derived(options?.depths.find((d) => d.value === adminSettings.depth)?.label ?? '');
 
   // Every backtest cell is a full analysis, so it counts against the daily cap one by one.
   usage.refresh();
@@ -64,77 +57,15 @@
   const need = $derived(mode === 'analysis' ? 1 : cellCount);
   const overQuota = $derived(need > usage.left('analyses'));
 
-  // The backtest list follows the symbol in focus; more tickers can be added by hand.
   $effect(() => {
-    tickersText = ws.yahoo ?? '';
+    if (options) adminSettings.restore(options);
   });
 
-  function pickModel(list: { value: string }[], preferred?: string) {
-    if (preferred && list.some((o) => o.value === preferred)) return preferred;
-    return list[0]?.value ?? CUSTOM;
-  }
-
-  function selectProvider(key: string, quick?: string, deep?: string) {
-    providerKey = key;
-    const p = options?.providers.find((x) => x.key === key);
-    if (!p) return;
-    quickChoice = pickModel(p.models.quick, quick);
-    deepChoice = pickModel(p.models.deep, deep);
-    // A remembered model the list no longer offers is kept as a custom ID.
-    quickCustom = quick && quickChoice === CUSTOM && quick !== CUSTOM ? quick : '';
-    deepCustom = deep && deepChoice === CUSTOM && deep !== CUSTOM ? deep : '';
-    backendUrl = '';
-  }
-
-  function restore(c: Catalog) {
-    let saved: Record<string, any> = {};
-    try {
-      saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-    } catch {
-      saved = {};
-    }
-    if (Array.isArray(saved.analysts) && saved.analysts.length) analysts = saved.analysts;
-    if ([1, 3, 5].includes(saved.depth)) depth = saved.depth;
-    if (c.languages.includes(saved.language)) language = saved.language;
-    if (c.providers.some((p) => p.key === saved.provider)) {
-      selectProvider(saved.provider, saved.quickModel, saved.deepModel);
-      if (typeof saved.backendUrl === 'string') backendUrl = saved.backendUrl;
-    } else {
-      selectProvider(c.defaults.provider, c.defaults.quickModel, c.defaults.deepModel);
-    }
-  }
-
-  let restored = false;
-  $effect(() => {
-    if (options && !restored) {
-      restored = true;
-      restore(options);
-    }
-  });
-
-  /** The settings both forms share, and the chat agent reads (stores/agent.svelte.ts); a member's are the standard ones. */
+  /** What a request carries: an admin's own settings, else the standard analysis (the server also sets a member's models). */
   function settings() {
-    const admin = auth.isAdmin;
-    return {
-      analysts: admin ? analysts : standardAnalysts(mode === 'analysis' ? [ticker] : tickers),
-      depth: admin ? depth : STANDARD_DEPTH,
-      provider: providerKey,
-      quickModel: quickChoice === CUSTOM ? quickCustom.trim() : quickChoice,
-      deepModel: deepChoice === CUSTOM ? deepCustom.trim() : deepChoice,
-      language: admin ? language : STANDARD_LANGUAGE,
-      backendUrl: showUrl ? backendUrl.trim() : '',
-    };
-  }
-
-  // Remembered as soon as anything changes (every field's change event reaches
-  // the form), so the chat agent uses a new model without running an analysis first.
-  function persist() {
-    if (!restored) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings()));
-    } catch {
-      /* remembering the form is a convenience */
-    }
+    const own = adminSettings.value;
+    if (auth.isAdmin) return own;
+    return { ...own, analysts: standardAnalysts(mode === 'analysis' ? [ticker] : tickers), depth: STANDARD_DEPTH, language: STANDARD_LANGUAGE };
   }
 
   async function submit(event: SubmitEvent) {
@@ -142,7 +73,7 @@
     submitError = '';
     const shared = settings();
     if (!shared.quickModel || !shared.deepModel) {
-      submitError = 'Isi ID model untuk quick dan deep thinking di Pengaturan.';
+      submitError = auth.isAdmin ? 'Model analisa belum diatur. Atur di Konsol admin → Pengaturan analisa.' : 'Pilihan model belum termuat. Muat ulang halaman.';
       return;
     }
     if (mode === 'analysis' && !ticker) {
@@ -165,7 +96,6 @@
       }
       jobs.refresh();
       usage.refresh();
-      persist();
     } catch (e) {
       submitError = (e as Error).message;
     } finally {
@@ -174,7 +104,7 @@
   }
 </script>
 
-<form class="flex flex-col gap-3" onsubmit={submit} onchange={persist}>
+<form class="flex flex-col gap-3" onsubmit={submit}>
   {#if catalog.error}
     <p role="alert" class="text-sm text-error">Opsi model gagal dimuat: {catalog.error}</p>
   {/if}
@@ -188,8 +118,8 @@
     </fieldset>
   {:else}
     <fieldset class="fieldset py-0">
-      <legend class="fieldset-legend pt-0">Ticker (maks 5, pisahkan koma)</legend>
-      <input class="input input-sm w-full font-mono uppercase" bind:value={tickersText} placeholder="BBCA.JK, BMRI.JK" required autocomplete="off" />
+      <legend class="fieldset-legend pt-0">Aset (maks 5)</legend>
+      <AssetChips bind:symbols={tickers} />
     </fieldset>
     <div class="grid grid-cols-2 gap-2">
       <fieldset class="fieldset py-0">
@@ -202,91 +132,22 @@
       </fieldset>
     </div>
     <fieldset class="fieldset py-0">
-      <legend class="fieldset-legend pt-0">Analisa setiap</legend>
+      <legend class="fieldset-legend pt-0">Seberapa sering dianalisa</legend>
       <select class="select select-sm w-full" bind:value={everyNDays}>
-        {#each [1, 3, 7, 14, 30] as n (n)}<option value={n}>{n} hari</option>{/each}
+        {#each EVERY as [n, label] (n)}<option value={n}>{label}</option>{/each}
       </select>
     </fieldset>
     <p class="text-xs tabular-nums" class:text-warning={cellCount > MAX_CELLS} class:text-base-content={cellCount <= MAX_CELLS}>
-      <strong>{cellCount} sel</strong> = {tickers.length} ticker × {gridDates(start, end, everyNDays).length} tanggal.
-      {#if cellCount > MAX_CELLS}Batas {MAX_CELLS}; persempit rentang atau perbesar jarak.{:else}Tiap sel = biaya satu analisa penuh.{/if}
+      <strong>{cellCount} analisa</strong> = {tickers.length} aset × {dates} tanggal.
+      {#if cellCount > MAX_CELLS}Batas {MAX_CELLS}; persempit rentang atau jarangkan analisanya.{:else}Tiap analisa memakai 1 kuota analisa AI.{/if}
     </p>
   {/if}
 
   {#if auth.isAdmin}
-  <details class="collapse collapse-arrow rounded-field border border-base-300">
-    <summary class="collapse-title min-h-0 px-3 py-2 text-sm">
-      <span class="font-medium">Pengaturan</span>
-      <span class="block truncate text-xs text-base-content/70">
-        {providerKey || '…'} · {modelLabel || '…'} · {depthLabel} · {language} · {analysts.length} analis
-      </span>
-    </summary>
-    <div class="collapse-content flex flex-col gap-2 px-3">
-      <fieldset class="fieldset py-0">
-        <legend class="fieldset-legend">Tim analis</legend>
-        <div class="grid grid-cols-2 gap-1.5">
-          {#each options?.analysts ?? [] as a (a.value)}
-            {@const disabled = noFundamentals && a.value === 'fundamentals'}
-            <label class="label cursor-pointer gap-2 text-xs text-base-content" class:opacity-50={disabled}>
-              <input type="checkbox" class="checkbox checkbox-xs" value={a.value} bind:group={analysts} {disabled} />
-              {a.label.replace(' Analyst', '')}
-            </label>
-          {/each}
-        </div>
-      </fieldset>
-      <div class="grid grid-cols-2 gap-2">
-        <fieldset class="fieldset py-0">
-          <legend class="fieldset-legend">Kedalaman</legend>
-          <select class="select select-sm w-full" bind:value={depth}>
-            {#each options?.depths ?? [] as d (d.value)}<option value={d.value}>{d.label}</option>{/each}
-          </select>
-        </fieldset>
-        <fieldset class="fieldset py-0">
-          <legend class="fieldset-legend">Bahasa</legend>
-          <select class="select select-sm w-full" bind:value={language}>
-            {#each options?.languages ?? [] as l (l)}<option value={l}>{l}</option>{/each}
-          </select>
-        </fieldset>
-      </div>
-      <fieldset class="fieldset py-0">
-        <legend class="fieldset-legend">Provider LLM</legend>
-        <select class="select select-sm w-full" value={providerKey} onchange={(e) => selectProvider(e.currentTarget.value)}>
-          {#each options?.providers ?? [] as p (p.key)}
-            <option value={p.key}>{p.label}{p.hasKey ? '' : ' (key belum diset)'}</option>
-          {/each}
-        </select>
-        {#if provider && !provider.hasKey}
-          <p class="text-xs text-warning">Isi <code class="font-mono">{provider.apiKeyEnv}</code> di <code class="font-mono">.env</code>, lalu muat ulang.</p>
-        {/if}
-      </fieldset>
-      {#if showUrl}
-        <fieldset class="fieldset py-0">
-          <legend class="fieldset-legend">Backend URL{provider?.needsUrl ? '' : ' (opsional)'}</legend>
-          <input class="input input-sm w-full" type="url" bind:value={backendUrl} placeholder={provider?.defaultUrl ?? 'http://localhost:8000/v1'} required={provider?.needsUrl} />
-        </fieldset>
-      {/if}
-      {#if provider}
-        <fieldset class="fieldset py-0">
-          <legend class="fieldset-legend">Model quick</legend>
-          {#if provider.models.quick.length}
-            <select class="select select-sm w-full" bind:value={quickChoice}>
-              {#each provider.models.quick as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
-            </select>
-          {/if}
-          {#if quickChoice === CUSTOM}<input class="input input-sm w-full" bind:value={quickCustom} placeholder="ID model" required />{/if}
-        </fieldset>
-        <fieldset class="fieldset py-0">
-          <legend class="fieldset-legend">Model deep</legend>
-          {#if provider.models.deep.length}
-            <select class="select select-sm w-full" bind:value={deepChoice}>
-              {#each provider.models.deep as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
-            </select>
-          {/if}
-          {#if deepChoice === CUSTOM}<input class="input input-sm w-full" bind:value={deepCustom} placeholder="ID model" required />{/if}
-        </fieldset>
-      {/if}
-    </div>
-  </details>
+    <p class="rounded-field border border-base-300 px-3 py-2 text-xs text-base-content/70">
+      Pengaturan admin: {adminSettings.providerKey || '…'} · {adminSettings.deepModel || '…'} · {depthLabel} · {adminSettings.language} · {adminSettings.analysts.length} analis.
+      <a class="link" href="#/admin/analisa">Ubah di Konsol admin</a>
+    </p>
   {/if}
 
   {#if submitError}
@@ -298,14 +159,14 @@
     type="submit"
     disabled={!options ||
       submitting ||
-      analysts.length === 0 ||
+      (auth.isAdmin && adminSettings.analysts.length === 0) ||
       (mode === 'analysis' && !ticker) ||
       (mode === 'backtest' && (cellCount === 0 || cellCount > MAX_CELLS || tickers.length > 5)) ||
       overQuota ||
       auth.unverified}
   >
     {#if submitting}<span class="loading loading-spinner loading-xs"></span>{/if}
-    {#if mode === 'analysis'}Analisa {ticker ? friendlyName(ws.symbol) : 'simbol ini'}{:else}Mulai backtest · {cellCount} sel{/if}
+    {#if mode === 'analysis'}Analisa {ticker ? friendlyName(ws.symbol) : 'simbol ini'}{:else}Mulai uji · {cellCount} analisa{/if}
   </button>
   {#if auth.unverified}
     <VerifyNote />

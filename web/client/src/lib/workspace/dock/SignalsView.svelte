@@ -7,7 +7,6 @@
   // simulated account counts the default source (Binance).
   import { ColorType, createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
   import { api, type Ledger, type LedgerStats } from '../../api';
-  import { auth } from '../../auth.svelte';
   import { formatDateTime } from '../../format';
   import { ws } from '../../stores/workspace.svelte';
   import { theme, tokenColor } from '../../theme.svelte';
@@ -37,16 +36,6 @@
   let error = $state('');
   let loading = $state(false);
   let note = $state('');
-
-  async function recapTest() {
-    note = '';
-    try {
-      const res = await api.ledgerRecapTest();
-      note = res.ok ? 'Rekap tes terkirim ke Telegram-mu.' : `Tidak terkirim: ${res.error}`;
-    } catch (e) {
-      note = (e as Error).message;
-    }
-  }
 
   async function load() {
     loading = true;
@@ -86,6 +75,18 @@
             : key;
   const r = (x: number | null | undefined, digits = 2) => (x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}R`);
   const pct = (x: number | null | undefined) => (x == null ? '–' : `${Math.round(x * 100)}%`);
+  /** The record in a sentence or two, before the numbers: what happened, and whether costs ate it. */
+  const headline = $derived.by(() => {
+    if (!t) return '';
+    if (!t.closed) return `Belum ada sinyal yang selesai dalam ${days} hari terakhir.`;
+    // In a sentence the decimal comma, as everywhere else people read Indonesian.
+    const rr = (x: number | null | undefined) => r(x).replace('.', ',');
+    const lines = [`Dalam ${days} hari, ${t.closed} sinyal selesai: ${pct(t.winRate)} untung setelah biaya, rata-rata ${rr(t.expectancy)} per sinyal.`];
+    if ((t.grossExpectancy ?? 0) > 0 && (t.expectancy ?? 0) < 0 && t.avgCostR) {
+      lines.push(`Sebelum biaya rata-rata ${rr(t.grossExpectancy)}, tapi biaya ${rr(-t.avgCostR)} per sinyal lebih besar dari untungnya.`);
+    }
+    return lines.join(' ');
+  });
   const num = (x: number | null | undefined, digits = 2) => (x == null ? '–' : x.toFixed(digits));
   const usd = (x: number) => x.toLocaleString('id-ID', { maximumFractionDigits: 0 });
   const priceText = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : 5 });
@@ -183,7 +184,6 @@
         <input type="checkbox" class="toggle toggle-sm" bind:checked={history} />
         Termasuk riwayat
       </label>
-      {#if auth.isAdmin}<button class="btn btn-ghost btn-sm" onclick={recapTest}>Kirim rekap tes</button>{/if}
       {#if loading}<span class="loading loading-spinner loading-xs" aria-label="Memuat"></span>{/if}
     </div>
   </div>
@@ -205,6 +205,7 @@
   {/if}
 
   {#if t}
+    <p class="max-w-[75ch] text-base">{headline}</p>
     <div class="stats stats-vertical w-full border border-base-300 sm:stats-horizontal">
       <div class="stat">
         <div class="stat-title">Sinyal selesai</div>
@@ -230,6 +231,21 @@
     {#if t.closed < 100}
       <p class="text-xs text-base-content/70">Baru {t.closed} sinyal selesai; statistik mulai bisa dipercaya setelah minimal 100.</p>
     {/if}
+    <details class="text-xs text-base-content/70">
+      <summary class="cursor-pointer">Apa arti angka-angka ini?</summary>
+      <dl class="mt-2 grid max-w-[75ch] gap-x-4 gap-y-1 sm:grid-cols-[9rem_1fr]">
+        <dt class="font-medium text-base-content">R</dt>
+        <dd>Risiko satu sinyal: jarak entry ke stop loss. +1R berarti untung sebesar risikonya, −1R rugi sebesar risikonya.</dd>
+        <dt class="font-medium text-base-content">Win rate (bersih)</dt>
+        <dd>Bagian sinyal selesai yang untung setelah biaya.</dd>
+        <dt class="font-medium text-base-content">Expectancy bersih</dt>
+        <dd>Rata-rata hasil per sinyal setelah biaya, dalam R. Di atas nol berarti menghasilkan dalam jangka panjang.</dd>
+        <dt class="font-medium text-base-content">Profit factor</dt>
+        <dd>Total untung dibagi total rugi. Di atas 1 berarti untungnya lebih besar dari ruginya.</dd>
+        <dt class="font-medium text-base-content">Drawdown</dt>
+        <dd>Penurunan terdalam akun simulasi dari puncaknya, dalam R.</dd>
+      </dl>
+    </details>
   {/if}
 
   <div class="h-44 w-full" bind:this={box} aria-label="Kurva ekuitas akun simulasi"></div>
@@ -247,7 +263,7 @@
           {#if realFees}
             Biaya nyata: fee taker dasar tiap bursa (tanpa diskon VIP, BNB, atau token), dibayar saat masuk dan saat keluar; slippage dan pajak kripto belum
             termasuk. Akun utama memakai biaya kripto {data ? feeText(data.config.cryptoCost) : '…'} per trade.
-            {#if unknownFees.length}Fee {unknownFees.join(', ')} belum diketahui{auth.isAdmin ? ' (atur SIGNAL_VENUE_FEES)' : ''}, jadi tidak ditampilkan.{/if}
+            {#if unknownFees.length}Fee {unknownFees.join(', ')} belum diketahui, jadi tidak ditampilkan.{/if}
           {/if}
         </p>
         <label class="label cursor-pointer gap-2 text-xs">

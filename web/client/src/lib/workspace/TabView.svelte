@@ -11,6 +11,7 @@
   import HistoryView from './dock/HistoryView.svelte';
   import JournalView from './dock/JournalView.svelte';
   import LabView from './dock/LabView.svelte';
+  import LibraryView from './dock/LibraryView.svelte';
   import LogView from './dock/LogView.svelte';
   import ReportView from './dock/ReportView.svelte';
   import SignalsView from './dock/SignalsView.svelte';
@@ -33,6 +34,8 @@
   <LabView />
 {:else if tab === 'signals'}
   <SignalsView />
+{:else if tab === 'library'}
+  <LibraryView />
 {:else if tab === 'watch'}
   <WatchView />
 {:else if tab === 'alerts'}

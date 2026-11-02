@@ -80,7 +80,7 @@
       {/if}
       {#if telegram && !telegram.bot}
         <p class="text-xs text-warning">
-          {auth.isAdmin ? 'Bot Telegram server belum diisi (TELEGRAM_BOT_TOKEN).' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}
+          Notifikasi Telegram belum tersedia di server ini.
           {levels?.mail ? 'Notifikasi harga tetap dikirim lewat email.' : ''}
         </p>
       {:else if telegram && !telegram.chat}

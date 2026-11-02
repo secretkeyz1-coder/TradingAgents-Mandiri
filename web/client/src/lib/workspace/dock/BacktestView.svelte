@@ -1,8 +1,9 @@
 <script lang="ts">
-  // Uji strategi → Backtest: start a backtest, pick one from the list, or follow the open one
-  // (progress, the per-rating score, each ticker's decisions on its chart). Opening one shows
-  // its result in place; "Semua backtest" goes back to the form and the list.
-  import { auth } from '../../auth.svelte';
+  // Uji strategi → Uji saran AI: how often the AI's call was right in the past. Start one (the AI
+  // analyses an asset on past dates without seeing what came after), pick one from the list, or
+  // follow the open one (progress, the per-rating score, each asset's decisions on its chart). A
+  // failed one says why in the list. Opening one shows its result in place; "Semua backtest" goes
+  // back to the form and the list.
   import DecisionChart from '../../DecisionChart.svelte';
   import { formatDateTime, formatPercent, ratingBadge } from '../../format';
   import { jobs } from '../../stores/jobs.svelte';
@@ -42,25 +43,21 @@
   <div class="@container p-4">
     <div class="grid gap-6 @2xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
       <section class="min-w-0" aria-labelledby="backtest-new">
-        <h3 id="backtest-new" class="text-sm font-semibold">Backtest baru</h3>
-        <p class="mt-0.5 mb-3 text-xs text-base-content/70">Jalankan analisa AI di tanggal-tanggal lampau, lalu lihat seberapa sering arahnya benar.</p>
+        <h3 id="backtest-new" class="text-base font-semibold">Seberapa sering saran AI benar di masa lalu?</h3>
+        <p class="mt-0.5 mb-3 text-xs text-base-content/70">
+          AI menganalisa aset di tanggal-tanggal lampau tanpa melihat sesudahnya, lalu arah sarannya dibandingkan dengan harga sesudahnya. Tiap tanggal memakai 1 kuota analisa.
+        </p>
         <AnalysisForm mode="backtest" />
       </section>
 
       <section class="min-w-0" aria-labelledby="backtest-list">
         <div class="mb-1 flex flex-wrap items-center gap-2">
-          <h3 id="backtest-list" class="text-sm font-semibold">Semua backtest</h3>
-          {#if auth.isAdmin}
-            <label class="ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
-              <input type="checkbox" class="toggle toggle-xs" checked={jobs.everyone} onchange={(e) => jobs.setEveryone(e.currentTarget.checked)} />
-              Semua pengguna
-            </label>
-          {/if}
-          <button class="btn btn-ghost btn-xs" class:ml-auto={!auth.isAdmin} onclick={() => jobs.refresh()}>Muat ulang</button>
+          <h3 id="backtest-list" class="text-sm font-semibold">Uji sebelumnya</h3>
+          <button class="btn btn-ghost btn-xs ml-auto" onclick={() => jobs.refresh()}>Muat ulang</button>
         </div>
         {#if jobs.error}<p class="text-sm text-error">{jobs.error}</p>{/if}
         {#if jobs.backtests.length === 0}
-          <p class="py-6 text-sm text-base-content/70">{jobs.loaded ? 'Belum ada backtest. Isi formulir Backtest baru untuk memulai.' : 'Memuat…'}</p>
+          <p class="py-6 text-sm text-base-content/70">{jobs.loaded ? 'Belum ada. Isi formulir di samping untuk memulai.' : 'Memuat…'}</p>
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm">
@@ -85,12 +82,13 @@
                       </button>
                     </td>
                     {#if jobs.everyone}<td class="font-mono text-xs">{b.owner ?? '–'}</td>{/if}
-                    <td class="whitespace-nowrap text-xs tabular-nums">{b.request.start} – {b.request.end} · {b.request.everyNDays} hr</td>
+                    <td class="whitespace-nowrap text-xs tabular-nums">{b.request.start} – {b.request.end} · tiap {b.request.everyNDays} hari</td>
                     <td>
                       <StatusBadge
                         status={b.status}
                         detail={b.progress && (b.status === 'running' || b.status === 'queued') ? `${b.progress.done}/${b.progress.total}` : ''}
                       />
+                      {#if b.status === 'failed' && b.error}<span class="mt-0.5 block max-w-64 truncate text-xs text-base-content/70" title={b.error}>{b.error}</span>{/if}
                     </td>
                     <td class="hidden text-xs text-base-content/70 md:table-cell">{formatDateTime(b.createdAt)}</td>
                   </tr>

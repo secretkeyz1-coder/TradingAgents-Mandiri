@@ -2,7 +2,8 @@
   // Service status inside the console: each part now and its share of clean
   // checks over the days on record, as the public /status page shows them; then
   // the server's own errors of the last 30 days (server/src/errors.ts), each under
-  // the code the user saw, with its stack one click away.
+  // the code the user saw, with its stack one click away. Last, a test message: the signal recap
+  // of the past day sent now to the admin's own Telegram (it used to sit on the member screen).
   import { api, type ServerError, type ServiceState, type ServiceStatus } from '../api';
 
   let status = $state<ServiceStatus | null>(null);
@@ -18,6 +19,20 @@
   }
   load();
 
+  let testing = $state(false);
+  let testNote = $state('');
+  async function recapTest() {
+    testing = true;
+    testNote = '';
+    try {
+      const res = await api.ledgerRecapTest();
+      testNote = res.ok ? 'Rekap tes terkirim ke Telegram-mu.' : `Tidak terkirim: ${res.error}`;
+    } catch (e) {
+      testNote = (e as Error).message;
+    } finally {
+      testing = false;
+    }
+  }
   const SOURCE: Record<string, string> = {
     request: 'Request',
     prices: 'Notifikasi harga',
@@ -108,4 +123,10 @@
       {/if}
     </section>
   {/if}
+  <section class="flex flex-col gap-2" aria-labelledby="tests-title">
+    <h2 id="tests-title" class="text-lg font-semibold">Tes pesan</h2>
+    <p class="text-sm text-base-content/70">Kirim rekap sinyal 24 jam terakhir ke Telegram-mu sekarang, di luar jadwal, untuk memeriksa bot dan isinya.</p>
+    <div><button class="btn btn-sm" disabled={testing} onclick={recapTest}>Kirim rekap sinyal tes</button></div>
+    {#if testNote}<p role="status" class="text-sm">{testNote}</p>{/if}
+  </section>
 </section>

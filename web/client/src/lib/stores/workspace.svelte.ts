@@ -22,14 +22,14 @@ import { RunStream } from './run.svelte';
 export type Screen = 'beranda' | 'pasar' | 'riset' | 'pantau' | 'uji';
 /** The screens that show the chart, with panels around it. */
 export type ChartScreen = 'pasar' | 'riset';
-export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'lab' | 'signals' | 'watch' | 'alerts' | 'journal' | 'screener';
+export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'lab' | 'signals' | 'library' | 'watch' | 'alerts' | 'journal' | 'screener';
 export type DockSize = 'min' | 'normal' | 'max';
 export type AiMode = 'chat' | 'analysis';
 export type ChartView = 'tv' | 'ai';
 /** On a phone a chart screen shows one thing at a time: the chart, its side panel, or one of its tabs. */
 export type PhonePane = 'chart' | 'side' | 'dock';
 
-const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'signals', 'watch', 'alerts', 'journal', 'screener'];
+const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'signals', 'library', 'watch', 'alerts', 'journal', 'screener'];
 
 /** The AI panel's two tabs: ask the agent, or run a full analysis. */
 export const AI_MODES: { key: AiMode; label: string }[] = [
@@ -67,10 +67,12 @@ export const SCREENS: { key: Screen; label: string; tabs: { key: DockTab; label:
   {
     key: 'uji',
     label: 'Uji strategi',
+    // Named by the question each answers, the most used and the cheapest first.
     tabs: [
-      { key: 'backtest', label: 'Backtest' },
-      { key: 'lab', label: 'Lab' },
-      { key: 'signals', label: 'Strategi live' },
+      { key: 'lab', label: 'Uji indikator' },
+      { key: 'backtest', label: 'Uji saran AI' },
+      { key: 'signals', label: 'Rekam jejak live' },
+      { key: 'library', label: 'Indikator saya' },
     ],
   },
 ];
@@ -78,7 +80,7 @@ export const SCREENS: { key: Screen; label: string; tabs: { key: DockTab; label:
 /** The screen a tab belongs to. */
 export const screenOf = (tab: DockTab): Screen => SCREENS.find((s) => s.tabs.some((t) => t.key === tab))?.key ?? 'riset';
 export const isChartScreen = (s: Screen): s is ChartScreen => s === 'pasar' || s === 'riset';
-const DEFAULT_TAB: Record<Exclude<Screen, 'beranda'>, DockTab> = { pasar: 'screener', riset: 'history', pantau: 'watch', uji: 'backtest' };
+const DEFAULT_TAB: Record<Exclude<Screen, 'beranda'>, DockTab> = { pasar: 'screener', riset: 'history', pantau: 'watch', uji: 'lab' };
 const SCREEN_PATH = /^\/(beranda|pasar|riset|pantau|uji)$/;
 const DEFAULT_SYMBOL = 'IDX:COMPOSITE';
 const ID = /^[0-9a-f-]{36}$/;
@@ -385,6 +387,8 @@ class Workspace {
       // its report; a bare screen path (the top bar, a typed URL) finds the screen as it was left.
       if (dock && screenOf(dock) === screen) this.dock = dock;
       else if (legacy && screen === 'riset' && run) this.dock = 'report';
+      // A link to a backtest from before Uji indikator led the screen names no tab.
+      else if (screen === 'uji' && q.has('bt')) this.dock = 'backtest';
       else if (canonical) this.dock = DEFAULT_TAB[screen];
       else if (screenOf(this.dock) !== screen) this.dock = this.#resume(screen);
       this.#lastTab[screen] = this.dock;

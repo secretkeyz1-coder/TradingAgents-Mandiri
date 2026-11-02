@@ -1,7 +1,6 @@
 <script lang="ts">
   // Riset AI → Riwayat: every analysis; opening one also brings its symbol into focus.
   // Backtests are listed in their own tab, Uji strategi → Backtest.
-  import { auth } from '../../auth.svelte';
   import { formatDateTime, ratingBadge } from '../../format';
   import { jobs } from '../../stores/jobs.svelte';
   import { ws } from '../../stores/workspace.svelte';
@@ -21,13 +20,7 @@
         {ws.yahoo ?? 'Simbol ini'}
       </button>
     </div>
-    {#if auth.isAdmin}
-      <label class="ml-auto flex cursor-pointer items-center gap-1.5 text-xs">
-        <input type="checkbox" class="toggle toggle-xs" checked={jobs.everyone} onchange={(e) => jobs.setEveryone(e.currentTarget.checked)} />
-        Semua pengguna
-      </label>
-    {/if}
-    <button class="btn btn-ghost btn-xs" class:ml-auto={!auth.isAdmin} onclick={() => jobs.refresh()}>Muat ulang</button>
+    <button class="btn btn-ghost btn-xs ml-auto" onclick={() => jobs.refresh()}>Muat ulang</button>
   </div>
   {#if jobs.error}<p class="text-sm text-error">{jobs.error}</p>{/if}
 

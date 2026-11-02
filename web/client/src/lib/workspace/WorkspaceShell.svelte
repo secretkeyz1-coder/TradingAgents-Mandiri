@@ -9,12 +9,14 @@
   // other panels come once an asset is picked. On a phone each screen is one column behind a
   // bottom tab bar. Panels talk only through the workspace store.
   import { onMount } from 'svelte';
+  import ScriptEditor from '../chart/ScriptEditor.svelte';
   import { agent } from '../stores/agent.svelte';
   import { catalog } from '../stores/catalog.svelte';
   import { indicators } from '../stores/indicators.svelte';
   import { jobs } from '../stores/jobs.svelte';
   import { layout, PANELS, type PanelId, type Rect } from '../stores/layout.svelte';
   import { PANE_LIMITS, panes } from '../stores/panes.svelte';
+  import { scripts } from '../stores/scripts.svelte';
   import { layoutOf, viewport } from '../stores/viewport.svelte';
   import { isChartScreen, SCREENS, ws, type Screen } from '../stores/workspace.svelte';
   import AiPanel from './AiPanel.svelte';
@@ -253,3 +255,6 @@
     {/if}
   </div>
 {/if}
+
+<!-- The script editor, from any screen: the chart's Skrip menu, Indikator saya, Uji indikator. -->
+{#if scripts.editorOpen}<ScriptEditor />{/if}

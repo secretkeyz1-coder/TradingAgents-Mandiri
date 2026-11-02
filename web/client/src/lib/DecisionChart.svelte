@@ -27,7 +27,6 @@
   import IndicatorsMenu from './chart/IndicatorsMenu.svelte';
   import TradePlan, { type Plan } from './chart/TradePlan.svelte';
   import IndicatorPanel from './chart/IndicatorPanel.svelte';
-  import ScriptEditor from './chart/ScriptEditor.svelte';
   import ScriptsMenu from './chart/ScriptsMenu.svelte';
   import { runInSandbox } from './indicators/script-host';
   import { scripts } from './stores/scripts.svelte';
@@ -1137,6 +1136,3 @@
   {/if}
 </div>
 
-{#if tools && scripts.editorOpen}
-  <ScriptEditor />
-{/if}

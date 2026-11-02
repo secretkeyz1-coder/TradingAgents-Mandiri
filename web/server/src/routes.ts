@@ -138,6 +138,7 @@ api.get("/analyses", async (c) => {
       progress: analyses.progress,
       createdAt: analyses.createdAt,
       finishedAt: analyses.finishedAt,
+      error: analyses.error,
       owner: users.username,
     })
     .from(analyses)

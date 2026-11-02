@@ -34,7 +34,10 @@
     confirmDelete = false;
     tab = 'code';
   }
-  scripts.load().then(() => pick(scripts.editing));
+  scripts.load().then(() => {
+    pick(scripts.editing);
+    tab = scripts.startTab;
+  });
 
   function useTemplate(t: { name: string; code: string }) {
     code = t.code;

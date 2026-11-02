@@ -141,7 +141,7 @@
         <span class="loading loading-spinner loading-sm"></span>
       {:else}
         {#if !data.telegram.bot}
-          <p class="text-xs text-warning">{auth.isAdmin ? 'Bot Telegram server belum diisi (TELEGRAM_BOT_TOKEN).' : 'Notifikasi Telegram belum tersedia di server ini. Hubungi admin.'}</p>
+          <p class="text-xs text-warning">Notifikasi Telegram belum tersedia di server ini.</p>
         {:else if !data.telegram.chat}
           <p class="text-xs text-warning">Isi Chat ID Telegram Anda di menu akun → Profil → Notifikasi, lalu kembali ke sini.</p>
         {/if}
