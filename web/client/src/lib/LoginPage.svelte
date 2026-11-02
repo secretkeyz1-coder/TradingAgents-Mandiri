@@ -2,7 +2,8 @@
   // Sign in, sign up, forgotten and new password, and the code step of two-step
   // sign-in, on one card. Field names and autocomplete hints let a password
   // manager fill them in. Sign-up and Google show only when the server offers
-  // them (SIGNUP=open, GOOGLE_CLIENT_ID).
+  // them (SIGNUP=open, GOOGLE_CLIENT_ID). Each field has a real <label>, so screen readers and voice
+  // control name it (a fieldset's legend names the group, not the field inside).
   import { BRAND, supportContact } from '../../../shared/brand';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
@@ -148,22 +149,23 @@
     {:else}
       <form class="flex flex-col gap-4" onsubmit={submit} aria-describedby={error ? 'auth-error' : undefined}>
         {#if mode === 'login'}
-          <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">Email atau nama pengguna</legend>
+          <div class="fieldset py-0">
+            <label class="fieldset-legend pt-0" for="auth-login">Email atau nama pengguna</label>
             <!-- svelte-ignore a11y_autofocus -->
-            <input class="input w-full" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus bind:value={login} />
-          </fieldset>
+            <input id="auth-login" class="input w-full" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus bind:value={login} />
+          </div>
         {:else if mode === 'signup' || mode === 'forgot'}
-          <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">Email</legend>
+          <div class="fieldset py-0">
+            <label class="fieldset-legend pt-0" for="auth-email">Email</label>
             <!-- svelte-ignore a11y_autofocus -->
-            <input class="input w-full" type="email" name="email" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus bind:value={email} />
-          </fieldset>
+            <input id="auth-email" class="input w-full" type="email" name="email" autocomplete="email" autocapitalize="none" spellcheck="false" required autofocus bind:value={email} />
+          </div>
         {:else if mode === '2fa'}
-          <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">{recovery ? 'Kode pemulihan' : 'Kode dari aplikasi'}</legend>
+          <div class="fieldset py-0">
+            <label class="fieldset-legend pt-0" for="auth-code">{recovery ? 'Kode pemulihan' : 'Kode dari aplikasi'}</label>
             <!-- svelte-ignore a11y_autofocus -->
             <input
+              id="auth-code"
               class="input w-full font-mono tracking-widest"
               name="code"
               autocomplete="one-time-code"
@@ -177,38 +179,50 @@
               autofocus
               bind:value={code}
             />
-          </fieldset>
+          </div>
         {/if}
 
         {#if mode !== 'forgot' && mode !== '2fa'}
-          <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">{mode === 'reset' ? 'Kata sandi baru' : 'Kata sandi'}</legend>
+          <div class="fieldset py-0">
+            <label class="fieldset-legend pt-0" for="auth-password">{mode === 'reset' ? 'Kata sandi baru' : 'Kata sandi'}</label>
             <input
+              id="auth-password"
               class="input w-full"
               type="password"
               name="password"
               autocomplete={mode === 'login' ? 'current-password' : 'new-password'}
               minlength={mode === 'login' ? undefined : 8}
+              aria-describedby={mode === 'login' ? undefined : 'auth-password-hint'}
               required
               bind:value={password}
             />
-            {#if mode !== 'login'}<p class="label">Minimal 8 karakter.</p>{/if}
-          </fieldset>
+            {#if mode !== 'login'}<p id="auth-password-hint" class="label">Minimal 8 karakter.</p>{/if}
+          </div>
         {/if}
 
         {#if mode === 'reset'}
-          <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">Ulangi kata sandi baru</legend>
-            <input class="input w-full" type="password" name="repeat" autocomplete="new-password" minlength="8" required bind:value={repeat} />
-          </fieldset>
+          <div class="fieldset py-0">
+            <label class="fieldset-legend pt-0" for="auth-repeat">Ulangi kata sandi baru</label>
+            <input id="auth-repeat" class="input w-full" type="password" name="repeat" autocomplete="new-password" minlength="8" required bind:value={repeat} />
+          </div>
         {/if}
 
         {#if mode === 'signup'}
-          <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">Nomor WhatsApp <span class="font-normal text-base-content/70">(opsional)</span></legend>
-            <input class="input w-full" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0812 3456 7890" bind:value={phone} />
-            <p class="label whitespace-normal">Untuk bantuan dan notifikasi WhatsApp nanti. Tidak dipakai untuk promosi tanpa izinmu.</p>
-          </fieldset>
+          <div class="fieldset py-0">
+            <label class="fieldset-legend pt-0" for="auth-phone">Nomor WhatsApp <span class="font-normal text-base-content/70">(opsional)</span></label>
+            <input
+              id="auth-phone"
+              class="input w-full"
+              type="tel"
+              name="phone"
+              autocomplete="tel"
+              inputmode="tel"
+              placeholder="0812 3456 7890"
+              aria-describedby="auth-phone-hint"
+              bind:value={phone}
+            />
+            <p id="auth-phone-hint" class="label whitespace-normal">Untuk bantuan dan notifikasi WhatsApp nanti. Tidak dipakai untuk promosi tanpa izinmu.</p>
+          </div>
           <label class="flex cursor-pointer items-start gap-2 text-sm">
             <input type="checkbox" class="checkbox checkbox-sm mt-0.5" required bind:checked={accept} />
             <span>

@@ -109,7 +109,7 @@
 
   <form class="flex flex-col gap-1.5" onsubmit={submit}>
     <textarea
-      class="textarea textarea-sm min-h-16 w-full"
+      class="textarea textarea-sm min-h-16 w-full text-sm"
       bind:value={draft}
       onkeydown={onKey}
       placeholder={simple ? 'Tulis pertanyaanmu…' : 'Gambar support resistance dan jelaskan…'}

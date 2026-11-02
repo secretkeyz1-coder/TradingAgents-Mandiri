@@ -142,6 +142,13 @@ h2 {
 .alert-soft { color: var(--color-base-content); }
 .text-warning { color: color-mix(in oklab, var(--color-warning) 55%, var(--color-base-content)); }
 
+/* iOS Safari zooms the whole page into a focused field whose text is under 16px, so phones get 16px fields. */
+@media (max-width: 639px) {
+  .input,
+  .textarea,
+  .select { font-size: 1rem; }
+}
+
 /* Third-party loaders and pulses stop for people who asked for less motion. */
 @media (prefers-reduced-motion: reduce) {
   .loading,

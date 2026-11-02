@@ -42,7 +42,7 @@
 </script>
 
 <form class="w-full" role="search" onsubmit={submit}>
-  <label class="input input-sm w-full" class:input-error={error}>
+  <label class="input input-sm w-full text-sm" class:input-error={error}>
     <svg class="size-3.5 shrink-0 opacity-60" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
       <circle cx="7" cy="7" r="4.5" />
       <path d="m10.5 10.5 3 3" stroke-linecap="round" />

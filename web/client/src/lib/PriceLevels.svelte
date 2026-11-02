@@ -99,7 +99,7 @@
     <div class="join w-full">
       <input
         id="level-{symbol}"
-        class="input input-sm join-item w-full tabular-nums"
+        class="input input-sm join-item w-full text-sm tabular-nums"
         inputmode="decimal"
         autocomplete="off"
         placeholder={last != null ? `mis. ${fmt(last)}` : 'Harga'}
