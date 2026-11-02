@@ -2,7 +2,8 @@
   // One answer for the asset in focus, in plain words (server/src/routes.ts /verdict):
   // the user's latest analysis of it, else the daily AI brief's view, else a button
   // that runs a standard analysis on the day's quota. While one runs for this asset
-  // the card says so, and shows the result once the history (jobs store) has it.
+  // the card says so, and shows the result once the history (jobs store) has it. It is the AI's
+  // view (Pandangan AI), not advice: the card says it is automated research, not investment advice.
   import { api, type Verdict } from '../api';
   import { auth } from '../auth.svelte';
   import VerifyNote from '../VerifyNote.svelte';
@@ -99,7 +100,7 @@
 
 <section class="flex flex-col gap-3 rounded-box border border-base-300 p-4" aria-labelledby="verdict-title">
   <div class="flex items-baseline justify-between gap-2">
-    <h2 id="verdict-title" class="text-base font-semibold">Saran AI</h2>
+    <h2 id="verdict-title" class="text-base font-semibold">Pandangan AI</h2>
     <span class="text-xs text-base-content/70">Riset otomatis, bukan saran investasi</span>
   </div>
 
@@ -145,12 +146,12 @@
         <div><dt class="font-medium">Risiko bisa turun</dt><dd class="text-base-content/80">{verdict.bear}</dd></div>
         <div><dt class="font-medium">Yang perlu dipantau</dt><dd class="text-base-content/80">{verdict.watch}</dd></div>
       </dl>
-      <p class="text-xs text-base-content/70">Dari ringkasan pasar AI, {formatDateTime(verdict.at)}. Untuk saran khusus {name}, minta analisa lengkap.</p>
+      <p class="text-xs text-base-content/70">Dari ringkasan pasar AI, {formatDateTime(verdict.at)}. Untuk pandangan khusus {name}, minta analisa lengkap.</p>
     {/if}
   {:else if !error}
     <div class="flex flex-col gap-1">
-      <p class="font-medium">Belum ada saran AI untuk {name}.</p>
-      <p class="text-sm text-base-content/70">AI membaca harga, berita, dan sentimen pasar, lalu menyimpulkan satu saran dalam beberapa menit.</p>
+      <p class="font-medium">Belum ada pandangan AI untuk {name}.</p>
+      <p class="text-sm text-base-content/70">AI membaca harga, berita, dan sentimen pasar, lalu menyimpulkan satu pandangan dalam beberapa menit.</p>
     </div>
   {/if}
 
@@ -168,7 +169,7 @@
         onclick={ask}
       >
         {#if busy}<span class="loading loading-spinner loading-xs" aria-hidden="true"></span>{/if}
-        {!verdict ? 'Minta saran AI' : verdict.source === 'brief' ? 'Minta analisa lengkap' : 'Minta saran baru'}
+        {!verdict ? 'Minta pandangan AI' : verdict.source === 'brief' ? 'Minta analisa lengkap' : 'Minta pandangan baru'}
       </button>
       {#if verdict?.source === 'analysis' && verdict.hasReport}
         <a class="btn btn-ghost btn-sm" href={api.reportUrl(verdict.id)} target="_blank" rel="noopener">Baca laporan lengkap</a>

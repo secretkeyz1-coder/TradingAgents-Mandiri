@@ -41,8 +41,8 @@ Lebar ≥ 1024 px: layar penuh dengan menu atas. < 1024 px: satu kolom per layar
 Sakelar **Pemula | Pro** ada di bilah atas.
 
 - **Pemula** menampilkan satu aset dengan bahasa sederhana:
-  - **Pantauanku**: watchlist, dengan saran AI terakhir tiap aset. Kalau masih kosong, tampil aset populer.
-  - **Aset**: nama, harga terakhir dan perubahan hari ini, grafik area 1 hari sampai 1 tahun, kartu **Saran AI**, dan kartu **Kabari saya** (sakelar ringkasan AI harian, yang sekaligus memasukkan aset ke Pantauanku; notifikasi harga; dan status Telegram).
+  - **Pantauanku**: watchlist, dengan pandangan AI terakhir tiap aset. Kalau masih kosong, tampil aset populer.
+  - **Aset**: nama, harga terakhir dan perubahan hari ini, grafik area 1 hari sampai 1 tahun, kartu **Pandangan AI**, dan kartu **Kabari saya** (sakelar ringkasan AI harian, yang sekaligus memasukkan aset ke Pantauanku; notifikasi harga; dan status Telegram).
   - **Tanya AI**: chat agent tanpa nama tool, memori, dan skill.
 
   Mulai 1024 px tampil tiga kolom; di bawahnya, tiga tab bawah.
@@ -50,10 +50,10 @@ Sakelar **Pemula | Pro** ada di bilah atas.
 
 Akun baru (daftar lewat email, Google, atau dibuat admin sebagai anggota) mulai di Pemula. Akun lama dan admin mulai di Pro. Pilihan disimpan di preferensi akun (`ui.mode`), jadi ikut ke perangkat lain, dan simbol aktif tidak berubah saat pindah mode.
 
-**Saran AI** (`GET /api/verdict`) mengambil sumber dengan urutan ini:
+**Pandangan AI** (`GET /api/verdict`; dulu Saran AI, diganti karena kartunya juga menulis "bukan saran investasi") mengambil sumber dengan urutan ini:
 1. Keputusan analisa terakhirmu untuk aset itu, dengan tanggal trading terbaru.
 2. Ringkasan pasar AI harian, untuk aset yang dicakupnya (BTC, ETH, Emas, IHSG).
-3. Kalau keduanya tidak ada, tombol **Minta saran AI** menjalankan analisa standar dengan jatah analisa harian: semua analis yang relevan, kedalaman 1, bahasa Indonesia, dan model server.
+3. Kalau keduanya tidak ada, tombol **Minta pandangan AI** menjalankan analisa standar dengan jatah analisa harian: semua analis yang relevan, kedalaman 1, bahasa Indonesia, dan model server.
 
 Rating diterjemahkan ke bahasa awam: Buy = Beli, Overweight = Cenderung beli, Hold = Tunggu dulu, Underweight = Cenderung jual, Sell = Jual.
 

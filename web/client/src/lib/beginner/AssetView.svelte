@@ -11,7 +11,7 @@
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { theme, tokenColor } from '../theme.svelte';
-  import { venueOf } from '../tv';
+  import { assetCode, venueOf } from '../tv';
   import { latest } from './latest.svelte';
   import { friendlyName, priceText, toneOf } from './plain';
 
@@ -45,6 +45,8 @@
   }
 
   const name = $derived(friendlyName(ws.symbol));
+  /** The short code people know (BTC, BBCA), shown under the name unless it is the name (Emas, IHSG). */
+  const code = $derived(ws.yahoo ? assetCode(ws.yahoo) : ws.symbol);
   const watched = $derived(watch.has(ws.yahoo));
 
   // Six months of daily candles give today's change and the 1- and 6-month spans;
@@ -176,7 +178,7 @@
     <div class="min-w-0">
       <h1 id="asset-name" class="truncate text-xl font-semibold tracking-tight sm:text-2xl">{name}</h1>
       <p class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-base-content/70">
-        <span>{ws.symbol}</span>
+        {#if code !== name}<span>{code}</span>{/if}
         {#if daily}
           <span class="inline-flex items-center gap-1.5">
             <span class="status status-xs {live ? 'status-success' : 'status-neutral'}" aria-hidden="true"></span>{live ? 'Harga real-time' : 'Harga tertunda beberapa menit'}

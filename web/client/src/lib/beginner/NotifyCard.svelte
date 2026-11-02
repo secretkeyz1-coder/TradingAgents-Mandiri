@@ -80,7 +80,7 @@
       {#if w.telegram.configured}
         <span class="flex items-center gap-2"><span class="status status-success" aria-hidden="true"></span>Telegram terhubung</span>
       {:else if !w.telegram.bot}
-        <span class="text-base-content/70">Notifikasi Telegram belum tersedia di server ini. Hasil analisa tetap tampil di kartu Saran AI.</span>
+        <span class="text-base-content/70">Notifikasi Telegram belum tersedia di server ini. Hasil analisa tetap tampil di kartu Pandangan AI.</span>
       {:else}
         <span class="flex items-center gap-2"><span class="status status-warning" aria-hidden="true"></span>Telegram belum terhubung</span>
         <button class="btn btn-sm" onclick={onprofile}>Hubungkan di Profil</button>
