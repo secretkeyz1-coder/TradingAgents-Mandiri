@@ -1,15 +1,15 @@
 <script lang="ts">
   // The symbol in focus: TradingView's full chart, or the engine's daily
   // candles with every AI decision marked, plus the chart's own tools (zoom,
-  // jump to a date, navigator, Scalper Pro+). Analisa harian puts the symbol on
-  // the scheduled analyses (Pantau). On a desktop screen the header also
-  // holds focus mode and the layout menu. On Pasar the chart is the market's (indicators, signals,
+  // jump to a date, navigator, Scalper Pro+). The star puts the symbol on
+  // Pantauanku (the daily AI analysis). The head keeps to one row so the candles get the
+  // height: jumping to a date and, on a desktop screen, focus mode and the layout wait in its
+  // "⋯" menu. On Pasar the chart is the market's (indicators, signals,
   // the trading plan) with one button to research the asset; on Riset AI it also marks the AI's
   // decisions, and its head is the asset switch (AssetSwitcher).
   import DecisionChart from '../DecisionChart.svelte';
   import SessionBadge from '../SessionBadge.svelte';
   import { agent, LAYERS } from '../stores/agent.svelte';
-  import { layout } from '../stores/layout.svelte';
   import { layoutOf, viewport } from '../stores/viewport.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
@@ -46,6 +46,11 @@
   const desktop = $derived(layoutOf(viewport) !== 'narrow');
   watch.load();
 
+  // On a phone the candles take what is left of the pane under the price and toolbar rows,
+  // less a strip where the plan card's first line shows, so it is clear that it follows below.
+  let bodyHeight = $state(0);
+  const phoneChartHeight = $derived(Math.max(240, Math.round(bodyHeight - 150)));
+
   // TradingView's embed cannot be told to go to a date, so the button opens the
   // AI chart (our own canvas) and its date box.
   let jumpRequest = $state(0);
@@ -66,30 +71,28 @@
         <span class="truncate font-mono text-xs font-normal text-base-content/70" class:text-sm={!nameOf(ws.symbol)} class:font-semibold={!nameOf(ws.symbol)} class:text-base-content={!nameOf(ws.symbol)}>{ws.symbol}</span>
       </h2>
     {/if}
+    {#if ws.yahoo}
+      <!-- The same star as the market list's rows: Pantauanku, analysed by the AI every trading day. -->
+      <button
+        class="btn btn-ghost btn-xs btn-square shrink-0"
+        aria-pressed={watched}
+        aria-label="{watched ? 'Hapus dari' : 'Tambah ke'} Pantauanku"
+        title={watched
+          ? 'Di Pantauanku: AI menganalisa aset ini tiap hari bursa (1 kuota analisa per hari). Klik untuk menghapus.'
+          : 'Tambah ke Pantauanku: AI menganalisa aset ini tiap hari bursa, hasilnya di Pantau dan Telegram (1 kuota analisa per hari).'}
+        onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill={watched ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" class:text-warning={watched} class:opacity-60={!watched} aria-hidden="true"
+          ><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg
+        >
+      </button>
+    {/if}
     <span class="badge badge-xs badge-ghost hidden gap-1 whitespace-nowrap sm:inline-flex" title={freshness.title}>
       <span class="status status-xs {freshness.status}" aria-hidden="true"></span>
       {freshness.label}
     </span>
-    <SessionBadge tv={ws.symbol} />
+    <SessionBadge tv={ws.symbol} compact={!desktop} />
     <span class="flex-1"></span>
-    {#if ws.yahoo}
-      <button
-        class="btn btn-ghost btn-xs shrink-0 gap-1"
-        class:btn-active={watched}
-        aria-pressed={watched}
-        title={watched
-          ? 'Analisa harian aktif: AI menganalisa simbol ini tiap hari bursa, memakai 1 kuota analisa per hari. Klik untuk berhenti.'
-          : 'AI menganalisa simbol ini otomatis tiap hari bursa; hasilnya di Pantau dan Telegram. Memakai 1 kuota analisa per hari.'}
-        onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class:text-accent={watched} aria-hidden="true"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5M16 2v4M8 2v4M3 10h5M17.5 17.5 16 16.3V14" /><circle cx="16" cy="16" r="6" /></svg>
-        Analisa harian
-      </button>
-      <button class="btn btn-ghost btn-xs shrink-0 gap-1" title="Buka chart aplikasi di tanggal tertentu" onclick={jumpToDate}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-        Lompat ke tanggal
-      </button>
-    {/if}
     {#if ws.screen === 'pasar' && ws.yahoo}
       <button class="btn btn-primary btn-xs shrink-0 gap-1" title="Buka aset ini di Riset AI: tanya AI dan analisa lengkap" onclick={() => ws.research()}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d={SCREEN_ICONS.riset} /></svg>
@@ -107,18 +110,14 @@
         onclick={() => ws.setChartView('ai')}>{ws.screen === 'riset' ? 'Keputusan AI' : 'Sinyal'}</button
       >
     </div>
-    {#if desktop}
-      <button class="btn btn-xs shrink-0 gap-1" class:btn-active={layout.focus} aria-pressed={layout.focus} title="Tombol F" onclick={() => layout.toggleFocus()}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
-        {layout.focus ? 'Keluar fokus' : 'Fokus'}
-      </button>
-      <LayoutMenu />
-    {/if}
+    <!-- One row of head: the rarer actions (a date, focus, the panels' layout) wait behind "⋯". -->
+    {#if desktop || ws.yahoo}<LayoutMenu {desktop} onjump={ws.yahoo ? jumpToDate : undefined} />{/if}
   </header>
-  <div class="min-h-0 flex-1 overflow-hidden">
+  <!-- A desktop chart fills its panel; a phone's panel scrolls, the candles a screen tall with the plan below. -->
+  <div class="min-h-0 flex-1 {desktop ? 'overflow-hidden' : 'overflow-y-auto'}" bind:clientHeight={bodyHeight}>
     {#if view === 'ai' && ws.yahoo}
-      <div class="flex h-full min-h-0 flex-col gap-2 p-3">
-        <div class="min-h-0 flex-1">
+      <div class="flex min-h-0 flex-col gap-2 p-3" class:h-full={desktop}>
+        <div class="min-h-0" class:flex-1={desktop}>
           {#key ws.yahoo}
             <DecisionChart
               symbol={ws.yahoo}
@@ -131,6 +130,8 @@
               venue={venueOf(ws.symbol)}
               research={ws.screen === 'riset'}
               tools
+              fill={desktop}
+              height={phoneChartHeight}
             />
           {/key}
         </div>

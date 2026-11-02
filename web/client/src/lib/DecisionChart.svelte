@@ -40,6 +40,7 @@
   import { fib, fibLevel } from './indicators/fib';
   import { pob, SETUPS } from './indicators/pob';
   import { scalper } from './indicators/scalper';
+  import { chartPrefs } from './stores/chartPrefs.svelte';
   import { indicators } from './stores/indicators.svelte';
   import { theme, tokenColor } from './theme.svelte';
 
@@ -55,6 +56,7 @@
     onTimeframe = undefined,
     jumpRequest = 0,
     tools = false,
+    fill = true,
     venue = null,
     research = true,
   }: {
@@ -76,6 +78,11 @@
     jumpRequest?: number;
     /** The workspace chart: zoom, jump to date, navigator and indicators. */
     tools?: boolean;
+    /**
+     * With tools: fill the panel's height, the trading plan above the candles (a desktop panel).
+     * False gives the candles `height` and puts the plan under them (a phone, whose panel scrolls).
+     */
+    fill?: boolean;
     /** For crypto: the venue whose candles to show (server/src/venues.ts); Binance when null. */
     venue?: VenueId | null;
     /** Load and mark the AI's decisions (Riset AI); off on Pasar, which shows the market without them. */
@@ -632,7 +639,7 @@
       since: timeframe === '1wk' ? 'minggu ini' : timeframe === '1mo' ? 'bulan ini' : 'hari ini',
     };
   });
-  /** On a narrow chart the secondary tools fold behind "Lainnya". */
+  /** The secondary tools fold behind "Lainnya", so the toolbar keeps to one row and the candles get the height. */
   let moreTools = $state(false);
 
   // --- Navigation: zoom, jump to a date, the navigator strip.
@@ -808,7 +815,14 @@
   });
 </script>
 
-<div class="@container flex flex-col gap-3" class:h-full={tools}>
+<div class="@container flex flex-col gap-3" class:h-full={tools && fill}>
+  {#snippet planCard()}
+    {#if tools && plans.length}
+      <TradePlan {plans} {symbol} {timeframe} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
+    {:else if tools && !anyIndicator && candles.length}
+      <p class="text-xs text-base-content/70">Rencana trading (entry, SL, TP, dan ukuran posisi) muncul di sini saat indikator memberi setup. Nyalakan dari menu Indikator.</p>
+    {/if}
+  {/snippet}
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
       {#if quote}
@@ -819,7 +833,8 @@
           </span>
         {/if}
       {/if}
-      <span class="font-mono font-semibold text-base-content">{symbol}</span>
+      <!-- The workspace's chart head already names the asset; elsewhere the code says which chart this is. -->
+      {#if !tools}<span class="font-mono font-semibold text-base-content">{symbol}</span>{/if}
       {#if currency}<span>· {currency}</span>{/if}
       {#if source && source !== 'yahoo'}
         <span class="badge badge-xs badge-success badge-soft" title="Harga real-time dari {sourceLabel}">{sourceLabel} · real-time</span>
@@ -851,9 +866,9 @@
       {#if tools}
         <IndicatorsMenu pobOk={!!pobTf} {fibOk} {timeframe} {symbol} />
         <AlertsMenu {symbol} {venue} last={candles.at(-1)?.close ?? null} />
-        <button class="btn btn-xs @2xl:hidden" aria-expanded={moreTools} onclick={() => (moreTools = !moreTools)}>Lainnya</button>
+        <button class="btn btn-xs" class:btn-active={moreTools} aria-expanded={moreTools} onclick={() => (moreTools = !moreTools)}>Lainnya</button>
       {/if}
-      <div class="{moreTools || !tools ? 'flex' : 'hidden'} flex-wrap items-center gap-2 @2xl:flex">
+      <div class="{moreTools || !tools ? 'flex' : 'hidden'} flex-wrap items-center gap-2">
       <div class="join" role="group" aria-label="Rentang waktu">
         {#each RANGES as r (r.value)}
           <button
@@ -879,10 +894,14 @@
           <button class="btn btn-xs join-item" aria-label="Perbesar" onclick={() => zoom(0.66)}>+</button>
           <button class="btn btn-xs join-item" onclick={reset}>Reset</button>
         </div>
-        <button class="btn btn-xs gap-1" class:btn-active={jumpOpen} aria-expanded={jumpOpen} onclick={() => (jumpOpen = !jumpOpen)}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
-          Tanggal
-        </button>
+        <!-- Jumping to a date lives in the chart head's "⋯" menu, which also works over TradingView's chart. -->
+        <button
+          class="btn btn-xs"
+          class:btn-active={chartPrefs.navigator}
+          aria-pressed={chartPrefs.navigator}
+          title="Garis kecil seluruh data di bawah chart; geser kotaknya untuk pindah waktu"
+          onclick={() => chartPrefs.toggleNavigator()}>Navigasi waktu</button
+        >
         <ScriptsMenu />
         {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
       {/if}
@@ -890,14 +909,10 @@
     </div>
   </div>
 
-  {#if tools && plans.length}
-    <TradePlan {plans} {symbol} {timeframe} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
-  {:else if tools && !anyIndicator && candles.length}
-    <p class="text-xs text-base-content/70">Rencana trading (entry, SL, TP, dan ukuran posisi) muncul di sini saat indikator memberi setup. Nyalakan dari menu Indikator.</p>
-  {/if}
+  {#if fill}{@render planCard()}{/if}
 
-  <!-- The workspace chart fills its panel; elsewhere it has a fixed height. -->
-  <div class="relative w-full" class:min-h-48={tools} class:flex-1={tools} style={tools ? '' : `height: ${height}px`}>
+  <!-- The workspace chart fills its desktop panel; on a phone and elsewhere it has a fixed height. -->
+  <div class="relative w-full" class:min-h-48={tools && fill} class:flex-1={tools && fill} style={tools && fill ? '' : `height: ${height}px`}>
     <div bind:this={container} class="h-full w-full"></div>
     {#if tools && ((ind && indicators.scalper.showDashboard) || pobRes || fibRes || scriptCards.length)}
     <!-- One overlay for the readouts, clear of the price scale and the time axis: the Scalper table top right,
@@ -1081,9 +1096,12 @@
     {/if}
   </div>
 
-  {#if tools && candles.length > 1}
+  {#if tools && chartPrefs.navigator && candles.length > 1}
     <Navigator closes={candles.map((c) => c.close)} from={visible.from} to={visible.to} onchange={showRange} />
   {/if}
+
+  <!-- A phone shows the candles first; the plan follows a short scroll below. -->
+  {#if !fill}{@render planCard()}{/if}
 
   {#if timeframe !== '1d' && !tools}
     <p class="text-xs text-base-content/70">

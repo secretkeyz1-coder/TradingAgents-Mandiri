@@ -76,6 +76,7 @@
   class:cursor-row-resize={axis === 'y'}
   class:flex-col={axis === 'x'}
   role="separator"
+  data-axis={axis}
   aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
   aria-label={label}
   aria-valuenow={Math.round(value)}
@@ -103,11 +104,15 @@
 </div>
 
 <style>
-  /* Wider hit area than the 6px track, without taking more layout space. */
+  /* Wider hit area than the 6px track, without taking more layout space. Only across the line:
+     along it the area would pass the screen's edge and give the whole page a 3px scrollbar. */
   .splitter::before {
     content: '';
     position: absolute;
-    inset: -3px;
+    inset: 0 -3px;
+  }
+  .splitter[data-axis='y']::before {
+    inset: -3px 0;
   }
   .splitter:focus-visible {
     box-shadow: inset 0 0 0 2px var(--color-accent);

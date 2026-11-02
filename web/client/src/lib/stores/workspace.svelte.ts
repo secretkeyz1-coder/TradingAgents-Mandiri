@@ -106,7 +106,17 @@ class Workspace {
   aiMode = $state<AiMode>('analysis');
   /** The tab the open screen shows (in its bottom panel, or as its page). */
   dock = $state<DockTab>('history');
-  dockSize = $state<DockSize>('normal');
+  /**
+   * How far each chart screen's bottom panel is open. Pasar's screener starts folded to its
+   * header, one click away, so the chart gets the height; Riset AI's history and report start open.
+   */
+  #dockSizes = $state<Record<ChartScreen, DockSize>>({ pasar: 'min', riset: 'normal' });
+  get dockSize(): DockSize {
+    return isChartScreen(this.screen) ? this.#dockSizes[this.screen] : 'normal';
+  }
+  set dockSize(size: DockSize) {
+    if (isChartScreen(this.screen)) this.#dockSizes[this.screen] = size;
+  }
   /** On a phone, what each chart screen shows; leaving and coming back finds it as it was. */
   phonePane = $state<Record<ChartScreen, PhonePane>>({ pasar: 'chart', riset: 'side' });
   run = $state<RunStream | null>(null);

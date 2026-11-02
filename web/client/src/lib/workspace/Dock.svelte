@@ -1,8 +1,8 @@
 <script lang="ts">
   // The bottom panel of a chart screen ("Panel bawah"): Pasar's screener, or Riset AI's
   // history, report and log (stores/workspace SCREENS). Docked, it can be made bigger, folded
-  // to its header, or closed (the Tata letak menu brings it back); a floating window sizes
-  // itself instead.
+  // to its header (Pasar's screener starts so, leaving the height to the chart), or closed (the
+  // Tata letak menu brings it back); a floating window sizes itself instead.
   import { SCREENS, ws } from '../stores/workspace.svelte';
   import PanelClose from './PanelClose.svelte';
   import TabView from './TabView.svelte';
@@ -35,7 +35,13 @@
   {/snippet}
 
   <header class="flex min-h-10 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-base-300 px-2 py-1">
-    {#if tabs.length === 1}
+    {#if tabs.length === 1 && !open}
+      <!-- Folded (Pasar's screener starts so), the title itself opens it: one click, as wide as the words. -->
+      <button class="btn btn-ghost btn-xs gap-2 px-1 text-sm" aria-expanded="false" onclick={() => (ws.dockSize = 'normal')}>
+        <span class="font-semibold">{tabs[0].label}</span>
+        {#if ws.screen === 'pasar'}<span class="font-normal text-base-content/70">Saring aset pasar ini menurut kriteria</span>{/if}
+      </button>
+    {:else if tabs.length === 1}
       <h2 class="px-1 text-sm font-semibold whitespace-nowrap">{tabs[0].label}</h2>
     {:else}
       <div role="tablist" class="tabs tabs-box tabs-xs min-w-0 flex-nowrap overflow-x-auto" aria-label="Panel bawah">

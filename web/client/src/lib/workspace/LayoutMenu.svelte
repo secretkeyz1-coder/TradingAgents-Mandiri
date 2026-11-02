@@ -1,9 +1,20 @@
 <script lang="ts">
-  // The "Tata letak" menu: presets, the mode of each panel this screen has, and
-  // saving the current arrangement to the account. Opens under its button;
-  // Escape or a click outside closes it.
+  // The chart head's "⋯" menu: jumping to a date, and on a desktop screen the "Tata letak" part
+  // (presets, the mode of each panel this screen has, focus mode, and saving the current
+  // arrangement to the account). They sit behind one button so the head keeps to one row and
+  // the candles get the height. Opens under its button; Escape or a click outside closes it.
   import { layout, PANELS, PRESETS, type PanelMode } from '../stores/layout.svelte';
   import { ws } from '../stores/workspace.svelte';
+
+  let {
+    desktop = true,
+    onjump,
+  }: {
+    /** Panels can be arranged; a phone shows one at a time, so it gets only the date. */
+    desktop?: boolean;
+    /** Open the app's chart at a date; absent when the symbol has no app chart. */
+    onjump?: () => void;
+  } = $props();
 
   let open = $state(false);
   let root: HTMLDivElement | undefined = $state();
@@ -44,23 +55,36 @@
 
 <div class="relative" bind:this={root}>
   <button
-    class="btn btn-ghost btn-xs gap-1"
+    class="btn btn-ghost btn-xs btn-square"
     class:btn-active={open}
     aria-expanded={open}
     aria-haspopup="dialog"
+    aria-label="Lainnya"
+    title={desktop ? 'Lompat ke tanggal, fokus, dan tata letak' : 'Lompat ke tanggal'}
     onclick={() => (open = !open)}
   >
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="18" rx="1.5" /><rect x="13" y="3" width="8" height="8" rx="1.5" /><rect x="13" y="14" width="8" height="7" rx="1.5" />
-    </svg>
-    Tata letak
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
   </button>
   {#if open}
     <div
-      class="ta-pop absolute top-full right-0 z-50 mt-1 flex w-80 flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3 shadow-xl"
+      class="ta-pop absolute top-full right-0 z-50 mt-1 flex flex-col gap-3 rounded-box border border-base-300 bg-base-100 p-3 shadow-xl {desktop ? 'w-80' : 'w-60'}"
       role="dialog"
-      aria-label="Tata letak"
+      aria-label="Lainnya"
     >
+      {#if onjump}
+        <button
+          class="btn btn-sm justify-start gap-2"
+          onclick={() => {
+            open = false;
+            onjump();
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+          Lompat ke tanggal
+        </button>
+      {/if}
+      {#if desktop}
+      <span class="text-xs font-semibold text-base-content/70">Tata letak</span>
       <div class="grid grid-cols-2 gap-1.5">
         {#each PRESETS as p (p.id)}
           <button
@@ -112,6 +136,7 @@
         <button class="btn btn-sm flex-1" onclick={() => layout.saveAsMine()}>Simpan sebagai layout saya</button>
         <button class="btn btn-ghost btn-sm" onclick={() => layout.reset()}>Reset</button>
       </div>
+      {/if}
     </div>
   {/if}
 </div>
