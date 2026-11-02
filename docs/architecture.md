@@ -47,7 +47,8 @@ flowchart TB
 | Analisa | `routes.ts` (rute), `jobs.ts` (antrean di Postgres), `worker.ts` (spawn engine), `tokens.ts` |
 | Agen chart, Lab, skrip, katalog indikator | `agent.ts`, `lab.ts`, `scripts.ts`, `script-run.ts`, `indicators.ts` |
 | Data pasar | `market.ts`, `binance.ts`, `venues.ts` |
-| Notifikasi | `alerts.ts` (sinyal), `price-alerts.ts`, `watch.ts` (watchlist, Telegram), `ledger.ts` |
+| Notifikasi | `alerts.ts` (sinyal), `price-alerts.ts`, `watch.ts` (watchlist, Telegram), `telegram.ts` (menghubungkan Telegram, [ADR 0013](adr/0013-telegram-sekali-tekan-long-polling.md)), `ledger.ts` |
+| Jurnal trading | `journal.ts` (trade yang diambil member, ditutup di TP/SL, rekap mingguan; [ADR 0014](adr/0014-jurnal-ditutup-dari-candle-15m.md)) |
 | Bisnis | `billing.ts`, `coupons.ts`, `invoice.ts`, `reminders.ts`, `business.ts`, `mail.ts` |
 | Situs publik | `site.ts`, `status.ts`, `creators.ts` |
 | Operasi | `locks.ts` (leader, lease), `limits.ts`, `shared.ts`, `errors.ts`, `log.ts`, `metrics.ts`, `monitor.ts`, `config.ts`, `openapi.ts` |
@@ -66,8 +67,9 @@ Kode bersama server dan klien ada di `web/shared` (paket dan batasnya, sandbox s
 ## Kerja latar
 
 Semua timer berjalan di setiap instance app, tetapi isinya hanya dikerjakan instance yang memegang advisory lock scheduler ([ADR 0005](adr/0005-satu-scheduler-advisory-lock.md)):
-- pemindaian sinyal tiap slot 5 menit dan cek notifikasi harga tiap menit (`alerts.ts`, `price-alerts.ts`);
-- watchlist harian, rekap sinyal harian dan mingguan, pengingat perpanjangan, ringkasan pasar AI;
+- pemindaian sinyal tiap slot 5 menit, lalu cek notifikasi harga dan penutupan trade jurnal tiap menit dari candle yang sama (`alerts.ts`, `price-alerts.ts`, `journal.ts`);
+- membaca pesan bot Telegram dengan long polling untuk menghubungkan akun (`telegram.ts`);
+- watchlist harian, rekap sinyal harian dan mingguan, rekap jurnal tiap Minggu malam, pengingat perpanjangan, ringkasan pasar AI;
 - cek status tiap 5 menit (hasilnya di `shared_values`), peringatan server tiap menit (`monitor.ts`);
 - pembersihan: error server lebih dari 30 hari, jendela batas laju yang sudah lewat, analisa yatim.
 
