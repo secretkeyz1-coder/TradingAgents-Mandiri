@@ -195,6 +195,44 @@ api.get("/candles", async (c) => {
   }
 });
 
+type DailyCandles = (symbol: string) => Promise<{ candles: { time: string; close: number }[]; currency: string | null; source?: string }>;
+let readDaily: DailyCandles = (symbol) => getCandles(symbol, "6mo", "1d");
+/** Tests: answer daily candles without the network. */
+export function useDailyCandles(read?: DailyCandles) {
+  readDaily = read ?? ((symbol) => getCandles(symbol, "6mo", "1d"));
+}
+
+/** A symbol's last price and its change on the previous close, from the daily bars the chart reads (cached in market.ts). */
+async function lastQuote(symbol: string) {
+  const series = await readDaily(symbol);
+  const bars = series.candles.filter((c) => Number.isFinite(c.close));
+  const last = bars.at(-1);
+  if (!last) return null;
+  const prev = bars.at(-2);
+  return {
+    price: last.close,
+    change: prev && prev.close ? last.close / prev.close - 1 : null,
+    currency: series.currency,
+    delayed: series.source === "yahoo",
+    time: last.time,
+  };
+}
+
+/**
+ * Last prices for up to 80 symbols (engine spelling: BBCA.JK, BTC-USD), for the Pasar list and
+ * Pantauanku; a symbol whose data fails is null. Six at a time, so a whole market's list does
+ * not fire dozens of requests at the data source at once.
+ */
+api.get("/quotes", async (c) => {
+  const symbols = [...new Set((c.req.query("symbols") ?? "").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
+  if (!symbols.length || symbols.length > 80 || !symbols.every((s) => SYMBOL_PATTERN.test(s))) return c.json({ error: "Daftar simbol tidak valid" }, 400);
+  const quotes: Record<string, Awaited<ReturnType<typeof lastQuote>>> = {};
+  for (let i = 0; i < symbols.length; i += 6) {
+    await Promise.all(symbols.slice(i, i + 6).map(async (s) => (quotes[s] = await lastQuote(s).catch(() => null))));
+  }
+  return c.json({ quotes });
+});
+
 /** Every AI decision of this user on one ticker: finished analyses, and the cells of finished backtests. */
 api.get("/decisions", async (c) => {
   const ticker = (c.req.query("ticker") ?? "").toUpperCase();

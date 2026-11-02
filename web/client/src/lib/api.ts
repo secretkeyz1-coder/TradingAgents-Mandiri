@@ -450,6 +450,23 @@ export type Interval = (typeof INTERVALS)[number];
 /** `time` is YYYY-MM-DD for 1d and up, YYYY-MM-DDTHH:MM:SS in the exchange's time zone for intraday. */
 export type Candle = { time: string; open: number; high: number; low: number; close: number; volume: number };
 
+/** A symbol's last price and its change on the previous close (server routes.ts /quotes). */
+export type Quote = { price: number; change: number | null; currency: string | null; delayed: boolean; time: string };
+/** A market for Beranda's strip, with its last 30 closes (server site.ts /public/market). */
+export type MarketQuote = Quote & { symbol: string; label: string; spark: number[] };
+/** The latest AI market brief (server site.ts /public/brief). */
+export type MarketBrief = {
+  createdAt: string;
+  content: { headline: string; summary: string; assets: { symbol: string; bias: 'naik' | 'turun' | 'netral'; bull: string; bear: string; watch: string }[]; risk: string };
+} | null;
+/** What happened since the member's previous visit (server analytics.ts /activity/since). */
+export type SinceVisit = {
+  since: string | null;
+  calls: { id: string; tvSymbol: string; indicator: string; timeframe: string; label: string; status: string; at: string }[];
+  hits: { id: string; tvSymbol: string; price: number; direction: 'above' | 'below'; at: string }[];
+  analyses: { id: string; ticker: string; rating: string | null; at: string }[];
+};
+
 export type CandleSeries = {
   symbol: string;
   currency: string | null;
@@ -750,6 +767,11 @@ export const api = {
   adminErrors: () => request<{ items: ServerError[]; lastDay: number }>('/admin/errors'),
   /** The public status page's data (server/src/status.ts). */
   serviceStatus: () => request<ServiceStatus>('/public/status'),
+  /** Last prices for many symbols (engine spelling), for the Pasar list and Pantauanku. */
+  quotes: (symbols: string[]) => request<{ quotes: Record<string, Quote | null> }>(`/quotes?symbols=${encodeURIComponent(symbols.join(','))}`),
+  sinceVisit: () => request<SinceVisit>('/activity/since'),
+  publicMarket: () => request<MarketQuote[]>('/public/market'),
+  publicBrief: () => request<MarketBrief>('/public/brief'),
   claimOrder: (id: string, note: string) => request<Payment>(`/billing/orders/${id}/claim`, { method: 'POST', body: JSON.stringify({ note }) }),
   cancelOrder: (id: string) => request<Payment>(`/billing/orders/${id}/cancel`, { method: 'POST' }),
   adminPayments: (status: 'open' | 'paid' | 'all') => request<AdminPayment[]>(`/admin/payments?status=${status}`),

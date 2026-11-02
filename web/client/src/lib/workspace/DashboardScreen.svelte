@@ -1,5 +1,6 @@
 <script lang="ts">
-  // Beranda: how the member's signals are doing. The calls their notifications made over a
+  // Beranda: first the day's summary (MorningSummary: markets, what changed while away,
+  // Pantauanku, the AI brief), then how the member's signals are doing. The calls their notifications made over a
   // chosen period (server/src/alerts.ts GET /alerts/history: live signals only, R from targets
   // and stops), by day, by indicator and by asset, with the calls themselves; beside them what
   // runs now and what today holds (open calls, quota, scheduled analyses, price alerts). Each
@@ -10,6 +11,7 @@
   import { usage } from '../stores/usage.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
+  import MorningSummary from './MorningSummary.svelte';
   import ResultCurve from './ResultCurve.svelte';
 
   const PERIODS = [
@@ -107,6 +109,8 @@
 <div class="h-full overflow-auto">
   <h1 class="sr-only">Beranda</h1>
   <div class="mx-auto grid w-full max-w-6xl gap-x-8 gap-y-8 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+    <!-- What a trader checks first, before their own signals' record. -->
+    <div class="min-w-0 lg:col-span-2"><MorningSummary /></div>
     <section class="flex min-w-0 flex-col gap-5" aria-labelledby="signals-title">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div class="flex flex-col gap-0.5">

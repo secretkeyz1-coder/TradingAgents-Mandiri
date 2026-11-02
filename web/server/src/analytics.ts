@@ -4,13 +4,13 @@
 // member. Online means a beat in the last ONLINE_MINUTES; a session is a run of active minutes
 // with no gap longer than SESSION_GAP_MINUTES. Periods end today and start at a WIB midnight,
 // so a 30-day period has 30 whole days.
-import { and, count, desc, eq, gte, isNotNull, max, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNotNull, isNull, max, ne, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ACTIVITY_SCREENS, ACTIVITY_TABS, KEEP_DAYS, recordMinute } from "./activity";
 import { requireAdmin, type AppEnv } from "./auth";
 import { db } from "./db";
-import { activityEvents, activityMinutes, users } from "./db/schema";
+import { activityEvents, activityMinutes, analyses, priceAlerts, signalEvents, users } from "./db/schema";
 import { planOf } from "./plans";
 
 const ONLINE_MINUTES = 3;
@@ -34,6 +34,56 @@ analyticsApi.post("/activity", async (c) => {
   if (!body.success) return c.json({ error: "Data aktivitas tidak valid" }, 400);
   await recordMinute(c.get("user"), { ...body.data, symbol: body.data.symbol?.toUpperCase() });
   return c.body(null, 204);
+});
+
+/**
+ * When the member's previous visit ended: walking back from now through their minutes, the
+ * first gap longer than a session's. Null on a first visit, or for an account not recorded.
+ */
+export async function previousVisit(userId: string, now = Date.now()): Promise<Date | null> {
+  const rows = await db
+    .select({ minute: activityMinutes.minute })
+    .from(activityMinutes)
+    .where(and(eq(activityMinutes.userId, userId), gte(activityMinutes.minute, new Date(now - 30 * 86_400_000))))
+    .orderBy(desc(activityMinutes.minute))
+    .limit(3000);
+  let after = now;
+  for (const { minute } of rows) {
+    const at = new Date(minute).getTime();
+    if (after - at > SESSION_GAP_MINUTES * 60_000) return new Date(at + 60_000);
+    after = at;
+  }
+  return null;
+}
+
+/** What happened while the member was away, for Beranda: new signal calls, price levels hit, analyses finished. */
+analyticsApi.get("/activity/since", async (c) => {
+  const user = c.get("user");
+  const since = await previousVisit(user.id);
+  if (!since) return c.json({ since: null, calls: [], hits: [], analyses: [] });
+  const [calls, hits, finished] = await Promise.all([
+    db
+      .select({ id: signalEvents.id, tvSymbol: signalEvents.tvSymbol, indicator: signalEvents.indicator, timeframe: signalEvents.timeframe, label: signalEvents.label, status: signalEvents.status, at: signalEvents.createdAt })
+      .from(signalEvents)
+      // A live call, not the history a new notification records silently on its first scan.
+      .where(and(eq(signalEvents.userId, user.id), gt(signalEvents.createdAt, since), or(isNotNull(signalEvents.notifiedAt), isNull(signalEvents.closeNotifiedAt))))
+      .orderBy(desc(signalEvents.createdAt))
+      .limit(20),
+    db
+      .select({ id: priceAlerts.id, tvSymbol: priceAlerts.tvSymbol, price: priceAlerts.price, direction: priceAlerts.direction, at: priceAlerts.triggeredAt })
+      .from(priceAlerts)
+      .where(and(eq(priceAlerts.userId, user.id), gt(priceAlerts.triggeredAt, since)))
+      .orderBy(desc(priceAlerts.triggeredAt))
+      .limit(20),
+    db
+      .select({ id: analyses.id, ticker: analyses.ticker, rating: analyses.rating, at: analyses.finishedAt })
+      .from(analyses)
+      .where(and(eq(analyses.userId, user.id), eq(analyses.kind, "analysis"), eq(analyses.status, "completed"), gt(analyses.finishedAt, since)))
+      .orderBy(desc(analyses.finishedAt))
+      .limit(20),
+  ]);
+  const stamp = <T extends { at: Date | string | null }>(rows: T[]) => rows.map((r) => ({ ...r, at: iso(r.at) }));
+  return c.json({ since: since.toISOString(), calls: stamp(calls), hits: stamp(hits), analyses: stamp(finished) });
 });
 
 analyticsApi.use("/admin/activity", requireAdmin);

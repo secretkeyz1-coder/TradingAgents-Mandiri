@@ -24,8 +24,8 @@ Mode Pro punya lima layar, dipilih dari menu di bilah atas (di ponsel dari tab b
 
 | Layar | Isi |
 | --- | --- |
-| Beranda | Kinerja sinyalmu: call dari notifikasi sinyal dan hasilnya untuk 7 hari sampai 1 tahun (jumlah call, TP, SL, rasio menang, total R, R kumulatif per hari, per indikator, per aset, riwayat call yang bisa disaring), lalu yang berjalan sekarang, kuota hari ini, analisa terjadwal, dan alert harga |
-| Pasar | Daftar harga per pasar (IDX, US, Crypto, Forex, Komoditas) di kiri, chart di tengah ("Keputusan AI", bawaan sejak November 2026: harga terakhir dan perubahan hari ini, candle + marker setiap keputusan, dengan Indikator dan Notifikasi; atau TradingView), Screener di panel bawah |
+| Beranda | Ringkasan hari ini di atas: pasar utama (IHSG, emas, Bitcoin, USD/IDR, S&P 500) dengan perubahan hari ini dan garis sebulan, apa yang terjadi sejak terakhir buka (sinyal baru, alert harga yang kena, analisa yang selesai; dari menit aktivitas), Pantauanku dengan harga live dan keputusan AI terakhir, dan ringkasan pasar AI. Di bawahnya kinerja sinyalmu: call dari notifikasi sinyal dan hasilnya untuk 7 hari sampai 1 tahun (jumlah call, TP, SL, rasio menang, total R, R kumulatif per hari, per indikator, per aset, riwayat call yang bisa disaring), lalu yang berjalan sekarang, kuota hari ini, analisa terjadwal, dan alert harga |
+| Pasar | Daftar harga per pasar (IDX, US, Crypto, Forex, Komoditas) di kiri, dengan harga terakhir dan perubahan hari ini dari `GET /api/quotes` (data harian yang sama dengan chart), chart di tengah ("Keputusan AI", bawaan sejak November 2026: harga terakhir dan perubahan hari ini, candle + marker setiap keputusan, dengan Indikator dan Notifikasi; atau TradingView), Screener di panel bawah |
 | Riset AI | Chart simbol aktif, panel **Tanya** (agent chart) dan **Jalankan** (analisa yang terbuka, keputusan terakhir, form analisa) di kanan, dan Riwayat, Laporan, Log di panel bawah |
 | Pantau | Hanya yang kamu pantau: Analisa terjadwal dan Alert (semua alert harga dan sinyal) |
 | Uji strategi | Backtest (form, daftar, hasil), Lab, dan Strategi live (buku sinyal strategi bawaan) |
@@ -494,6 +494,8 @@ Referensi lengkapnya ada di [`docs/api/openapi.json`](../docs/api/openapi.json) 
 | GET | `/api/candles?symbol=&range=&interval=` | Candle Yahoo; `range` `6mo`/`1y`/`2y`/`5y`, `interval` `1h`/`4h`/`1d`/`1wk`/`1mo` (default `1d`) |
 | GET | `/api/decisions?ticker=` | Semua keputusan AI untuk satu ticker |
 | GET | `/api/verdict?ticker=` | Satu saran untuk layar Pemula: analisa selesai terakhir milik pengguna, atau pandangan ringkasan pasar AI, atau `null` |
+| GET | `/api/quotes?symbols=` | Harga terakhir dan perubahan dari penutupan sebelumnya untuk maksimal 80 simbol (ejaan mesin: `BBCA.JK`, `BTC-USD`), untuk daftar Pasar dan Pantauanku |
+| GET | `/api/activity/since` | Yang terjadi sejak kunjungan sebelumnya (jeda lebih dari 15 menit di menit aktivitas): sinyal baru, alert harga yang kena, analisa yang selesai |
 | GET | `/api/indicators` | Indikator chart yang boleh dipakai akun ini (katalog admin), dengan kode skrip yang diterbitkan untuk sandbox chart |
 | POST | `/api/analyses` | Mulai analisa baru |
 | GET | `/api/analyses/:id` | Detail, status agent, laporan |
