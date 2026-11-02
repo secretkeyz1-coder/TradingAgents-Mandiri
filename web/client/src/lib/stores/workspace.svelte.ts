@@ -60,7 +60,7 @@ export const SCREENS: { key: Screen; label: string; tabs: { key: DockTab; label:
     key: 'pantau',
     label: 'Pantau',
     tabs: [
-      { key: 'watch', label: 'Analisa terjadwal' },
+      { key: 'watch', label: 'Pantauanku' },
       { key: 'alerts', label: 'Alert' },
       { key: 'journal', label: 'Jurnal' },
     ],

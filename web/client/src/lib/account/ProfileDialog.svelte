@@ -153,7 +153,7 @@
           </p>
         {/if}
         <p class="text-xs text-base-content/70">
-          Uji indikator {auth.user.limits.labRuns}/hari · notifikasi {auth.user.limits.alerts} · analisa terjadwal {auth.user.limits.watchlist} simbol · skrip {auth.user.limits.scripts}. Kuota harian
+          Uji indikator {auth.user.limits.labRuns}/hari · notifikasi {auth.user.limits.alerts} · Pantauanku {auth.user.limits.watchlist} aset · skrip {auth.user.limits.scripts}. Kuota harian
           reset pukul 00.00 WIB.
         </p>
       </section>

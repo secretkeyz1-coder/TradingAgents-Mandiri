@@ -46,11 +46,10 @@
   {:else}
     <label class="flex cursor-pointer items-start justify-between gap-4" class:cursor-not-allowed={!ws.yahoo || full}>
       <span class="flex flex-col gap-0.5">
-        <span class="font-medium">Ringkasan AI harian</span>
+        <span class="font-medium">Pantauanku: analisa AI harian</span>
         <span class="text-sm text-base-content/70">
           {#if ws.yahoo}
             {name} dianalisa AI {days} pukul {w.schedule.time.replace(':', '.')} WIB{w.telegram.configured ? ', lalu hasilnya dikirim ke Telegram-mu' : ''}.
-            {on ? 'Aset ini ada di Pantauanku.' : 'Menyalakannya juga menyimpan aset ini di Pantauanku.'}
           {:else}
             Aset ini belum bisa dianalisa AI.
           {/if}

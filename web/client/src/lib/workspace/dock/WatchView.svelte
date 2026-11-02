@@ -1,13 +1,15 @@
 <script lang="ts">
-  // Pantau → Analisa terjadwal (the server's watchlist, server/src/watch.ts): what
+  // Pantau → Pantauanku (the server's watchlist, server/src/watch.ts): what
   // the server analyses on its own each trading day, the latest decision for each symbol, and
-  // whether Telegram gets the summary. A symbol joins from the star on the chart's head or the market list.
+  // whether Telegram gets the summary. A symbol joins from the star on the chart's head or the market list,
+  // or here: the asset last opened, or, while the list is empty, the popular ones Beranda offers.
   import { auth } from '../../auth.svelte';
+  import { friendlyName, STARTERS } from '../../beginner/plain';
   import { formatDateTime, ratingBadge } from '../../format';
   import { usage } from '../../stores/usage.svelte';
   import { watch } from '../../stores/watch.svelte';
   import { ws } from '../../stores/workspace.svelte';
-  import { assetCode } from '../../tv';
+  import { assetCode, toYahoo } from '../../tv';
   import StatusBadge from '../../StatusBadge.svelte';
 
   watch.load();
@@ -48,7 +50,7 @@
             Analisa tetap berjalan dan hasilnya ada di Riwayat.
           </p>
         {:else}
-          <p class="text-xs text-warning">Isi chat ID Telegram-mu di menu akun → Profil untuk menerima ringkasan. Analisa tetap berjalan tanpa itu.</p>
+          <p class="text-xs text-warning">Sambungkan Telegram di menu akun → Profil → Notifikasi untuk menerima ringkasan. Analisa tetap berjalan tanpa itu.</p>
         {/if}
       </div>
       <div class="flex shrink-0 flex-wrap gap-2">
@@ -70,10 +72,24 @@
     {#if watch.error}<p role="alert" class="text-sm text-error">{watch.error}</p>{/if}
     {#if watch.notice}<p role="status" class="text-sm text-success">{watch.notice}</p>{/if}
 
+    {#if ws.yahoo && !watch.has(ws.yahoo) && w.items.length < w.max}
+      <div class="flex flex-wrap items-center gap-2">
+        <button class="btn btn-sm" disabled={watch.busy} onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}>+ {friendlyName(ws.symbol)}</button>
+        <span class="text-xs text-base-content/70">aset yang terakhir kamu buka</span>
+      </div>
+    {/if}
+
     {#if !w.items.length}
       <p class="text-sm text-base-content/70">
-        Belum ada simbol. Buka chart sebuah saham, kripto, atau forex, lalu klik <strong>Analisa harian</strong> di atas chart (maksimal {w.max}).
+        Belum ada aset. Tambahkan yang kamu ikuti, dan AI menganalisanya tiap hari bursa (maksimal {w.max}). Bisa juga lewat bintang di kepala
+        chart atau di daftar pasar.
       </p>
+      <div class="flex flex-wrap gap-2">
+        {#each STARTERS as [tv, name] (tv)}
+          {@const yahoo = toYahoo(tv)}
+          {#if yahoo && yahoo !== ws.yahoo}<button class="btn btn-sm" disabled={watch.busy} onclick={() => watch.toggle(yahoo, tv)}>+ {name}</button>{/if}
+        {/each}
+      </div>
     {:else}
       <div class="overflow-x-auto">
         <table class="table table-sm">

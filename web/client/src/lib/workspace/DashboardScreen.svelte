@@ -377,13 +377,13 @@
 
       <section aria-labelledby="watch-title">
         <div class="flex items-baseline justify-between gap-2">
-          <h2 id="watch-title" class="text-sm font-semibold">Analisa terjadwal</h2>
+          <h2 id="watch-title" class="text-sm font-semibold">Analisa Pantauanku</h2>
           <button class="link link-hover text-xs" onclick={() => ws.setDock('watch')}>Kelola</button>
         </div>
         {#if !watch.value}
           <p class="mt-1 text-sm text-base-content/70">Memuat…</p>
         {:else if !watch.value.items.length}
-          <p class="mt-1 text-sm text-base-content/70">Belum ada. Klik Analisa harian di atas chart untuk menambah simbol.</p>
+          <p class="mt-1 text-sm text-base-content/70">Belum ada. Klik bintang di kepala chart atau di daftar pasar untuk menambah aset.</p>
         {:else}
           <ul class="mt-2 flex flex-col gap-1.5">
             {#each watch.value.items.slice(0, 5) as item (item.symbol)}
