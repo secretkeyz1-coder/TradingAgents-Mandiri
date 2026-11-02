@@ -35,3 +35,17 @@ test("a run the server lost does not use up the day's analyses", async () => {
   // The crashed run and the finished one, the two cells the stopped backtest ran, the five the running one holds.
   expect(usage.body.analyses.used).toBe(1 + 1 + 2 + 5);
 });
+
+// The first catalog read starts Python (web/worker), so the chat call can take a while.
+test("an unverified member is told who opens the AI, not sent to a link that never came", async () => {
+  const m = await member();
+  const session = await call("/api/agent/sessions", { cookie: m.cookie, body: { symbol: "BBCA.JK" } });
+  expect(session.status).toBe(201);
+  const turn = await call(`/api/agent/sessions/${session.body.id}/messages`, {
+    cookie: m.cookie,
+    body: { message: "Bagaimana BBCA hari ini?", provider: "openai", quickModel: "m", deepModel: "m" },
+  });
+  expect(turn.status).toBe(429);
+  // The test server sends no mail, so the admin verifies new accounts.
+  expect(turn.body.error).toBe("Analisa AI dan Tanya AI terbuka setelah admin memverifikasi akunmu, biasanya di hari yang sama.");
+}, 60_000);

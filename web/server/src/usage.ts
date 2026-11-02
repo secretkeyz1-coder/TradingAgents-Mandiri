@@ -9,7 +9,8 @@ import { and, count, eq, gte, type SQL } from "drizzle-orm";
 import type { User } from "./auth";
 import { db } from "./db";
 import { SERVER_STOPPED, WORKER_STOPPED } from "./jobs";
-import { limitsOf, needsPhone, needsVerification, planOf } from "./plans";
+import { mailEnabled } from "./mail";
+import { limitsOf, needsPhone, needsVerification, paymentsOpen, planOf } from "./plans";
 import { agentMessages, agentSessions, analyses } from "./db/schema";
 
 const DAY_MS = 86_400_000;
@@ -95,16 +96,21 @@ export async function room(user: User, kind: Kind): Promise<number> {
 
 /** Why `add` more analyses (or chat turns) would go over a cap today, or null when they fit. */
 export async function overLimit(user: User, kind: Kind, add = 1): Promise<string | null> {
-  if (needsVerification(user)) return "Verifikasi email kamu dulu untuk memakai analisa AI dan chat agent. Tautannya ada di email pendaftaran.";
-  if (needsPhone(user)) return "Isi nomor WhatsApp-mu dulu untuk memakai analisa AI dan chat agent.";
+  // Without mail no link was sent: the admin verifies new accounts by hand (Konsol admin → Pengguna).
+  if (needsVerification(user))
+    return mailEnabled()
+      ? "Verifikasi email kamu dulu untuk memakai analisa AI dan Tanya AI. Tautannya ada di email pendaftaran."
+      : "Analisa AI dan Tanya AI terbuka setelah admin memverifikasi akunmu, biasanya di hari yang sama.";
+  if (needsPhone(user)) return "Isi nomor WhatsApp-mu dulu untuk memakai analisa AI dan Tanya AI.";
   const left = await room(user, kind);
   if (add <= left) return null;
   const mine = (await usage(user))[kind];
-  const what = kind === "analyses" ? "analisa (1 sel backtest = 1 analisa)" : "pesan chat agent";
+  const what = kind === "analyses" ? "analisa (1 sel backtest = 1 analisa)" : "pesan Tanya AI";
   const ownFull = mine.limit && mine.used + add > mine.limit;
   const head = ownFull
     ? `Batas harian ${mine.limit} ${what} untuk akunmu tercapai: ${mine.used} terpakai hari ini`
     : `Batas harian total server untuk ${what} tercapai`;
-  const upgrade = ownFull && user.role !== "admin" && planOf(user) !== "creator" ? " Naikkan paket di menu akun → Paket & tagihan untuk kuota lebih besar." : "";
+  const more = paymentsOpen() ? " Naikkan paket di menu akun → Paket & tagihan untuk kuota lebih besar." : " Hubungi admin untuk kuota lebih besar.";
+  const upgrade = ownFull && user.role !== "admin" && planOf(user) !== "creator" ? more : "";
   return `${head}${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.${upgrade}`;
 }

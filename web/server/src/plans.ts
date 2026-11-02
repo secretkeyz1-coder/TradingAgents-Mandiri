@@ -27,10 +27,14 @@ export function onTrial(u: PlanFields & Pick<User, "trialStartedAt">): boolean {
   );
 }
 
-/** "Paket Gratis maksimal 3 notifikasi." and where to get more. */
+/** Whether a member can order a plan in the app: billing.ts takes orders only with PAYMENT_INSTRUCTIONS (the bank account or QRIS). */
+export const paymentsOpen = () => Boolean(process.env.PAYMENT_INSTRUCTIONS?.trim());
+
+/** "Paket Gratis maksimal 3 notifikasi." and where to get more: Paket & tagihan, or the admin while payments are closed. */
 export function capMessage(u: PlanFields, limit: number, what: string): string {
   const plan = planOf(u);
-  return `Paket ${PLANS[plan].name} maksimal ${limit} ${what}.${plan === "creator" ? "" : " Naikkan paket di menu akun → Paket & tagihan."}`;
+  const more = plan === "creator" ? "" : paymentsOpen() ? " Naikkan paket di menu akun → Paket & tagihan." : " Hubungi admin untuk paket yang lebih besar.";
+  return `Paket ${PLANS[plan].name} maksimal ${limit} ${what}.${more}`;
 }
 
 /** When a trial that starts now ends. */

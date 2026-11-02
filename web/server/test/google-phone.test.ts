@@ -24,7 +24,7 @@ test("a Google account owes a phone number before AI features, and keeps it", as
   expect(me.body).toMatchObject({ google: true, phone: null, needsPhone: true });
   const held = await analysis(m.cookie);
   expect(held.status).toBe(429);
-  expect(held.body.error).toBe("Isi nomor WhatsApp-mu dulu untuk memakai analisa AI dan chat agent.");
+  expect(held.body.error).toBe("Isi nomor WhatsApp-mu dulu untuk memakai analisa AI dan Tanya AI.");
 
   const wrong = await call("/api/me", { method: "PATCH", cookie: m.cookie, body: { phone: "12" } });
   expect(wrong.status).toBe(400);

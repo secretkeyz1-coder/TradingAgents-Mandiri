@@ -18,6 +18,7 @@ import { recordError } from "./errors";
 import { enqueue, subscribe, TERMINAL } from "./jobs";
 import { leaderOnly } from "./locks";
 import { log } from "./log";
+import { mailEnabled } from "./mail";
 import { SYMBOL_PATTERN } from "./market";
 import { capMessage, limitsOf, needsVerification } from "./plans";
 import { readShared, writeShared } from "./shared";
@@ -190,7 +191,8 @@ async function notifyWhenDone(userId: string, ids: string[], skipped: string[], 
 
 /** Queue one analysis per symbol on this user's watchlist, as many as today's caps allow. */
 async function startRun(user: User, runId?: string): Promise<{ ids: string[]; skipped: string[] } | { error: string }> {
-  if (needsVerification(user)) return { error: "Verifikasi email kamu dulu untuk menjalankan analisa harian" };
+  if (needsVerification(user))
+    return { error: mailEnabled() ? "Verifikasi email kamu dulu untuk menjalankan analisa harian" : "Analisa harian berjalan setelah admin memverifikasi akunmu" };
   // As many symbols as the plan holds, oldest first: a lapsed plan pauses the rest.
   const items = (await db.select().from(watchlist).where(eq(watchlist.userId, user.id)).orderBy(asc(watchlist.createdAt))).slice(0, limitsOf(user).watchlist);
   if (!items.length) return { error: "Belum ada simbol untuk analisa harian" };
