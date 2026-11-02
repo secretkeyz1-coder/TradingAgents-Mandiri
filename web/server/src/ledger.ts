@@ -102,16 +102,27 @@ const COSTS: Record<string, Cost> = (() => {
 })();
 
 /**
+ * IDX shares pay their broker on both legs, market or limit order alike: about 0.15% to buy and 0.25%
+ * to sell at the usual online brokers, the 0.1% final tax on sales included.
+ */
+const IDX_ROUND_TRIP = 0.004;
+const isIdx = (symbol: string) => symbol.toUpperCase().endsWith(".JK");
+
+/**
  * Round-trip cost of one trade in price units. Taker (market orders): crypto 0.2% on every venue
  * (Binance's base taker fee, 0.1%, on entry and exit; slippage not included; 0.12% until November
- * 2026, see drizzle/0013), gold 0.40 USD, others 0.10%, or SIGNAL_COSTS ("BTC-USD@indodax" for one
- * venue, an abs cost then in its quote currency). Maker (limit orders at the level, for the strategy
- * lab): crypto 0.2% as well, Binance's base maker fee being 0.1% a side too (0.05% until November
- * 2026); others 0.05%; gold stays 0.40 USD, its cost being the broker's spread.
+ * 2026, see drizzle/0013), gold 0.40 USD, IDX shares 0.4%, others 0.10%, or SIGNAL_COSTS
+ * ("BTC-USD@indodax" for one venue, an abs cost then in its quote currency). Maker (limit orders at
+ * the level, for the strategy lab): crypto 0.2% as well, Binance's base maker fee being 0.1% a side
+ * too (0.05% until November 2026); IDX shares 0.4% as well; others 0.05%; gold stays 0.40 USD, its
+ * cost being the broker's spread.
  */
 export function tradeCost(symbol: string, price: number, maker = false, venue = ""): number {
-  if (maker) return symbol === "GC=F" ? 0.4 : (binancePair(symbol) ? 0.002 : 0.0005) * price;
-  const c = COSTS[`${symbol}@${venue}`] ?? COSTS[symbol] ?? (binancePair(symbol) ? { pct: 0.002 } : symbol === "GC=F" ? { abs: 0.4 } : { pct: 0.001 });
+  if (maker) return symbol === "GC=F" ? 0.4 : (binancePair(symbol) ? 0.002 : isIdx(symbol) ? IDX_ROUND_TRIP : 0.0005) * price;
+  const c =
+    COSTS[`${symbol}@${venue}`] ??
+    COSTS[symbol] ??
+    (binancePair(symbol) ? { pct: 0.002 } : symbol === "GC=F" ? { abs: 0.4 } : isIdx(symbol) ? { pct: IDX_ROUND_TRIP } : { pct: 0.001 });
   return c.abs ?? (c.pct ?? 0) * price;
 }
 

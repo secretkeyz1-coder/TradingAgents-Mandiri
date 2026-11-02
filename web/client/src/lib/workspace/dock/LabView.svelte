@@ -235,7 +235,10 @@
             <option value="taker">Order pasar (taker)</option>
             <option value="maker">Order limit (maker)</option>
           </select>
-          {#if costs === 'maker'}<span class="text-xs text-base-content/70">Kripto: maker sama dengan taker, 0,2% per trade (fee dasar Binance 0,1% per sisi).</span>{/if}
+          <span class="text-xs text-base-content/70">
+            {costs === 'maker' ? 'Kripto: maker sama dengan taker, 0,2% per trade (fee dasar Binance 0,1% per sisi). ' : ''}Saham IDX: 0,4% per
+            trade untuk order pasar maupun limit (fee broker sekitar 0,15% beli dan 0,25% jual, termasuk pajak jual 0,1%).
+          </span>
         </label>
         <label class="flex flex-col gap-1">
           Bagian data uji
