@@ -3,9 +3,12 @@
 // with the chart agent. Each user has a cap (their own, or the server default),
 // and the server has a total cap across users. Counted from the rows already
 // stored, per day in WIB, so it survives restarts. A limit of 0 turns that cap off.
+// A member pays for what they got: a run a restart or deploy cut off is given back,
+// and a backtest that stopped early counts the cells it ran.
 import { and, count, eq, gte, type SQL } from "drizzle-orm";
 import type { User } from "./auth";
 import { db } from "./db";
+import { SERVER_STOPPED, WORKER_STOPPED } from "./jobs";
 import { limitsOf, needsPhone, needsVerification, planOf } from "./plans";
 import { agentMessages, agentSessions, analyses } from "./db/schema";
 
@@ -35,13 +38,23 @@ function dayStart(now = Date.now()): Date {
 
 async function analysesUsed(since: Date, userId?: string): Promise<number> {
   const rows = await db
-    .select({ kind: analyses.kind, status: analyses.status, startedAt: analyses.startedAt, progress: analyses.progress })
+    .select({ kind: analyses.kind, status: analyses.status, error: analyses.error, startedAt: analyses.startedAt, progress: analyses.progress })
     .from(analyses)
     .where(and(gte(analyses.createdAt, since), userId ? eq(analyses.userId, userId) : undefined));
+  return rows.reduce((sum, r) => sum + charged(r), 0);
+}
+
+type Run = { kind: string; status: string; error: string | null; startedAt: Date | null; progress: { done: number; total: number } | null };
+
+/** What one stored run takes from the day: an analysis 1 and a backtest its cells, less what the member never got. */
+function charged(r: Run): number {
   // Cancelled before it started: no model was called.
-  return rows
-    .filter((r) => !(r.status === "cancelled" && !r.startedAt))
-    .reduce((sum, r) => sum + (r.kind === "backtest" ? (r.progress?.total ?? 1) : 1), 0);
+  if (r.status === "cancelled" && !r.startedAt) return 0;
+  // Cut off by a restart or deploy (jobs.ts): the server's doing, not the member's.
+  const lost = r.status === "failed" && (r.error === WORKER_STOPPED || r.error === SERVER_STOPPED);
+  if (r.kind !== "backtest") return lost ? 0 : 1;
+  // A backtest holds all its cells while it runs; once it stops early, only those that ran (kept for its resume).
+  return r.status === "failed" || r.status === "cancelled" ? (r.progress?.done ?? 0) : (r.progress?.total ?? 1);
 }
 
 async function chatUsed(since: Date, userId?: string): Promise<number> {

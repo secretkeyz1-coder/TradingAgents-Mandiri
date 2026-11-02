@@ -20,6 +20,10 @@ import { recordError } from "./errors";
 import { leaderOnly } from "./locks";
 import { runJob, type WorkerEvent, type WorkerHandle } from "./worker";
 
+/** Why a run failed when its worker or server stopped (a restart, a deploy) rather than the run itself: usage.ts gives the day's quota back for these. */
+export const WORKER_STOPPED = "Worker berhenti karena restart atau deploy. Jalankan lagi analisanya.";
+export const SERVER_STOPPED = "Server yang menjalankan analisa ini berhenti.";
+
 /** What subscribers receive: a stored worker event, or the run's end. */
 export type LiveEvent = { seq: number; type: string } & Record<string, unknown>;
 
@@ -233,7 +237,7 @@ export async function stopRunner() {
   if (!ids.length) return;
   const failed = await db
     .update(analyses)
-    .set({ status: "failed", error: "Worker berhenti karena restart atau deploy. Jalankan lagi analisanya.", finishedAt: new Date() })
+    .set({ status: "failed", error: WORKER_STOPPED, finishedAt: new Date() })
     .where(and(inArray(analyses.id, ids), eq(analyses.status, "running")))
     .returning({ id: analyses.id });
   for (const { id } of failed) await announce(`end:${id}`);
@@ -403,7 +407,7 @@ export async function failOrphans() {
   const stale = new Date(Date.now() - config.jobStaleMs);
   const failed = await db
     .update(analyses)
-    .set({ status: "failed", error: "Server yang menjalankan analisa ini berhenti.", finishedAt: new Date() })
+    .set({ status: "failed", error: SERVER_STOPPED, finishedAt: new Date() })
     .where(and(eq(analyses.status, "running"), or(isNull(analyses.heartbeatAt), lt(analyses.heartbeatAt, stale))))
     .returning({ id: analyses.id });
   for (const { id } of failed) await announce(`end:${id}`);
