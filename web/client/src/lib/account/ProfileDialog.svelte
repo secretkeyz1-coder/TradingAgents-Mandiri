@@ -3,6 +3,7 @@
   // e-mail, WhatsApp), Notifikasi (the Telegram chat that gets their messages),
   // Halaman publik (the public track record, Creator) and Keamanan (password,
   // two-step sign-in). `start` opens it on one of them.
+  import { supportContact } from '../../../../shared/brand';
   import { PLANS } from '../../../../shared/plans';
   import { api } from '../api';
   import { auth } from '../auth.svelte';
@@ -11,6 +12,9 @@
   import TelegramConnect from '../TelegramConnect.svelte';
   import PublicProfileSection from './PublicProfileSection.svelte';
   import TwoFactorSection from './TwoFactorSection.svelte';
+
+  const contact = supportContact();
+  const noMail = `Pengiriman email belum diatur di server; minta admin memverifikasi alamatmu${contact ? ` lewat ${contact.label}` : ''}.`;
 
   type Tab = 'akun' | 'notifikasi' | 'publik' | 'keamanan';
   let { onclose, start = 'akun' }: { onclose: () => void; start?: Tab } = $props();
@@ -77,7 +81,7 @@
       auth.user = r.user;
       emailMessage = r.mailed
         ? `Tautan verifikasi dikirim ke ${newEmail.trim()}. Alamat baru berlaku setelah tautannya dibuka.`
-        : 'Pengiriman email belum diatur di server; minta admin memverifikasi alamatmu.';
+        : noMail;
       newEmail = '';
     } catch (e) {
       emailError = (e as Error).message;
@@ -88,7 +92,7 @@
     emailMessage = emailError = '';
     try {
       const r = await api.resendVerification();
-      emailMessage = r.mailed ? 'Tautan verifikasi baru sudah dikirim.' : 'Pengiriman email belum diatur di server; minta admin memverifikasi alamatmu.';
+      emailMessage = r.mailed ? 'Tautan verifikasi baru sudah dikirim.' : noMail;
     } catch (e) {
       emailError = (e as Error).message;
     }

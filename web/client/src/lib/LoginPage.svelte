@@ -3,9 +3,11 @@
   // sign-in, on one card. Field names and autocomplete hints let a password
   // manager fill them in. Sign-up and Google show only when the server offers
   // them (SIGNUP=open, GOOGLE_CLIENT_ID).
-  import { BRAND } from '../../../shared/brand';
+  import { BRAND, supportContact } from '../../../shared/brand';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
+
+  const contact = supportContact();
 
   type Mode = 'login' | 'signup' | 'forgot' | 'reset' | '2fa';
   let { mode: initial = 'login', token = '' }: { mode?: Mode; token?: string } = $props();
@@ -83,7 +85,9 @@
           Gratis selamanya untuk dicoba. Paket Pro aktif {auth.config.trialDays} hari setelah {auth.config.mail ? 'emailmu terverifikasi' : 'akunmu diverifikasi admin'}.
         </p>
       {:else if mode === 'forgot'}
-        <p class="text-sm text-base-content/70">Masukkan email akunmu. Kami kirim tautan untuk membuat kata sandi baru.</p>
+        <p class="text-sm text-base-content/70">
+          {auth.config.mail ? 'Masukkan email akunmu. Kami kirim tautan untuk membuat kata sandi baru.' : 'Server ini belum bisa mengirim email, jadi kata sandi baru dibuatkan oleh admin.'}
+        </p>
       {:else if mode === '2fa'}
         <p class="text-sm text-base-content/70">
           {recovery
@@ -123,10 +127,22 @@
         <p>Pendaftaran belum dibuka untuk umum. Kalau kamu sudah punya akun, silakan masuk.</p>
         <button class="btn btn-sm self-start" onclick={() => go('login')}>Masuk</button>
       </div>
+    {:else if mode === 'forgot' && !auth.config.mail}
+      <!-- Without mail no link can reach the member: say who resets the password instead of pretending to send one. -->
+      <div class="flex flex-col gap-3 text-sm">
+        <ol class="list-decimal space-y-1.5 pl-5">
+          <li>
+            {#if contact}Hubungi admin lewat <a class="link" href={contact.href} target="_blank" rel="noopener">{contact.label}</a>{:else}Hubungi admin yang memberimu akses{/if}
+            dan sebutkan email atau nama pengguna akunmu.
+          </li>
+          <li>Admin membuatkan kata sandi sementara untukmu.</li>
+          <li>Masuk dengan kata sandi itu, lalu ganti di Profil → Keamanan.</li>
+        </ol>
+        <button class="btn btn-sm self-start" onclick={() => go('login')}>Kembali ke Masuk</button>
+      </div>
     {:else if mode === 'forgot' && sent}
       <div role="status" class="flex flex-col gap-3 text-sm">
         <p>Kalau <strong>{email.trim()}</strong> terdaftar, tautan untuk membuat kata sandi baru sudah dikirim. Cek juga folder spam; tautannya berlaku 1 jam.</p>
-        {#if !auth.config.mail}<p class="text-warning">Pengiriman email belum diatur di server ini. Minta admin mengatur ulang kata sandimu.</p>{/if}
         <button class="btn btn-ghost btn-sm self-start" onclick={() => go('login')}>Kembali ke Masuk</button>
       </div>
     {:else}

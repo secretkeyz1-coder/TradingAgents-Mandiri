@@ -4,9 +4,14 @@
   // bank details, say it is paid, and see past orders with their invoices. An
   // admin confirms the payment (admin/PaymentsPage); a coupon that covers the whole
   // price activates the plan at once.
+  import { supportContact } from '../../../../shared/brand';
   import { FOUNDING, PERIOD_LABEL, PLANS, rupiah, type Period } from '../../../../shared/plans';
   import { api, type Billing, type CouponQuote, type Payment } from '../api';
   import { auth } from '../auth.svelte';
+
+  const contact = supportContact();
+  /** Where the news of a confirmed payment goes: only the channels this server and account really have. */
+  const news = $derived([auth.config.mail && 'email', auth.user?.telegramChatId && 'Telegram'].filter(Boolean).join(' dan '));
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -140,11 +145,14 @@
             </div>
           </div>
         {:else}
-          <p class="text-sm">Admin sedang memeriksa pembayaranmu. Paket aktif setelah dikonfirmasi; kabarnya dikirim lewat email{auth.user?.telegramChatId ? ' dan Telegram' : ''}.</p>
+          <p class="text-sm">Admin sedang memeriksa pembayaranmu. Paket aktif setelah dikonfirmasi{news ? `; kabarnya dikirim lewat ${news}` : ', jadi buka lagi halaman ini nanti'}.</p>
         {/if}
       </section>
     {:else if !billing.open}
-      <p class="rounded-box bg-base-200 p-3 text-sm">Pembayaran belum dibuka. Hubungi admin untuk berlangganan.</p>
+      <p class="rounded-box bg-base-200 p-3 text-sm">
+        Pembayaran belum dibuka. Hubungi admin untuk berlangganan{#if contact}
+          lewat <a class="link" href={contact.href} target="_blank" rel="noopener">{contact.label}</a>{/if}.
+      </p>
     {:else}
       {#if seats}
         <section class="flex flex-wrap items-center justify-between gap-3 rounded-box border border-accent/40 p-4">

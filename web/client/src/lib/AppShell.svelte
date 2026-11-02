@@ -6,6 +6,7 @@
   // shell only draws the frame. Loaded only once the user is signed in: the workspace
   // store calls the API as soon as it is imported.
   import { untrack } from 'svelte';
+  import { supportContact } from '../../../shared/brand';
   import { PLANS } from '../../../shared/plans';
   import { trackActivity } from './activity';
   import { api } from './api';
@@ -56,10 +57,11 @@
 
   const TONE = { success: 'alert-success', error: 'alert-error', info: 'alert-info' } as const;
   let resent = $state('');
+  const contact = supportContact();
   async function resend() {
     try {
       const r = await api.resendVerification();
-      resent = r.mailed ? 'Tautan baru sudah dikirim.' : 'Pengiriman email belum diatur di server; minta admin memverifikasi akunmu.';
+      resent = r.mailed ? 'Tautan baru sudah dikirim.' : `Pengiriman email belum diatur di server; minta admin memverifikasi akunmu${contact ? ` lewat ${contact.label}` : ''}.`;
     } catch (e) {
       resent = (e as Error).message;
     }

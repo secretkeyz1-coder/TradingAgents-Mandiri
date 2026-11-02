@@ -11,3 +11,10 @@ export const BRAND = {
   /** The company that runs the service, named on the legal pages once it exists. */
   company: "",
 };
+
+/** How a member reaches the people behind the service (WhatsApp first), or null while neither contact is set. */
+export function supportContact(): { label: string; href: string } | null {
+  if (BRAND.whatsapp) return { label: `WhatsApp ${BRAND.whatsapp}`, href: `https://wa.me/${BRAND.whatsapp.replace(/\D/g, "")}` };
+  if (BRAND.supportEmail) return { label: BRAND.supportEmail, href: `mailto:${BRAND.supportEmail}` };
+  return null;
+}
