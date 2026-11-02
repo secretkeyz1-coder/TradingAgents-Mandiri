@@ -64,7 +64,7 @@ const level = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: 
 const pct = (x: number | null) =>
   x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 const r = (x: number | null) => (x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}R`);
-const tone = (x: number | null) => (x == null ? 'text-base-content/60' : x >= 0 ? 'text-success' : 'text-error');
+const tone = (x: number | null) => (x == null ? 'text-base-content/70' : x >= 0 ? 'text-success' : 'text-error');
 const clock = (iso: string) => `${new Date(iso).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' })} WIB`;
 const when = (iso: string) =>
   new Date(iso).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -160,7 +160,7 @@ function renderChart() {
   const figures = brief?.data.aset?.find((a) => a.symbol === 'BTC');
   const levels = (
     [
-      { value: num(figures?.rata_rata_20_hari), label: 'Rata-rata 20 hari', line: 'text-base-content/60', tag: 'bg-base-300 text-base-content', dashed: true },
+      { value: num(figures?.rata_rata_20_hari), label: 'Rata-rata 20 hari', line: 'text-base-content/70', tag: 'bg-base-300 text-base-content', dashed: true },
       { value: num(figures?.terendah_30_hari), label: 'Terendah 30 hari, dipantau AI', line: 'text-accent', tag: 'bg-accent text-accent-content', dashed: false },
     ] as Level[]
   ).filter((l): l is Level & { value: number } => l.value != null);
@@ -275,7 +275,7 @@ function renderMarket() {
       card.append(el('h3', 'text-[15px] font-semibold', q.label));
       if (q.spark.length > 1) card.append(spark(q.spark, (q.change ?? 0) >= 0));
       const foot = el('p', 'flex justify-between gap-1.5 text-[13px]');
-      foot.append(el('span', `tabular-nums ${tone(q.change)}`, pct(q.change)), el('span', 'text-base-content/60', q.delayed ? 'tertunda' : 'real-time'));
+      foot.append(el('span', `tabular-nums ${tone(q.change)}`, pct(q.change)), el('span', 'text-base-content/70', q.delayed ? 'tertunda' : 'real-time'));
       card.append(el('p', 'text-xl font-semibold tracking-tight tabular-nums', price(q.price)), foot);
       return card;
     }),
@@ -416,7 +416,7 @@ async function loadLedger() {
   if (!record) return;
   const block = (title: string, note: string, rec: Record_) => {
     const box = el('div', 'flex flex-col gap-2.5 border-t border-base-300 pt-4.5');
-    box.append(el('dt', 'font-semibold', title), el('dd', 'text-sm text-base-content/60', note));
+    box.append(el('dt', 'font-semibold', title), el('dd', 'text-sm text-base-content/70', note));
     if (!rec.closed) {
       box.append(el('dd', 'text-[15px]', `Belum ada sinyal yang selesai${rec.open ? `; ${rec.open} masih berjalan` : ''}.`));
       return box;
@@ -429,11 +429,11 @@ async function loadLedger() {
       ['Rata-rata', r(rec.expectancy), tone(rec.expectancy)],
     ] as const) {
       const cell = el('div', 'flex flex-col gap-0.5');
-      cell.append(el('span', 'text-xs text-base-content/60', label), el('span', `text-[22px] font-semibold tabular-nums ${cls}`, value));
+      cell.append(el('span', 'text-xs text-base-content/70', label), el('span', `text-[22px] font-semibold tabular-nums ${cls}`, value));
       figures.append(cell);
     }
     box.append(figures);
-    if (rec.closed < 30) box.append(el('dd', 'text-[13px] text-base-content/60', 'Sampel masih kecil; angka ini akan bergerak.'));
+    if (rec.closed < 30) box.append(el('dd', 'text-[13px] text-base-content/70', 'Sampel masih kecil; angka ini akan bergerak.'));
     return box;
   };
   record.replaceChildren(

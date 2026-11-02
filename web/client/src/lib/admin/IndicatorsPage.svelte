@@ -173,7 +173,7 @@
       </label>
       {@render codeField(form, 'code-new')}
       <fieldset class="flex flex-col gap-1.5 text-sm">
-        <legend class="mb-1">Paket yang bisa memakai <span class="text-base-content/60">(kosongkan dulu untuk mencoba sendiri)</span></legend>
+        <legend class="mb-1">Paket yang bisa memakai <span class="text-base-content/70">(kosongkan dulu untuk mencoba sendiri)</span></legend>
         <div class="flex flex-wrap gap-4">
           {#each PLAN_IDS as p (p)}
             <label class="flex items-center gap-2">
@@ -267,7 +267,7 @@
           </div>
 
           <div class="flex flex-col gap-1.5 text-sm">
-            <span>Akses khusus <span class="text-base-content/60">(bisa memakai apa pun paketnya)</span></span>
+            <span>Akses khusus <span class="text-base-content/70">(bisa memakai apa pun paketnya)</span></span>
             <div class="flex flex-wrap items-center gap-2">
               {#each r.grants as g (g.id)}
                 <span class="badge gap-1" title={g.email ?? ''}>

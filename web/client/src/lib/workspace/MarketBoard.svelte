@@ -109,7 +109,7 @@
                   <td class="max-w-0 min-w-32">
                     <button class="block w-full text-left" onclick={(e) => (e.stopPropagation(), ws.setSymbol(item.tv))}>
                       <span class="block truncate font-medium">{item.name}</span>
-                      <span class="block truncate font-mono text-xs text-base-content/60">{item.tv.split(':').pop()}</span>
+                      <span class="block truncate font-mono text-xs text-base-content/70">{item.tv.split(':').pop()}</span>
                     </button>
                   </td>
                   <td class="text-right whitespace-nowrap tabular-nums">
@@ -145,7 +145,7 @@
           {/each}
         </table>
       {/if}
-      <p class="px-4 py-3 text-xs text-base-content/60">Klik aset untuk membuka chart-nya. Harga saham dan indeks tertunda beberapa menit; kripto real-time.</p>
+      <p class="px-4 py-3 text-xs text-base-content/70">Klik aset untuk membuka chart-nya. Harga saham dan indeks tertunda beberapa menit; kripto real-time.</p>
     </div>
   </div>
 </section>

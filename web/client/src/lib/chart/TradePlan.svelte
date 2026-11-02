@@ -302,7 +302,7 @@
           </button>
           {#if note}<span class="text-xs" role="status">{note}</span>{/if}
         </div>
-        <p class="text-xs text-base-content/60">Riset dari indikator, bukan saran investasi. Rencana batal bila harga menembus SL. Alert memakai jatah notifikasi paketmu.</p>
+        <p class="text-xs text-base-content/70">Riset dari indikator, bukan saran investasi. Rencana batal bila harga menembus SL. Alert memakai jatah notifikasi paketmu.</p>
       </div>
     {/if}
   </section>

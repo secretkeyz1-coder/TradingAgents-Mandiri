@@ -131,7 +131,7 @@
       {#each rows as row, i (row.tv)}
         {@const y = toYahoo(row.tv)}
         {@const q = y ? quotes[y] : null}
-        {#if row.heading}<li role="presentation" class="px-2 pt-2 pb-1 text-xs font-semibold text-base-content/60">{row.heading}</li>{/if}
+        {#if row.heading}<li role="presentation" class="px-2 pt-2 pb-1 text-xs font-semibold text-base-content/70">{row.heading}</li>{/if}
         <li id="{listId}-{i}" role="option" aria-selected={i === at} data-row={i}>
           <button
             type="button"
@@ -143,7 +143,7 @@
           >
             <span class="min-w-0 flex-1">
               <span class="block truncate">{row.name}</span>
-              <span class="block truncate font-mono text-xs text-base-content/60">{row.tv.split(':').pop()}</span>
+              <span class="block truncate font-mono text-xs text-base-content/70">{row.tv.split(':').pop()}</span>
             </span>
             {#if q}
               <span class="tabular-nums">{priceText(q.price, q.currency, y ?? '')}</span>

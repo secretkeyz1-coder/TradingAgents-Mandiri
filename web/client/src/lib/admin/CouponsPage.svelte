@@ -88,7 +88,7 @@
         </label>
       </div>
       <fieldset class="flex flex-col gap-1.5 text-sm">
-        <legend class="mb-1">Paket <span class="text-base-content/60">(kosong berarti semua)</span></legend>
+        <legend class="mb-1">Paket <span class="text-base-content/70">(kosong berarti semua)</span></legend>
         <div class="flex gap-4">
           {#each PLAN_CHOICES as p (p)}
             <label class="flex items-center gap-2">
@@ -99,7 +99,7 @@
         </div>
       </fieldset>
       <fieldset class="flex flex-col gap-1.5 text-sm">
-        <legend class="mb-1">Periode <span class="text-base-content/60">(kosong berarti keduanya)</span></legend>
+        <legend class="mb-1">Periode <span class="text-base-content/70">(kosong berarti keduanya)</span></legend>
         <div class="flex gap-4">
           {#each PERIOD_CHOICES as p (p)}
             <label class="flex items-center gap-2">
@@ -110,11 +110,11 @@
         </div>
       </fieldset>
       <label class="flex flex-col gap-1 text-sm">
-        Kuota pemakaian <span class="text-base-content/60">(kosong berarti tanpa batas)</span>
+        Kuota pemakaian <span class="text-base-content/70">(kosong berarti tanpa batas)</span>
         <input class="input input-sm w-full" type="number" min="1" bind:value={form.maxUses} />
       </label>
       <label class="flex flex-col gap-1 text-sm">
-        Hari terakhir berlaku <span class="text-base-content/60">(kosong berarti tanpa batas)</span>
+        Hari terakhir berlaku <span class="text-base-content/70">(kosong berarti tanpa batas)</span>
         <input class="input input-sm w-full" type="date" bind:value={form.lastDay} />
       </label>
       <label class="flex flex-col gap-1 text-sm sm:col-span-2">

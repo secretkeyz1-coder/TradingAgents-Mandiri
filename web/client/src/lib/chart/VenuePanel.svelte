@@ -144,12 +144,12 @@
               >
                 <td>
                   <span class="font-medium whitespace-nowrap">{q.label}</span>
-                  <span class="block font-mono text-xs text-base-content/60">{q.pair ?? '—'}</span>
+                  <span class="block font-mono text-xs text-base-content/70">{q.pair ?? '—'}</span>
                   {#if q.venue === lowest}<span class="badge badge-xs badge-success badge-soft">termurah</span>{/if}
                   {#if q.venue === highest}<span class="badge badge-xs badge-error badge-soft">termahal</span>{/if}
                 </td>
                 {#if q.error && q.last == null}
-                  <td colspan={roomy ? 4 : 2} class="text-right text-xs text-base-content/60">{q.error}</td>
+                  <td colspan={roomy ? 4 : 2} class="text-right text-xs text-base-content/70">{q.error}</td>
                 {:else}
                   <td
                     class="text-right font-mono tabular-nums"

@@ -173,13 +173,13 @@
       Indikator diuji pada riwayat panjang. Bagian awal (<strong>data awal</strong>) membentuk hasilnya, lalu bagian terakhir yang belum pernah dipakai (<strong>data uji</strong>)
       memeriksanya. Yang tetap untung setelah biaya di data uji layak dicoba di Rekam jejak live.
     </p>
-    <p class="text-xs text-base-content/60">Makin sering mencoba variasi, makin besar peluang hasil bagus hanya kebetulan. Hasil riset, bukan nasihat keuangan.</p>
+    <p class="text-xs text-base-content/70">Makin sering mencoba variasi, makin besar peluang hasil bagus hanya kebetulan. Hasil riset, bukan nasihat keuangan.</p>
   </div>
 
   <div class="flex flex-col gap-3 rounded-box border border-base-300 p-3">
     <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_10rem] lg:items-start">
       <label class="flex flex-col gap-1 text-sm">
-        <span><span class="text-base-content/60">1 ·</span> Indikator</span>
+        <span><span class="text-base-content/70">1 ·</span> Indikator</span>
         <select class="select select-sm w-full" bind:value={strategy}>
           {#if Object.keys(meta?.engines ?? {}).length}
             <optgroup label="Bawaan">
@@ -203,11 +203,11 @@
         </span>
       </label>
       <div class="flex flex-col gap-1 text-sm">
-        <span><span class="text-base-content/60">2 ·</span> Aset</span>
+        <span><span class="text-base-content/70">2 ·</span> Aset</span>
         <AssetChips bind:symbols />
       </div>
       <label class="flex flex-col gap-1 text-sm">
-        <span><span class="text-base-content/60">3 ·</span> Timeframe dan periode</span>
+        <span><span class="text-base-content/70">3 ·</span> Timeframe dan periode</span>
         <div class="join w-full">
           <select class="select select-sm join-item w-1/2" bind:value={timeframe} aria-label="Timeframe">
             {#each timeframes as t (t.value)}<option value={t.value}>{t.label}</option>{/each}

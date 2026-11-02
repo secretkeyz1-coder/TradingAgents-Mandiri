@@ -119,7 +119,7 @@
           <a class="link" href="/privasi" target="_blank" rel="noopener">Kebijakan Privasi</a>.
         </p>
       </div>
-      <div class="divider my-0 text-xs text-base-content/60">atau dengan email</div>
+      <div class="divider my-0 text-xs text-base-content/70">atau dengan email</div>
     {/if}
 
     {#if mode === 'signup' && !auth.config.signup}
@@ -205,7 +205,7 @@
 
         {#if mode === 'signup'}
           <fieldset class="fieldset py-0">
-            <legend class="fieldset-legend pt-0">Nomor WhatsApp <span class="font-normal text-base-content/60">(opsional)</span></legend>
+            <legend class="fieldset-legend pt-0">Nomor WhatsApp <span class="font-normal text-base-content/70">(opsional)</span></legend>
             <input class="input w-full" type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0812 3456 7890" bind:value={phone} />
             <p class="label whitespace-normal">Untuk bantuan dan notifikasi WhatsApp nanti. Tidak dipakai untuk promosi tanpa izinmu.</p>
           </fieldset>

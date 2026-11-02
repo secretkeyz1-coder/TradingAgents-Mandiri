@@ -74,7 +74,7 @@
         {/if}
       </div>
     {:else}
-      <span class="text-xs text-base-content/60">Maksimal {max} aset.</span>
+      <span class="text-xs text-base-content/70">Maksimal {max} aset.</span>
     {/if}
   </div>
   {#if note}<p class="text-xs text-warning" role="status">{note}</p>{/if}

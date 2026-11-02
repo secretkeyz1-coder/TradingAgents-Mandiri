@@ -68,7 +68,7 @@
           {#each latest as a (a.id)}
             <li>
               <button class="flex w-full items-center gap-3 py-2 text-left text-sm hover:bg-base-200" onclick={() => ws.openRun(a.id, { symbol: toTradingView(a.ticker) })}>
-                <span class="min-w-0 flex-1 truncate">{friendlyName(toTradingView(a.ticker))} <span class="text-base-content/60">· {day(a.tradeDate)}</span></span>
+                <span class="min-w-0 flex-1 truncate">{friendlyName(toTradingView(a.ticker))} <span class="text-base-content/70">· {day(a.tradeDate)}</span></span>
                 {#if a.rating}
                   <span class="badge badge-sm {ratingBadge(a.rating)}">{a.rating}</span>
                 {:else if STATUS[a.status]}

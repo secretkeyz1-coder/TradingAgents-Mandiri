@@ -126,6 +126,22 @@ h2 {
 .toggle-xs[type="checkbox"],
 .checkbox-xs { --size: calc(var(--size-selector, 0.25rem) * 5); }
 
+/* Small text reads at 4.5:1 or more in both themes. daisyUI writes field hints at 60% ink, placeholders
+   and unselected tabs at 50% (3.1 to 4.3:1 on paper), soft alerts in their own tone, and amber is a fill
+   colour that reads at 2:1 as text on paper. Hints and placeholders take 70% ink (6:1), unselected tabs
+   78% as .ta-nav does (7.5:1), soft alerts ink on their tint, and amber text is mixed toward the ink in
+   oklab, which keeps its hue and flips with the theme (5.2:1 light, 12:1 dark). */
+.label,
+::placeholder { color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.tabs > .tab:not(:checked, label:has(:checked), .tab-active, [aria-selected="true"], [aria-current="true"], [aria-current="page"], [aria-pressed="true"], :disabled, .tab-disabled, [aria-disabled="true"]) {
+  color: color-mix(in oklch, var(--color-base-content) 78%, transparent);
+}
+@media (hover: hover) {
+  .tabs > .tab:not(:disabled, .tab-disabled, [aria-disabled="true"]):hover { color: var(--color-base-content); }
+}
+.alert-soft { color: var(--color-base-content); }
+.text-warning { color: color-mix(in oklab, var(--color-warning) 55%, var(--color-base-content)); }
+
 /* Third-party loaders and pulses stop for people who asked for less motion. */
 @media (prefers-reduced-motion: reduce) {
   .loading,

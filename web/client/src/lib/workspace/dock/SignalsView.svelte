@@ -295,7 +295,7 @@
               <td class="font-medium">
                 {label(group, g.key)}
                 {#if group === 'byVenue' && realFees && data?.venueFees[g.key] != null}
-                  <span class="block text-xs font-normal text-base-content/60">fee {feeText(data.venueFees[g.key]!)} per sisi</span>
+                  <span class="block text-xs font-normal text-base-content/70">fee {feeText(data.venueFees[g.key]!)} per sisi</span>
                 {/if}
               </td>
               <td class="text-right tabular-nums">{g.closed}{g.open ? ` (+${g.open})` : ''}</td>

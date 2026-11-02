@@ -167,7 +167,7 @@
               <button class="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200" onclick={() => ws.setSymbol(item.tvSymbol)}>
                 <span class="min-w-0 flex-1">
                   <span class="block truncate">{friendlyName(item.tvSymbol)}</span>
-                  <span class="block truncate font-mono text-xs text-base-content/60">{item.tvSymbol}</span>
+                  <span class="block truncate font-mono text-xs text-base-content/70">{item.tvSymbol}</span>
                 </span>
                 {#if item.last?.rating}<span class="badge badge-sm {ratingBadge(item.last.rating)}" title="Keputusan AI terakhir, {item.last.tradeDate}">{item.last.rating}</span>{/if}
                 <span class="tabular-nums">{q ? priceText(q.price, q.currency, item.symbol) : '…'}</span>
@@ -206,7 +206,7 @@
         {#if wibDay(Date.now()) > wibDay(Date.parse(brief.createdAt))}
           <p class="text-xs text-warning">Ringkasan ini ditulis {ago(brief.createdAt)}; harga di atas lebih baru, jadi angkanya bisa sudah berbeda.</p>
         {/if}
-        <p class="text-xs text-base-content/60">Riset otomatis, bukan saran investasi.</p>
+        <p class="text-xs text-base-content/70">Riset otomatis, bukan saran investasi.</p>
       {/if}
     </section>
   </div>

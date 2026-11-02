@@ -84,7 +84,7 @@
       <section class="flex flex-col gap-3" aria-labelledby="revenue-title">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h3 id="revenue-title" class="text-sm font-semibold">Pendapatan per bulan</h3>
-          <p class="text-xs text-base-content/60">12 bulan terakhir; arahkan kursor ke batang untuk angkanya</p>
+          <p class="text-xs text-base-content/70">12 bulan terakhir; arahkan kursor ke batang untuk angkanya</p>
         </div>
         <div class="flex h-36 items-stretch gap-0.5 border-b border-base-300" aria-hidden="true">
           {#each report.revenue as m (m.month)}
@@ -94,7 +94,7 @@
           {/each}
         </div>
         <div class="flex gap-0.5" aria-hidden="true">
-          {#each report.revenue as m (m.month)}<span class="flex-1 text-center text-[11px] text-base-content/60">{month(m.month, 'short')}</span>{/each}
+          {#each report.revenue as m (m.month)}<span class="flex-1 text-center text-[11px] text-base-content/70">{month(m.month, 'short')}</span>{/each}
         </div>
         <details class="text-sm">
           <summary class="cursor-pointer text-xs text-base-content/70">Tabel pendapatan per bulan</summary>
@@ -176,7 +176,7 @@
           <h3 id="tokens-title" class="text-sm font-semibold">Token model AI, 30 hari terakhir</h3>
           <p class="text-sm tabular-nums">
             {compact(report.tokens.total.input + report.tokens.total.output)} token
-            <span class="text-base-content/60">({compact(report.tokens.total.input)} masuk, {compact(report.tokens.total.output)} keluar)</span>{#if report.tokens.total.cost !== null},
+            <span class="text-base-content/70">({compact(report.tokens.total.input)} masuk, {compact(report.tokens.total.output)} keluar)</span>{#if report.tokens.total.cost !== null},
               perkiraan {rupiah(report.tokens.total.cost)}{/if}
           </p>
         </div>

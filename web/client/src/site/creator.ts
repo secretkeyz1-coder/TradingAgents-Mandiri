@@ -41,7 +41,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text?
 
 const price = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: v >= 10_000 ? 0 : v >= 1000 ? 1 : v >= 1 ? 2 : 8 });
 const r = (x: number | null) => (x == null ? '–' : `${x >= 0 ? '+' : '−'}${Math.abs(x).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}R`);
-const tone = (x: number | null) => (x == null ? 'text-base-content/60' : x >= 0 ? 'text-success' : 'text-error');
+const tone = (x: number | null) => (x == null ? 'text-base-content/70' : x >= 0 ? 'text-success' : 'text-error');
 const share = (x: number | null) => (x == null ? '–' : `${Math.round(x * 100)}%`);
 const when = (iso: string) =>
   new Date(iso).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -50,7 +50,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString('id-ID', { timeZon
 /** A table's only row, for when it has nothing to list. */
 function empty(columns: number, text: string) {
   const tr = el('tr');
-  tr.append(Object.assign(el('td', 'text-base-content/60', text), { colSpan: columns }));
+  tr.append(Object.assign(el('td', 'text-base-content/70', text), { colSpan: columns }));
   return tr;
 }
 
@@ -75,7 +75,7 @@ function render(p: Page) {
     ...figures.map(([label, value, cls], i) => {
       // Five cells in two columns on a phone: the last one takes the whole row.
       const cell = el('div', `flex flex-col gap-1 bg-base-100 p-4 ${i === figures.length - 1 ? 'col-span-2 sm:col-span-1' : ''}`);
-      cell.append(el('dt', 'text-xs text-base-content/60', label), el('dd', `text-2xl font-semibold tabular-nums ${cls}`, value));
+      cell.append(el('dt', 'text-xs text-base-content/70', label), el('dd', `text-2xl font-semibold tabular-nums ${cls}`, value));
       return cell;
     }),
   );
@@ -93,7 +93,7 @@ function render(p: Page) {
           el('td', 'text-right tabular-nums', String(s.closed)),
           el('td', 'text-right tabular-nums', share(s.winRate)),
           el('td', `text-right tabular-nums ${tone(s.avgR)}`, r(s.avgR)),
-          el('td', `text-right tabular-nums ${s.closed ? tone(s.totalR) : 'text-base-content/60'}`, s.closed ? r(s.totalR) : '–'),
+          el('td', `text-right tabular-nums ${s.closed ? tone(s.totalR) : 'text-base-content/70'}`, s.closed ? r(s.totalR) : '–'),
           el('td', 'text-right tabular-nums', String(s.open)),
         );
         return tr;

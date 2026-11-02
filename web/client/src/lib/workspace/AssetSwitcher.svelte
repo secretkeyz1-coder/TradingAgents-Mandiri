@@ -62,7 +62,7 @@
       }}
     >
       <span class="max-w-48 truncate font-semibold">{friendlyName(ws.symbol)}</span>
-      <span class="font-mono text-xs font-normal text-base-content/60">{ws.symbol.split(':').pop()}</span>
+      <span class="font-mono text-xs font-normal text-base-content/70">{ws.symbol.split(':').pop()}</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
     </button>
     {#if open}
@@ -80,7 +80,7 @@
     {/if}
   </div>
   {#if others.length}
-    <span class="text-xs text-base-content/60">Terakhir:</span>
+    <span class="text-xs text-base-content/70">Terakhir:</span>
     {#each others as tv (tv)}
       <button class="btn btn-ghost btn-xs max-w-32 gap-1" title="Buka {friendlyName(tv)}" onclick={() => switchTo(tv)}>
         <span class="truncate">{short(tv)}</span>

@@ -169,7 +169,7 @@
           {/each}
         </div>
         {#if record.note && data.combos.some((c) => record.of(c.indicator, c.timeframe))}
-          <p class="text-xs text-base-content/60">{record.note}</p>
+          <p class="text-xs text-base-content/70">{record.note}</p>
         {/if}
         <p class="text-xs text-base-content/70">
           Dicek tiap 5 menit (1 jam: tiap 15 menit), hanya dari candle yang sudah tutup, dengan mesin yang sama dengan chart. Scalper Pro+ memakai

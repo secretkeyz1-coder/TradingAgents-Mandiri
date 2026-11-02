@@ -121,7 +121,7 @@
         </p>
       {/each}
       {#if record.note && indicators.catalog.some((item) => item.builtin)}
-        <p class="border-t border-base-300 px-2 pt-2 text-xs text-base-content/60">{record.note}</p>
+        <p class="border-t border-base-300 px-2 pt-2 text-xs text-base-content/70">{record.note}</p>
       {/if}
     </div>
   {/if}

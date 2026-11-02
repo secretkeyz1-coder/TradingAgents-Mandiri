@@ -66,7 +66,7 @@ function render(s: Status) {
       const seen = days.filter((d) => p.history[d] !== undefined);
       if (seen.length) {
         const average = seen.reduce((sum, d) => sum + p.history[d], 0) / seen.length;
-        const foot = el('div', 'flex justify-between gap-2 text-xs text-base-content/60');
+        const foot = el('div', 'flex justify-between gap-2 text-xs text-base-content/70');
         foot.append(el('span', '', `${s.days} hari lalu`), el('span', '', `${pct(average)} tanpa gangguan, ${seen.length} hari tercatat`), el('span', '', 'Hari ini'));
         item.append(bars(p, days), foot);
       }
