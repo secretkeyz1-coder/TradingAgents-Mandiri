@@ -847,7 +847,7 @@
         {/each}
       </div>
       {#if tools}
-        <IndicatorsMenu pobOk={!!pobTf} {fibOk} />
+        <IndicatorsMenu pobOk={!!pobTf} {fibOk} {timeframe} {symbol} />
         <AlertsMenu {symbol} {venue} last={candles.at(-1)?.close ?? null} />
         <button class="btn btn-xs @2xl:hidden" aria-expanded={moreTools} onclick={() => (moreTools = !moreTools)}>Lainnya</button>
       {/if}
@@ -889,7 +889,7 @@
   </div>
 
   {#if tools && plans.length}
-    <TradePlan {plans} {symbol} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
+    <TradePlan {plans} {symbol} {timeframe} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
   {:else if tools && !anyIndicator && candles.length}
     <p class="text-xs text-base-content/70">Rencana trading (entry, SL, TP, dan ukuran posisi) muncul di sini saat indikator memberi setup. Nyalakan dari menu Indikator.</p>
   {/if}

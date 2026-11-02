@@ -191,8 +191,9 @@ API:
 - Biaya default sama di semua bursa (0,2%) supaya yang dibandingkan hanya harganya. Biaya nyata satu bursa diatur lewat `SIGNAL_COSTS` dengan kunci `SIMBOL@bursa`, misalnya `{"BTC-USD@indodax": {"pct": 0.006}}` untuk taker Indodax 0,3% per sisi (angka bawaan CCXT; biaya `abs` dalam mata uang bursa itu).
 - Rekap harian ke Telegram pukul `SIGNAL_RECAP_TIME` WIB (05:15, setelah New York tutup), mingguan tiap Sabtu; dikirim ke admin dan pengguna yang punya notifikasi. Admin bisa mengirim rekap tes dari tab Sinyal.
 - Emas harian dari Yahoo (futures `GC=F`) bisa tertunda beberapa menit.
+- Rekam jejak tampil di tempat trader memilih: di menu Indikator dan Notifikasi chart, tiap mesin bawaan diberi satu baris, misalnya "15m: 58% untung bersih · rata-rata +0,12R · 120 sinyal" (sinyal live 90 hari di sumber default, setelah biaya; "untung bersih" berarti hasilnya di atas nol setelah biaya). Kurang dari 10 sinyal selesai ditulis "belum cukup untuk dinilai". Kartu Rencana trading menampilkan rekam jejak mesin rencana itu, hanya bila timeframe-nya sama, dengan menyebut simbol yang dihitung. Bila simbol di chart termasuk yang dicatat dan punya cukup sinyal, rekam jejak simbol itu yang dipakai. Kaki menu menjelaskan R (risiko satu trade, jarak entry ke SL).
 
-API: `GET /api/alerts`, `POST /api/alerts {symbol, tvSymbol, indicator, timeframe}` (bursa diambil dari `tvSymbol`), `DELETE /api/alerts/:id`, `POST /api/alerts/test`, `GET /api/ledger?days=&history=&venue=&symbol=&source=`.
+API: `GET /api/alerts`, `POST /api/alerts {symbol, tvSymbol, indicator, timeframe}` (bursa diambil dari `tvSymbol`), `DELETE /api/alerts/:id`, `POST /api/alerts/test`, `GET /api/ledger?days=&history=&venue=&symbol=&source=`, `GET /api/ledger/record` (rekam jejak per mesin dan timeframe, 90 hari, total dan per simbol).
 
 ### Chart dan harga dari TradingView
 
@@ -498,6 +499,7 @@ Referensi lengkapnya ada di [`docs/api/openapi.json`](../docs/api/openapi.json) 
 | GET | `/api/quotes?symbols=` | Harga terakhir dan perubahan dari penutupan sebelumnya untuk maksimal 80 simbol (ejaan mesin: `BBCA.JK`, `BTC-USD`), untuk daftar Pasar dan Pantauanku |
 | GET | `/api/activity/since` | Yang terjadi sejak kunjungan sebelumnya (jeda lebih dari 15 menit di menit aktivitas): sinyal baru, alert harga yang kena, analisa yang selesai |
 | GET | `/api/indicators` | Indikator chart yang boleh dipakai akun ini (katalog admin), dengan kode skrip yang diterbitkan untuk sandbox chart |
+| GET | `/api/ledger/record` | Rekam jejak live tiap mesin dan timeframe (90 hari, setelah biaya), total dan per simbol yang dicatat, untuk menu Indikator, Notifikasi, dan kartu Rencana trading |
 | POST | `/api/analyses` | Mulai analisa baru |
 | GET | `/api/analyses/:id` | Detail, status agent, laporan |
 | GET | `/api/analyses/:id/events` | Stream SSE: event tersimpan diputar ulang, lalu event live |

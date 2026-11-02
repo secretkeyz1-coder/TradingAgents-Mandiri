@@ -10,13 +10,17 @@
   // and risk per trade, one tap to put price alerts on the three levels (POST /api/price-alerts,
   // within the plan's notification allowance), and the plan as text to copy into a broker app
   // or a group. Capital and risk are remembered in this browser. Research, not advice.
+  // Under the plan, the engine's live record on this timeframe (RecordLine): how often its
+  // signals have paid after costs, so the plan is weighed before it is taken.
   import { api } from '../api';
   import { friendlyName } from '../beginner/plain';
   import { ws } from '../stores/workspace.svelte';
+  import RecordLine from './RecordLine.svelte';
 
   let {
     plans,
     symbol,
+    timeframe,
     currency,
     last,
     decision,
@@ -24,6 +28,8 @@
     plans: Plan[];
     /** Engine spelling (BBCA.JK, BTC-USD, GC=F). */
     symbol: string;
+    /** The chart's timeframe, which the setups come from. */
+    timeframe: string;
     currency: string | null;
     last: number | null;
     /** The latest AI decision on this symbol, for context. */
@@ -161,6 +167,7 @@
       {#if last != null}<span>· harga sekarang {price(last)} ({percent(plan.entry, last)} dari entry)</span>{/if}
       {#if decision}<span>· keputusan AI terakhir {decision.rating} ({decision.date})</span>{/if}
     </div>
+    <RecordLine source={plan.key} {timeframe} {symbol} lead="Rekam jejak" exact showScope />
     {#if open}
       <div class="flex flex-col gap-2 border-t border-base-300 pt-2">
         <div class="flex flex-wrap items-end gap-3">

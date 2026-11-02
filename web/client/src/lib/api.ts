@@ -663,6 +663,15 @@ export type Ledger = {
   items: LedgerItem[];
 };
 
+/** Some live signals in brief: closed, still open, paid after costs, and the mean net R. */
+export type LedgerBrief = { closed: number; open: number; wins: number; winRate: number | null; expectancy: number | null };
+/** Each engine and timeframe the ledger follows, over `days`, on all tracked symbols and on each (GET /api/ledger/record). */
+export type LedgerRecord = {
+  days: number;
+  symbols: string[];
+  items: { source: string; timeframe: string; name: string; all: LedgerBrief; bySymbol: Record<string, LedgerBrief> }[];
+};
+
 /** Results of some lab trades (server/src/lab.ts), in R; net is after costs. */
 export type LabStats = { n: number; win: number | null; gross: number | null; cost: number | null; net: number | null; pf: number | null; total: number; maxDrawdown: number };
 export type LabConfig = {
@@ -853,6 +862,7 @@ export const api = {
   labRunGet: (id: string) => request<LabRun>(`/lab/runs/${id}`),
   labRunDelete: (id: string) => request<{ ok: true }>(`/lab/runs/${id}`, { method: 'DELETE' }),
   ledgerRecapTest: () => request<{ ok: boolean; error?: string; text: string }>('/ledger/recap-test', { method: 'POST' }),
+  ledgerRecord: () => request<LedgerRecord>('/ledger/record'),
   ledger: (q: { days: number; history: boolean; venue?: string; symbol?: string; source?: string; timeframe?: string; session?: string }) =>
     request<Ledger>(
       `/ledger?${new URLSearchParams(

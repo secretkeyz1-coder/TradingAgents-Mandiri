@@ -473,6 +473,42 @@ ledgerApi.get("/ledger", async (c) => {
   });
 });
 
+/** What a menu shows beside an engine: how many signals closed, how many paid after costs, and the mean net R. */
+function brief(rows: Row[]) {
+  const s = stats("", rows);
+  return { closed: s.closed, open: s.open, wins: s.wins, winRate: s.winRate, expectancy: s.expectancy };
+}
+
+/**
+ * The live record of every engine and timeframe the ledger follows, over 90 days and after costs,
+ * on all tracked symbols together and on each one: shown beside the choices in the chart's
+ * indicator and notification menus and on the trading plan card, so a trader picks an engine
+ * knowing how it has done. The default source only, like the public record, so a crypto signal counts once.
+ */
+ledgerApi.get("/ledger/record", async (c) => {
+  const days = 90;
+  const rows = await db
+    .select()
+    .from(ledgerSignals)
+    .where(and(eq(ledgerSignals.live, true), eq(ledgerSignals.venue, ""), gte(ledgerSignals.signalAt, new Date(Date.now() - days * 86_400_000))))
+    .limit(20_000);
+  const combos = [...LEDGER_COMBOS, ...LEDGER_SCRIPTS];
+  return c.json({
+    days,
+    symbols: LEDGER_SYMBOLS,
+    items: combos.map(({ source, timeframe }) => {
+      const mine = rows.filter((r) => r.source === source && r.timeframe === timeframe);
+      return {
+        source,
+        timeframe,
+        name: NAMES[source] ?? source,
+        all: brief(mine),
+        bySymbol: Object.fromEntries(LEDGER_SYMBOLS.map((symbol) => [symbol, brief(mine.filter((r) => r.symbol === symbol))])),
+      };
+    }),
+  });
+});
+
 // --------------------------------------------------------------------------- recaps
 
 const r1 = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toLocaleString("id-ID", { maximumFractionDigits: 1, minimumFractionDigits: 1 })}R`;

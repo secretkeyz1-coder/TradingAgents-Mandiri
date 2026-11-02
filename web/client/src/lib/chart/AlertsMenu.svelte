@@ -1,8 +1,9 @@
 <script lang="ts">
   // Notifications for the symbol in focus: a message when the price reaches a level
   // (PriceLevels, from the chart's last price), and Telegram messages for new signals:
-  // switch PoB BYSTRA (15m, 1h) and Scalper Pro+ (15m) on or off, see every alert of
-  // the account, send a test message. The server does the scanning. Crypto is
+  // switch PoB BYSTRA (15m, 1h) and Scalper Pro+ (15m) on or off, each with its live
+  // record (RecordLine), see every alert of the account, send a test message. The server
+  // does the scanning. Crypto is
   // watched on the venue the chart shows (the Bursa menu): its own bars. On
   // Creator, an alert can be made public: its live signals go on the account's
   // track record at /c/<username> (server/src/creators.ts).
@@ -10,9 +11,11 @@
   import { api, type SignalAlert, type SignalAlerts } from '../api';
   import { auth } from '../auth.svelte';
   import PriceLevels from '../PriceLevels.svelte';
+  import { record } from '../stores/record.svelte';
   import { ws } from '../stores/workspace.svelte';
   import { CRYPTO_VENUES, nameOf, type VenueId } from '../tv';
   import { keepPlaced, placeMenu } from './menuSide';
+  import RecordLine from './RecordLine.svelte';
 
   let { symbol, venue = null, last = null }: { symbol: string; venue?: VenueId | null; last?: number | null } = $props();
 
@@ -149,18 +152,24 @@
         <h4 class="border-t border-base-300 pt-2 text-xs font-semibold text-base-content/70">Sinyal</h4>
         <div class="flex flex-col gap-1.5">
           {#each data.combos as combo (combo.indicator + combo.timeframe)}
-            <label class="flex cursor-pointer items-center gap-2">
+            <label class="flex cursor-pointer items-start gap-2">
               <input
                 type="checkbox"
-                class="toggle toggle-sm"
+                class="toggle toggle-sm mt-0.5"
                 checked={!!mine(combo.indicator, combo.timeframe)}
                 disabled={busy}
                 onchange={() => toggle(combo.indicator, combo.timeframe)}
               />
-              {combo.label}
+              <span class="flex min-w-0 flex-col">
+                {combo.label}
+                <RecordLine source={combo.indicator} timeframe={combo.timeframe} {symbol} withTimeframe={false} />
+              </span>
             </label>
           {/each}
         </div>
+        {#if record.note && data.combos.some((c) => record.of(c.indicator, c.timeframe))}
+          <p class="text-xs text-base-content/60">{record.note}</p>
+        {/if}
         <p class="text-xs text-base-content/70">
           Dicek tiap 5 menit (1j: tiap 15 menit), hanya dari candle yang sudah tutup, dengan mesin yang sama dengan chart. Scalper Pro+ memakai
           pengaturan Scalper Anda di chart. Sinyal yang sudah ada saat notifikasi dinyalakan tidak dikirim.

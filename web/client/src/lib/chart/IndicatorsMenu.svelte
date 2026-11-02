@@ -2,13 +2,28 @@
   // The chart toolbar's "Indikator" menu: what the admin's catalog opens to this
   // account (stores/indicators.svelte.ts), the built-in signal engines and the
   // scripts the admin published, each with a line on what it draws and, when the
-  // timeframe rules a built-in out, why. Scalper Pro+ keeps its own settings panel
-  // (IndicatorPanel), opened from here.
+  // timeframe rules a built-in out, why. Each built-in also shows its live record on
+  // this timeframe (RecordLine), so the choice comes with how the engine has done.
+  // Scalper Pro+ keeps its own settings panel (IndicatorPanel), opened from here.
   import type { CatalogIndicator } from '../api';
   import { indicators } from '../stores/indicators.svelte';
+  import { record } from '../stores/record.svelte';
   import { keepPlaced, placeMenu } from './menuSide';
+  import RecordLine from './RecordLine.svelte';
 
-  let { pobOk, fibOk }: { pobOk: boolean; fibOk: boolean } = $props();
+  let {
+    pobOk,
+    fibOk,
+    timeframe,
+    symbol,
+  }: {
+    pobOk: boolean;
+    fibOk: boolean;
+    /** The chart's timeframe, for the record lines. */
+    timeframe: string;
+    /** Engine spelling of the symbol on the chart. */
+    symbol: string;
+  } = $props();
 
   let open = $state(false);
   let place = $state({ left: 0, width: 0, maxHeight: 0 });
@@ -90,6 +105,7 @@
               {:else if item.description}
                 <span class="text-xs text-base-content/70">{item.description}</span>
               {/if}
+              {#if ok && item.builtin}<RecordLine source={item.builtin} {timeframe} {symbol} />{/if}
               {#if !item.active}
                 <span class="text-xs text-warning">Disembunyikan dari member (atur di Konsol admin → Indikator).</span>
               {/if}
@@ -104,6 +120,9 @@
           {indicators.failed ? 'Daftar indikator gagal dimuat. Muat ulang halaman.' : indicators.loaded ? 'Belum ada indikator untuk paketmu.' : 'Memuat…'}
         </p>
       {/each}
+      {#if record.note && indicators.catalog.some((item) => item.builtin)}
+        <p class="border-t border-base-300 px-2 pt-2 text-xs text-base-content/60">{record.note}</p>
+      {/if}
     </div>
   {/if}
 </div>

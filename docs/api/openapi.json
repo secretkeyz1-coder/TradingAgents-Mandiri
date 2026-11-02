@@ -2531,6 +2531,29 @@
         }
       }
     },
+    "/api/ledger/record": {
+      "get": {
+        "tags": [
+          "ledger"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
     "/api/login": {
       "post": {
         "tags": [
