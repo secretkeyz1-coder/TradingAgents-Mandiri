@@ -97,6 +97,7 @@ client/src/lib/
 │  ├─ jobs.svelte.ts        riwayat analisa dan backtest (polling saat ada yang berjalan)
 │  ├─ agent.svelte.ts       agent chart: sesi, gambar, memori, skill
 │  ├─ catalog.svelte.ts     opsi provider/model dari engine
+│  ├─ announcer.svelte.ts   status yang dibacakan pembaca layar, lewat satu wilayah role=status di App.svelte
 │  └─ viewport.svelte.ts    layout lebar/sedang/sempit
 └─ workspace/
    ├─ WorkspaceShell.svelte menata layar yang terbuka; menu atas ada di AppShell, tab bawah ponsel di sini

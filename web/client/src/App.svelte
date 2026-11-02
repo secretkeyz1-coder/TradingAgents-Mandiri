@@ -10,6 +10,7 @@
   // An account that signed up with Google gives its WhatsApp number first (PhoneStep).
   import { onMount } from 'svelte';
   import { auth } from './lib/auth.svelte';
+  import { announcer } from './lib/stores/announcer.svelte';
   import LoginPage from './lib/LoginPage.svelte';
   import PhoneStep from './lib/PhoneStep.svelte';
 
@@ -63,3 +64,6 @@
     <span class="loading loading-spinner" aria-label="Memuat"></span>
   </div>
 {/if}
+
+<!-- Statuses read out to screen readers (stores/announcer.svelte.ts); present before any is said. -->
+<p class="sr-only" role="status">{announcer.text}</p>

@@ -7,6 +7,7 @@
   import { BRAND, supportContact } from '../../../shared/brand';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
+  import { announcer } from './stores/announcer.svelte';
 
   const contact = supportContact();
 
@@ -27,6 +28,11 @@
   let error = $state(auth.error);
   let sent = $state(false);
   let busy = $state(false);
+
+  // A notice a link brought (?notice=…) is on the page from the start, so it is also read out.
+  $effect(() => {
+    if (auth.notice) announcer.say(auth.notice.text);
+  });
 
   const TITLE: Record<Mode, string> = { login: 'Masuk', signup: 'Daftar gratis', forgot: 'Lupa kata sandi', reset: 'Buat kata sandi baru', '2fa': 'Kode verifikasi' };
 
@@ -54,6 +60,7 @@
     else if (mode === 'forgot') {
       error = await auth.forgot(email.trim());
       sent = !error;
+      if (sent) announcer.say(`Kalau ${email.trim()} terdaftar, tautan untuk membuat kata sandi baru sudah dikirim.`);
     } else if (mode === 'reset') {
       error = await auth.reset(token, password);
       // Signed in by the reset, or one code away from it.
@@ -101,7 +108,7 @@
     </div>
 
     {#if auth.notice}
-      <p role="status" class="text-sm {auth.notice.tone === 'error' ? 'text-error' : 'text-base-content/80'}">{auth.notice.text}</p>
+      <p class="text-sm {auth.notice.tone === 'error' ? 'text-error' : 'text-base-content/80'}">{auth.notice.text}</p>
     {/if}
 
     {#if auth.config.google && (mode === 'login' || mode === 'signup')}
@@ -142,7 +149,7 @@
         <button class="btn btn-sm self-start" onclick={() => go('login')}>Kembali ke Masuk</button>
       </div>
     {:else if mode === 'forgot' && sent}
-      <div role="status" class="flex flex-col gap-3 text-sm">
+      <div class="flex flex-col gap-3 text-sm">
         <p>Kalau <strong>{email.trim()}</strong> terdaftar, tautan untuk membuat kata sandi baru sudah dikirim. Cek juga folder spam; tautannya berlaku 1 jam.</p>
         <button class="btn btn-ghost btn-sm self-start" onclick={() => go('login')}>Kembali ke Masuk</button>
       </div>

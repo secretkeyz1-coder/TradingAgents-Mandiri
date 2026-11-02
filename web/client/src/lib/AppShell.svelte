@@ -15,6 +15,7 @@
   import { auth } from './auth.svelte';
   import BeginnerShell from './beginner/BeginnerShell.svelte';
   import Logo from './Logo.svelte';
+  import { announcer } from './stores/announcer.svelte';
   import { layout } from './stores/layout.svelte';
   import { mode } from './stores/mode.svelte';
   import { layoutOf, viewport } from './stores/viewport.svelte';
@@ -70,6 +71,10 @@
   // open the link, or wait for the admin (no mail set up, Konsol admin → Pengguna).
   $effect(() => {
     if (auth.user?.email && !auth.user.emailVerified && !auth.configLoaded) auth.loadConfig();
+  });
+  // A notice (a verified e-mail, a started trial) arrives with the page, so it is also read out.
+  $effect(() => {
+    if (auth.notice) announcer.say(auth.notice.text);
   });
 
   /** The account button: initials, the name people chose (else the username), and one badge for role or plan. */
@@ -135,7 +140,7 @@
   </header>
 
   {#if auth.notice}
-    <div role="status" class="alert alert-soft {TONE[auth.notice.tone]} shrink-0 justify-between rounded-none border-x-0 border-t-0 px-4 py-2 text-sm">
+    <div class="alert alert-soft {TONE[auth.notice.tone]} shrink-0 justify-between rounded-none border-x-0 border-t-0 px-4 py-2 text-sm">
       <span>{auth.notice.text}</span>
       <button class="btn btn-ghost btn-xs" onclick={() => (auth.notice = null)}>Tutup</button>
     </div>

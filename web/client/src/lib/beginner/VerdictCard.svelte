@@ -4,10 +4,12 @@
   // that runs a standard analysis on the day's quota. While one runs for this asset
   // the card says so, and shows the result once the history (jobs store) has it. It is the AI's
   // view (Pandangan AI), not advice: the card says it is automated research, not investment advice.
+  import { untrack } from 'svelte';
   import { api, type Verdict } from '../api';
   import { auth } from '../auth.svelte';
   import VerifyNote from '../VerifyNote.svelte';
   import { formatDateTime, formatDuration, today } from '../format';
+  import { announcer } from '../stores/announcer.svelte';
   import { catalog } from '../stores/catalog.svelte';
   import { jobs } from '../stores/jobs.svelte';
   import { usage } from '../stores/usage.svelte';
@@ -58,6 +60,11 @@
     }
   }
 
+  // A run's start is read out once, as the card shows it.
+  $effect(() => {
+    if (runningId) untrack(() => announcer.say(`AI sedang menganalisa ${name}…`));
+  });
+
   // Ticks the elapsed time while a run is going.
   let now = $state(Date.now());
   $effect(() => {
@@ -107,7 +114,7 @@
   {#if !ws.yahoo}
     <p class="text-sm text-base-content/70">AI belum bisa menganalisa aset ini. Coba aset lain, misalnya Emas atau Bank Central Asia.</p>
   {:else if running}
-    <div class="flex items-start gap-3" role="status">
+    <div class="flex items-start gap-3">
       <span class="loading loading-dots loading-md mt-0.5 text-primary" aria-hidden="true"></span>
       <div class="flex flex-col gap-1">
         <p class="font-medium">AI sedang menganalisa {name}…</p>
