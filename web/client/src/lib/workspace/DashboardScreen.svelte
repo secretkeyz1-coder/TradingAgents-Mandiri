@@ -3,8 +3,8 @@
   // Pantauanku, the AI brief), then how the member's signals are doing. The calls their notifications made over a
   // chosen period (server/src/alerts.ts GET /alerts/history: live signals only, R from targets
   // and stops), by day, by indicator and by asset, with the calls themselves; beside them what
-  // runs now and what today holds (open calls, the trade journal, quota, scheduled analyses, price
-  // alerts). Each part leads to the screen that acts on it.
+  // runs now and what today holds (open calls, which can be taken into the trade journal, the
+  // journal itself, quota, scheduled analyses, price alerts). Each part leads to the screen that acts on it.
   import { INDICATOR_NAMES, SIGNAL_STATUS, TIMEFRAME_LABELS } from '../alertLabels';
   import { api, INTERVALS, type Interval, type Journal, type PriceLevels, type SignalCall, type SignalHistory } from '../api';
   import { ratingBadge } from '../format';
@@ -97,6 +97,34 @@
     ws.setChartView('ai');
     if ((INTERVALS as readonly string[]).includes(c.timeframe)) ws.setTimeframe(c.timeframe as Interval);
     ws.setSymbol(c.tvSymbol);
+  }
+
+  // A running call the member took: noted in the journal at the call's levels (server/src/journal.ts).
+  let takenCalls = $state<string[]>([]);
+  let takeNote = $state('');
+  const inJournal = (c: SignalCall) =>
+    takenCalls.includes(c.id) ||
+    !!journal?.items.some(
+      (t) => t.status === 'open' && t.symbol === c.symbol && t.entry === c.entry && t.stopLoss === c.stopLoss && t.takeProfit === c.takeProfit,
+    );
+  async function takeCall(c: SignalCall) {
+    takeNote = '';
+    try {
+      await api.journalAdd({
+        symbol: c.symbol,
+        tvSymbol: c.tvSymbol,
+        side: c.side === 'SELL' ? 'SELL' : 'BUY',
+        entry: c.entry,
+        stopLoss: c.stopLoss,
+        takeProfit: c.takeProfit,
+        source: c.indicator,
+        label: `${name(c.indicator)} ${tf(c.timeframe)}`.slice(0, 80),
+      });
+      takenCalls = [...takenCalls, c.id];
+      journal = await api.journal(30).catch(() => journal);
+    } catch (e) {
+      takeNote = (e as Error).message;
+    }
   }
 
   /** Signal notifications are set from the Keputusan AI chart's Notifikasi menu. */
@@ -286,10 +314,18 @@
                   <span class="text-xs font-medium" class:text-success={c.side === 'BUY'} class:text-error={c.side === 'SELL'}>{c.side}</span>
                   <span class="ml-auto truncate text-xs text-base-content/70">{name(c.indicator)} {tf(c.timeframe)}</span>
                 </span>
-                <span class="font-mono text-xs tabular-nums text-base-content/70">E {price(c.entry)} · SL {price(c.stopLoss)} · TP {price(c.takeProfit)}</span>
+                <span class="flex items-center justify-between gap-2">
+                  <span class="font-mono text-xs tabular-nums text-base-content/70">E {price(c.entry)} · SL {price(c.stopLoss)} · TP {price(c.takeProfit)}</span>
+                  {#if inJournal(c)}
+                    <span class="text-xs text-base-content/70">Di jurnal</span>
+                  {:else}
+                    <button class="btn btn-ghost btn-xs" title="Catat call ini di jurnal sebagai trade yang kamu ambil" onclick={() => takeCall(c)}>Saya ambil</button>
+                  {/if}
+                </span>
               </li>
             {/each}
           </ul>
+          {#if takeNote}<p class="mt-2 text-xs text-error" role="alert">{takeNote}</p>{/if}
         {/if}
       </section>
 
