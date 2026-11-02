@@ -172,7 +172,7 @@
             Risiko per trade (%)
             <input class="input input-xs w-20 tabular-nums" type="number" min="0.1" max="10" step="0.1" bind:value={riskPct} />
           </label>
-          <p class="min-w-0 flex-1 text-sm" aria-live="polite"><span class="text-base-content/70">Ukuran posisi:</span> <strong class="tabular-nums">{sizeText}</strong></p>
+          <p class="min-w-0 grow basis-56 text-sm" aria-live="polite"><span class="text-base-content/70">Ukuran posisi:</span> <strong class="tabular-nums">{sizeText}</strong></p>
         </div>
         {#if size && size.value > capital}
           <p class="text-xs text-warning">Nilai posisi melebihi modal: hanya bisa dengan margin atau leverage, dan risikonya ikut membesar.</p>

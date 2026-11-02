@@ -5,6 +5,7 @@
   // the scheduled analyses (Pantau). On a desktop screen the header also
   // holds focus mode and the layout menu.
   import DecisionChart from '../DecisionChart.svelte';
+  import SessionBadge from '../SessionBadge.svelte';
   import { agent, LAYERS } from '../stores/agent.svelte';
   import { layout } from '../stores/layout.svelte';
   import { layoutOf, viewport } from '../stores/viewport.svelte';
@@ -60,6 +61,7 @@
       <span class="status status-xs {freshness.status}" aria-hidden="true"></span>
       {freshness.label}
     </span>
+    <SessionBadge tv={ws.symbol} />
     <span class="flex-1"></span>
     {#if ws.yahoo}
       <button

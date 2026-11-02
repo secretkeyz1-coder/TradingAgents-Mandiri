@@ -6,6 +6,7 @@
   import { AreaSeries, ColorType, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
   import { api, type CandleSeries, type Interval } from '../api';
   import { formatPercent, today } from '../format';
+  import SessionBadge from '../SessionBadge.svelte';
   import { mode } from '../stores/mode.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
@@ -181,6 +182,7 @@
             <span class="status status-xs {live ? 'status-success' : 'status-neutral'}" aria-hidden="true"></span>{live ? 'Harga real-time' : 'Harga tertunda beberapa menit'}
           </span>
         {/if}
+        <SessionBadge tv={ws.symbol} />
       </p>
     </div>
     {#if ws.yahoo}

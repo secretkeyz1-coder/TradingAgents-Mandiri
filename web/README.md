@@ -202,6 +202,7 @@ Chart, ticker tape, daftar harga dan screener memakai [widget gratis TradingView
 - Engine menganalisa dengan data harian Yahoo Finance; angka di chart bisa sedikit berbeda.
 - Widget gratis tidak menyajikan futures bursa (`COMEX:GC1!`) atau sebagian feed indeks (`SP:SPX`, `TVC:DJI`). Komoditas dan indeks memakai simbol CFD yang tersedia: emas `OANDA:XAUUSD` (engine: `GC=F`), S&P 500 `FOREXCOM:SPXUSD` (engine: `^GSPC`), dan seterusnya.
 - Pemetaan simbol Yahoo ↔ TradingView ada di `client/src/lib/tv.ts`, bersama daftar simbol tiap tab dan ticker tape. Tambah baris di sana untuk simbol baru, lalu cek simbolnya memang tampil di widget.
+- Kepala chart (Pro dan Pemula) menampilkan status sesi pasar dalam WIB, misalnya "IDX buka · tutup 12.00 WIB", "IDX istirahat siang", "Bursa AS tutup · buka 21.30 WIB", atau "Kripto · 24 jam" (`client/src/lib/sessions.ts`): IDX dengan istirahat Jumat yang lebih panjang, bursa AS pada jam New York (jadi ikut bergeser saat daylight saving), forex dan emas dari Minggu sore sampai Jumat sore New York (emas dengan jeda satu jam tiap hari). Hari libur bursa belum dihitung, jadi hari libur tetap tertulis buka.
 
 ## Prasyarat
 
