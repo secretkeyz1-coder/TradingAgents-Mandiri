@@ -9,353 +9,322 @@
 </script>
 
 <script lang="ts">
-  // The strategy lab (server/src/lab.ts): test a built-in engine, an indicator the admin published
-  // or one of your scripts on a long history with costs, and see whether it holds on the part of
-  // the data it was not shaped on. The list holds only what the account's plan opens. Three
-  // steps (indicator, assets, period) and a plain verdict first; costs, the test share, signal
-  // expiry and the crypto venue wait under "Pengaturan lanjutan" with their defaults.
-  import { ColorType, createChart, LineSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
-  import { api, type LabConfig, type LabRun, type LabRunSummary, type LabStats } from '../../api';
+  // Uji indikator (server/src/lab.ts): test a built-in engine, an indicator the admin published or one
+  // of your scripts on a long history with costs, and see whether it holds on the part of the data it was
+  // not shaped on. Set up on the left in three numbered steps and run; the result opens on the right
+  // (LabResult). The history under the form opens any earlier run in the same place, and a deleted one can
+  // be brought back for a few seconds. The state lives in stores/lab, so leaving the tab keeps a running
+  // test and its result. A phone shows one side at a time: the form and history, or the open result.
+  import { friendlyName } from '../../beginner/plain';
   import { formatDateTime, formatR } from '../../format';
+  import { indicators } from '../../stores/indicators.svelte';
+  import { lab, LAB_PERIODS, LAB_TIMEFRAMES, periodLabel, timeframeLabel, verdictOf } from '../../stores/lab.svelte';
   import { scripts } from '../../stores/scripts.svelte';
+  import { usage } from '../../stores/usage.svelte';
   import { ws } from '../../stores/workspace.svelte';
-  import { theme, tokenColor } from '../../theme.svelte';
-  import { assetCode, CRYPTO_VENUES } from '../../tv';
+  import { CRYPTO_VENUES, toTradingView } from '../../tv';
   import AssetChips from '../AssetChips.svelte';
+  import Icon from '../Icon.svelte';
+  import LabResult from './LabResult.svelte';
 
-  const TF = [
-    { value: '15m', label: '15 menit' },
-    { value: '1h', label: '1 jam' },
-    { value: '4h', label: '4 jam' },
-    { value: '1d', label: 'Harian' },
-  ] as const;
-  const PERIODS: Record<string, number[]> = { '15m': [30, 90, 180, 365], '1h': [90, 180, 365, 730, 1095], '4h': [365, 730, 1095, 1825], '1d': [365, 730, 1095, 1825] };
-  const periodLabel = (d: number) => (d < 365 ? `${d} hari` : `${d / 365} tahun`);
+  /** Engines the chart's catalog does not describe. */
+  const ENGINE_NOTES: Record<string, string> = { donchian: 'Masuk saat harga menembus batas atas atau bawah kanal Donchian.' };
 
-  let meta = $state<Awaited<ReturnType<typeof api.lab>> | null>(null);
-  let runs = $state<LabRunSummary[]>([]);
-  let strategy = $state('engine:fib');
-  let timeframe = $state<LabConfig['timeframe']>('1h');
-  let days = $state(365);
-  let costs = $state<'taker' | 'maker'>('taker');
-  let split = $state(0.7);
-  let expiry = $state(96);
-  /** For crypto symbols: whose bars to test on. */
-  let venue = $state('binance');
-  let symbols = $state<string[]>(['BTC-USD', 'ETH-USD', 'GC=F']);
-  let busy = $state(false);
-  let error = $state('');
-  let result = $state<LabRun | null>(null);
+  lab.load();
+  usage.refresh();
+  if (!indicators.loaded) indicators.load();
+  scripts.load();
 
-  async function load() {
-    try {
-      [meta, runs] = await Promise.all([api.lab(), api.labRuns()]);
-    } catch (e) {
-      error = (e as Error).message;
-    }
-  }
-  load();
+  /** On a phone, the form and history shown over an open result. */
+  let showForm = $state(false);
 
-  /** Every strategy on offer, in the list's order. */
+  const meta = $derived(lab.meta);
   const choices = $derived(
     meta ? [...Object.keys(meta.engines).map((k) => `engine:${k}`), ...meta.catalog.map((c) => `catalog:${c.id}`), ...meta.scripts.map((s) => `script:${s.id}`)] : [],
   );
   $effect(() => {
     // One the plan no longer opens (or a removed script) gives way to the first on offer.
-    if (choices.length && !choices.includes(strategy)) strategy = choices[0];
+    if (choices.length && !choices.includes(lab.strategy)) lab.strategy = choices[0];
   });
   $effect(() => {
-    // Indikator saya's "Uji": take the strategy once the list offers it.
+    // Indikator saya's "Uji": take the strategy once the list offers it, with the form in view.
     if (asked && choices.includes(asked)) {
-      strategy = asked;
+      lab.strategy = asked;
       asked = null;
+      showForm = true;
     }
   });
-  const engine = $derived(strategy.startsWith('engine:') ? meta?.engines[strategy.slice(7)] : null);
-  const timeframes = $derived(TF.filter((t) => !engine || engine.timeframes.includes(t.value)));
+  const engine = $derived(lab.strategy.startsWith('engine:') ? meta?.engines[lab.strategy.slice(7)] : null);
+  const timeframes = $derived(LAB_TIMEFRAMES.filter((t) => !engine || engine.timeframes.includes(t.value)));
   $effect(() => {
-    if (!timeframes.some((t) => t.value === timeframe)) timeframe = timeframes[0].value;
+    if (!timeframes.some((t) => t.value === lab.timeframe)) lab.timeframe = timeframes[0].value;
   });
   $effect(() => {
-    if (!PERIODS[timeframe].includes(days)) days = PERIODS[timeframe].at(-2) ?? PERIODS[timeframe][0];
+    if (!LAB_PERIODS[lab.timeframe].includes(lab.days)) lab.days = LAB_PERIODS[lab.timeframe].at(-2) ?? LAB_PERIODS[lab.timeframe][0];
   });
 
+  const strategyName = $derived.by(() => {
+    const [kind, id] = lab.strategy.split(':');
+    if (kind === 'engine') return meta?.engines[id]?.label ?? id;
+    if (kind === 'catalog') return meta?.catalog.find((c) => c.id === id)?.name ?? 'Indikator';
+    return meta?.scripts.find((s) => s.id === id)?.name ?? 'Skrip';
+  });
+  const strategyNote = $derived.by(() => {
+    const [kind, id] = lab.strategy.split(':');
+    if (kind === 'engine') return indicators.catalog.find((c) => c.builtin === id)?.description || ENGINE_NOTES[id] || '';
+    if (kind === 'catalog') return indicators.catalog.find((c) => c.key === lab.strategy)?.description || 'Diterbitkan admin untuk paketmu.';
+    return scripts.items.find((s) => s.id === id)?.pine ? 'Skrip buatanmu, diterjemahkan dari Pine.' : 'Skrip buatanmu.';
+  });
 
-  async function run() {
-    busy = true;
-    error = '';
-    try {
-      const [kind, id] = strategy.split(':') as ['engine' | 'script' | 'catalog', string];
-      const strategyConfig: LabConfig['strategy'] = kind === 'engine' ? { kind: 'engine', name: id } : { kind, id };
-      result = await api.labRun({ strategy: strategyConfig, symbols, timeframe, days, costs, split, expiry, venue: venue === 'binance' ? undefined : venue });
-      runs = await api.labRuns();
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      busy = false;
-    }
+  const quota = $derived(usage.value?.lab);
+  const left = $derived(quota ? Math.max(0, quota.limit - quota.used) : null);
+  const name = (s: string) => friendlyName(toTradingView(s));
+  const joinId = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} dan ${xs.at(-1)}`);
+  const tone = (x: number | null | undefined) => (x == null ? '' : x > 0 ? 'ta-up' : x < 0 ? 'ta-down' : '');
+  const detailShown = $derived((lab.busy || !!lab.result) && !showForm);
+
+  function start() {
+    showForm = false;
+    lab.run(strategyName);
   }
 
-  async function open(id: string) {
-    error = '';
-    try {
-      result = await api.labRunGet(id);
-    } catch (e) {
-      error = (e as Error).message;
-    }
+  function openRun(id: string) {
+    showForm = false;
+    lab.open(id);
   }
-
-  async function remove(id: string) {
-    await api.labRunDelete(id).catch((e) => (error = (e as Error).message));
-    if (result?.id === id) result = null;
-    runs = await api.labRuns();
-  }
-
-  const r = formatR;
-  const pct = (x: number | null | undefined) => (x == null ? '–' : `${Math.round(x * 100)}%`);
-  const num = (x: number | null | undefined) => (x == null ? '–' : x.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  const tone = (x: number | null | undefined) => (x == null ? '' : x > 0 ? 'text-success' : x < 0 ? 'text-error' : '');
-  const tfLabel = (tf: string) => TF.find((t) => t.value === tf)?.label ?? tf;
-
-  // --- The combined net-R curve: the part the strategy was shaped on, then the check.
-  let box: HTMLDivElement | undefined = $state();
-  let chart: IChartApi | undefined;
-  let inSample: ISeriesApi<'Line'> | undefined;
-  let outSample: ISeriesApi<'Line'> | undefined;
-  $effect(() => {
-    if (!box) return;
-    chart = createChart(box, {
-      autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, attributionLogo: false },
-      rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false, timeVisible: true },
-      localization: { locale: 'id-ID', priceFormatter: (v: number) => `${v.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}R` },
-      handleScroll: false,
-      handleScale: false,
-    });
-    inSample = chart.addSeries(LineSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: false, title: 'data awal' });
-    outSample = chart.addSeries(LineSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: 'data uji' });
-    return () => {
-      chart?.remove();
-      chart = inSample = outSample = undefined;
-    };
-  });
-  $effect(() => {
-    void theme.dark;
-    const points = result?.equity ?? [];
-    if (!chart || !inSample || !outSample) return;
-    chart.applyOptions({
-      layout: { textColor: tokenColor('--color-base-content', 0.7) },
-      grid: { vertLines: { visible: false }, horzLines: { color: tokenColor('--color-base-300', 0.6) } },
-    });
-    inSample.applyOptions({ color: tokenColor('--color-base-content', 0.45) });
-    outSample.applyOptions({ color: tokenColor('--color-accent') });
-    const at = (t: string) => Math.floor(Date.parse(`${t.slice(0, 10)}T${t.length > 10 ? t.slice(11, 16) : '00:00'}:00Z`) / 1000);
-    const series = (list: typeof points) => {
-      const seen = new Map<number, number>();
-      for (const p of list) seen.set(at(p.time), p.r);
-      return [...seen.entries()].sort((a, b) => a[0] - b[0]).map(([time, value]) => ({ time: time as UTCTimestamp, value }));
-    };
-    const firstOos = points.findIndex((p) => p.oos);
-    // The check starts where the shaping ended, so the two lines join.
-    inSample.setData(series(firstOos < 0 ? points : points.slice(0, firstOos + 1)));
-    outSample.setData(series(firstOos < 0 ? [] : points.slice(Math.max(0, firstOos - 1))));
-    chart.timeScale().fitContent();
-  });
-
-  const row = (s: LabStats) => [s.n, pct(s.win), r(s.net), num(s.pf)];
 </script>
 
-<div class="flex flex-col gap-4 p-4">
-  <div class="flex max-w-[80ch] flex-col gap-1">
-    <h3 class="text-base font-semibold">Apakah indikator ini untung kalau dipakai di masa lalu, setelah biaya?</h3>
-    <p class="text-sm text-base-content/70">
-      Indikator diuji pada riwayat panjang. Bagian awal (<strong>data awal</strong>) membentuk hasilnya, lalu bagian terakhir yang belum pernah dipakai (<strong>data uji</strong>)
-      memeriksanya. Yang tetap untung setelah biaya di data uji layak dicoba di Rekam jejak live.
-    </p>
-    <p class="text-xs text-base-content/70">Makin sering mencoba variasi, makin besar peluang hasil bagus hanya kebetulan. Hasil riset, bukan nasihat keuangan.</p>
-  </div>
+<div class="ta-split">
+  <aside class="ta-side {detailShown ? 'max-lg:hidden' : ''}" aria-label="Uji baru dan riwayat uji">
+    <section class="ta-card p-5" aria-labelledby="lab-new">
+      <div class="mb-4 flex items-baseline justify-between gap-2">
+        <h2 id="lab-new" class="ta-section-title">Uji baru</h2>
+        <span class="text-sm ta-muted">3 langkah, lalu jalankan</span>
+      </div>
+      {#if lab.note}<p class="alert alert-soft alert-info mb-4 items-start text-sm"><Icon name="info" />{lab.note}</p>{/if}
 
-  <div class="flex flex-col gap-3 rounded-box border border-base-300 p-3">
-    <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_10rem] lg:items-start">
-      <label class="flex flex-col gap-1 text-sm">
-        <span><span class="text-base-content/70">1 ·</span> Indikator</span>
-        <select class="select select-sm w-full" bind:value={strategy}>
-          {#if Object.keys(meta?.engines ?? {}).length}
-            <optgroup label="Bawaan">
-              {#each Object.entries(meta?.engines ?? {}) as [key, e] (key)}<option value="engine:{key}">{e.label}</option>{/each}
-            </optgroup>
-          {/if}
-          {#if meta?.catalog.length}
-            <optgroup label="Dari admin">
-              {#each meta.catalog as c (c.id)}<option value="catalog:{c.id}">{c.name}</option>{/each}
-            </optgroup>
-          {/if}
-          {#if meta?.scripts.length}
-            <optgroup label="Buatan saya">
-              {#each meta.scripts as s (s.id)}<option value="script:{s.id}">{s.name}</option>{/each}
-            </optgroup>
-          {/if}
-        </select>
-        <span class="flex flex-wrap gap-x-3 text-xs">
-          <button type="button" class="link link-hover" onclick={() => scripts.open(null)}>Buat indikator baru</button>
-          <button type="button" class="link link-hover" onclick={() => ws.setDock('library')}>Lihat semua indikator</button>
-        </span>
-      </label>
-      <div class="flex flex-col gap-1 text-sm">
-        <span><span class="text-base-content/70">2 ·</span> Aset</span>
-        <AssetChips bind:symbols />
-      </div>
-      <label class="flex flex-col gap-1 text-sm">
-        <span><span class="text-base-content/70">3 ·</span> Timeframe dan periode</span>
-        <div class="join w-full">
-          <select class="select select-sm join-item w-1/2" bind:value={timeframe} aria-label="Timeframe">
-            {#each timeframes as t (t.value)}<option value={t.value}>{t.label}</option>{/each}
-          </select>
-          <select class="select select-sm join-item w-1/2" bind:value={days} aria-label="Periode">
-            {#each PERIODS[timeframe] as d (d)}<option value={d}>{periodLabel(d)}</option>{/each}
-          </select>
-        </div>
-      </label>
-      <div class="flex flex-col lg:pt-6">
-        <button class="btn btn-primary btn-sm w-full" onclick={run} disabled={busy || !symbols.length}>
-          {#if busy}<span class="loading loading-spinner loading-xs"></span> Menguji…{:else}Jalankan uji{/if}
-        </button>
-      </div>
-    </div>
-    <details class="text-sm">
-      <summary class="cursor-pointer text-xs text-base-content/70">
-        Pengaturan lanjutan: biaya {costs === 'taker' ? 'order pasar' : 'order limit'} · data uji {Math.round((1 - split) * 100)}% terakhir · sinyal kedaluwarsa {expiry} candle ·
-        kripto dari {CRYPTO_VENUES.find((v) => v.id === venue)?.label ?? venue}
-      </summary>
-      <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label class="flex flex-col gap-1">
-          Biaya per trade
-          <select class="select select-sm w-full" bind:value={costs}>
-            <option value="taker">Order pasar (taker)</option>
-            <option value="maker">Order limit (maker)</option>
-          </select>
-          <span class="text-xs text-base-content/70">
-            {costs === 'maker' ? 'Kripto: maker sama dengan taker, 0,2% per trade (fee dasar Binance 0,1% per sisi). ' : ''}Saham IDX: 0,4% per
-            trade untuk order pasar maupun limit (fee broker sekitar 0,15% beli dan 0,25% jual, termasuk pajak jual 0,1%).
+      <ol class="ta-steps">
+        <li class="ta-step">
+          <span class="ta-step-n" aria-hidden="true">1</span>
+          <label for="lab-strategy" class="ta-step-t">Pilih indikator</label>
+          <div class="ta-step-b">
+            <select id="lab-strategy" class="select w-full" bind:value={lab.strategy} aria-describedby={strategyNote ? 'lab-strategy-note' : undefined}>
+              {#if Object.keys(meta?.engines ?? {}).length}
+                <optgroup label="Bawaan">
+                  {#each Object.entries(meta?.engines ?? {}) as [key, e] (key)}<option value="engine:{key}">{e.label}</option>{/each}
+                </optgroup>
+              {/if}
+              {#if meta?.catalog.length}
+                <optgroup label="Dari admin">
+                  {#each meta.catalog as c (c.id)}<option value="catalog:{c.id}">{c.name}</option>{/each}
+                </optgroup>
+              {/if}
+              {#if meta?.scripts.length}
+                <optgroup label="Buatan saya">
+                  {#each meta.scripts as s (s.id)}<option value="script:{s.id}">{s.name}</option>{/each}
+                </optgroup>
+              {/if}
+            </select>
+            {#if strategyNote}<p id="lab-strategy-note" class="text-sm ta-muted">{strategyNote}</p>{/if}
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <button type="button" class="link link-accent font-medium" onclick={() => ws.setDock('library')}>Kelola di Indikator saya</button>
+              <button type="button" class="link link-accent font-medium" onclick={() => scripts.open(null)}>Buat indikator baru</button>
+            </div>
+          </div>
+        </li>
+        <li class="ta-step">
+          <span class="ta-step-n" aria-hidden="true">2</span>
+          <span class="ta-step-t" id="lab-assets">Pilih aset</span>
+          <div class="ta-step-b" role="group" aria-labelledby="lab-assets">
+            <AssetChips bind:symbols={lab.symbols} />
+          </div>
+        </li>
+        <li class="ta-step">
+          <span class="ta-step-n" aria-hidden="true">3</span>
+          <span class="ta-step-t" id="lab-time">Atur waktu</span>
+          <div class="ta-step-b" role="group" aria-labelledby="lab-time">
+            <div class="join w-full" role="group" aria-label="Timeframe">
+              {#each timeframes as t (t.value)}
+                <button
+                  type="button"
+                  class="btn btn-sm join-item flex-1 px-1"
+                  class:btn-neutral={lab.timeframe === t.value}
+                  aria-pressed={lab.timeframe === t.value}
+                  onclick={() => (lab.timeframe = t.value)}>{t.label}</button
+                >
+              {/each}
+            </div>
+            <label class="flex items-center justify-between gap-3 text-sm">
+              <span class="ta-muted">Periode</span>
+              <select class="select select-sm w-auto" bind:value={lab.days}>
+                {#each LAB_PERIODS[lab.timeframe] as d (d)}<option value={d}>{periodLabel(d)}</option>{/each}
+              </select>
+            </label>
+            <p class="text-xs ta-muted">Makin panjang, makin banyak trade yang bisa dinilai.</p>
+          </div>
+        </li>
+      </ol>
+
+      <details class="mt-5 rounded-field border border-base-300">
+        <summary class="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2.5 text-sm font-medium">
+          <Icon name="sliders" size={16} />Pengaturan lanjutan
+          <span class="text-xs font-normal ta-muted">
+            {lab.costs === 'taker' ? 'order pasar' : 'order limit'} · data uji {Math.round((1 - lab.split) * 100)}% · {lab.expiry} candle · {CRYPTO_VENUES.find((v) => v.id === lab.venue)?.label ??
+              lab.venue}
           </span>
-        </label>
-        <label class="flex flex-col gap-1">
-          Bagian data uji
-          <select class="select select-sm w-full" bind:value={split}>
-            <option value={0.8}>20% terakhir</option>
-            <option value={0.7}>30% terakhir</option>
-            <option value={0.6}>40% terakhir</option>
-          </select>
-        </label>
-        <label class="flex flex-col gap-1">
-          Sinyal kedaluwarsa setelah (candle)
-          <input type="number" class="input input-sm w-full" min="4" max="500" bind:value={expiry} />
-        </label>
-        <label class="flex flex-col gap-1">
-          Bursa untuk kripto
-          <select class="select select-sm w-full" bind:value={venue}>
-            {#each CRYPTO_VENUES as v (v.id)}<option value={v.id}>{v.label}</option>{/each}
-          </select>
-        </label>
-      </div>
-    </details>
-  </div>
-  {#if busy}<p class="text-xs text-base-content/70">Mengambil riwayat dan menjalankan strategi; riwayat panjang bisa memakan 1–2 menit.</p>{/if}
-  {#if error}<p role="alert" class="text-sm text-error">{error}</p>{/if}
-
-  {#if result}
-    <div class="flex flex-col gap-3">
-      <div role="status" class="alert {result.verdict.pass ? 'alert-success' : 'alert-warning'} alert-soft">
-        <div>
-          <p class="font-semibold">{result.verdict.pass ? 'Lolos uji awal' : 'Tidak lolos'} · {result.name} {tfLabel(result.config.timeframe)}</p>
-          <p class="text-sm">{result.verdict.reason}</p>
-          {#if result.total.oos.n}
-            <p class="text-sm">
-              Di data uji: {result.total.oos.n} trade, {pct(result.total.oos.win)} untung, rata-rata {r(result.total.oos.net)} per trade setelah biaya{result.total.oos.cost != null
-                ? ` (biaya ${r(-Math.abs(result.total.oos.cost))} per trade)`
-                : ''}. R adalah risiko satu trade: jarak entry ke stop loss.
-            </p>
-          {/if}
+        </summary>
+        <div class="grid gap-3 border-t border-base-300 p-3 text-sm">
+          <label class="flex flex-col gap-1">
+            Biaya per trade
+            <select class="select select-sm w-full" bind:value={lab.costs} aria-describedby="lab-costs-note">
+              <option value="taker">Order pasar (taker)</option>
+              <option value="maker">Order limit (maker)</option>
+            </select>
+          </label>
+          <p id="lab-costs-note" class="-mt-2 text-xs ta-muted">
+            {lab.costs === 'maker' ? 'Kripto: maker sama dengan taker, 0,2% per trade (fee dasar Binance 0,1% per sisi). ' : ''}Saham IDX: 0,4% per trade untuk order pasar
+            maupun limit (fee broker sekitar 0,15% beli dan 0,25% jual, termasuk pajak jual 0,1%).
+          </p>
+          <label class="flex flex-col gap-1">
+            Bagian data uji
+            <select class="select select-sm w-full" bind:value={lab.split}>
+              <option value={0.8}>20% terakhir</option>
+              <option value={0.7}>30% terakhir</option>
+              <option value={0.6}>40% terakhir</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1">
+            Sinyal kedaluwarsa setelah (candle)
+            <input type="number" class="input input-sm w-full" min="4" max="500" bind:value={lab.expiry} />
+          </label>
+          <label class="flex flex-col gap-1">
+            Bursa untuk kripto
+            <select class="select select-sm w-full" bind:value={lab.venue}>
+              {#each CRYPTO_VENUES as v (v.id)}<option value={v.id}>{v.label}</option>{/each}
+            </select>
+          </label>
         </div>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th rowspan="2">Simbol</th>
-              <th colspan="4" class="text-center">Data awal</th>
-              <th colspan="4" class="text-center">Data uji</th>
-              <th rowspan="2" class="text-right">Biaya rata-rata</th>
-            </tr>
-            <tr>
-              <th class="text-right">Trade</th><th class="text-right">Win</th><th class="text-right">Bersih</th><th class="text-right">PF</th>
-              <th class="text-right">Trade</th><th class="text-right">Win</th><th class="text-right">Bersih</th><th class="text-right">PF</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each result.symbols as s (s.symbol)}
-              <tr>
-                <td>
-                  <span>{assetCode(s.symbol)}</span>
-                  {#if 'error' in s}
-                    <span class="block text-xs text-error">{s.error}</span>
-                  {:else}
-                    <span class="block text-xs text-base-content/70">{CRYPTO_VENUES.find((v) => v.id === s.source)?.label ?? 'Yahoo'} · {s.bars} candle · uji mulai {s.split?.slice(0, 10)}</span>
-                  {/if}
-                </td>
-                {#if !('error' in s)}
-                  {#each row(s.is) as v, i (i)}<td class="text-right tabular-nums {i === 2 ? tone(s.is.net) : ''}">{v}</td>{/each}
-                  {#each row(s.oos) as v, i (i)}<td class="text-right tabular-nums {i === 2 ? tone(s.oos.net) : ''}">{v}</td>{/each}
-                  <td class="text-right tabular-nums">{r(s.oos.cost ?? s.is.cost)}</td>
-                {:else}
-                  <td colspan="9"></td>
-                {/if}
-              </tr>
-            {/each}
-            <tr class="font-semibold">
-              <td>Total</td>
-              {#each row(result.total.is) as v, i (i)}<td class="text-right tabular-nums {i === 2 ? tone(result.total.is.net) : ''}">{v}</td>{/each}
-              {#each row(result.total.oos) as v, i (i)}<td class="text-right tabular-nums {i === 2 ? tone(result.total.oos.net) : ''}">{v}</td>{/each}
-              <td class="text-right tabular-nums">{r(result.total.oos.cost)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-xs text-base-content/70">
-        Kotor data uji {r(result.total.oos.gross)} per trade · total bersih data uji {r(result.total.oos.total, 1)} · drawdown terdalam {r(-result.total.oos.maxDrawdown, 1)} ·
-        biaya {result.config.costs === 'maker' ? 'maker' : 'taker'} · selesai dalam {Math.round(result.ms / 1000)} detik.
-      </p>
-      <!-- Created once visible: a chart sized while hidden squeezes its data to one side. -->
-      <div class="h-48 w-full" bind:this={box} aria-label="Kurva R bersih: data awal lalu data uji"></div>
-    </div>
-  {/if}
+      </details>
 
-  {#if runs.length}
-    <div class="flex flex-col gap-2">
-      <h3 class="text-sm font-semibold">Riwayat uji</h3>
-      <div class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr><th>Waktu</th><th>Strategi</th><th>Simbol</th><th class="text-right">Bersih data uji</th><th>Hasil</th><th><span class="sr-only">Aksi</span></th></tr>
-          </thead>
-          <tbody>
-            {#each runs as run (run.id)}
-              <tr class="hover:bg-base-200" class:bg-base-200={result?.id === run.id}>
-                <td class="tabular-nums whitespace-nowrap">{formatDateTime(run.createdAt)}</td>
-                <td>
-                  <button class="link link-hover" onclick={() => open(run.id)}>{run.name} {tfLabel(run.config.timeframe)}</button>
-                  <span class="block text-xs text-base-content/70">{periodLabel(run.config.days)} · {run.config.costs}</span>
-                </td>
-                <td class="font-mono text-xs">{run.config.symbols.join(', ')}</td>
-                <td class="text-right tabular-nums {tone(run.total?.oos.net)}">{r(run.total?.oos.net)} ({run.total?.oos.n ?? 0})</td>
-                <td><span class="badge badge-sm badge-soft {run.verdict?.pass ? 'badge-success' : 'badge-warning'}">{run.verdict?.pass ? 'lolos' : 'tidak lolos'}</span></td>
-                <td class="text-right"><button class="btn btn-ghost btn-xs" onclick={() => remove(run.id)}>Hapus</button></td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+      <div class="mt-5 flex flex-col gap-2">
+        <button type="button" class="btn btn-primary btn-lg w-full" onclick={start} disabled={lab.busy || !lab.symbols.length || left === 0}>
+          {#if lab.busy}<span class="loading loading-spinner loading-sm" aria-hidden="true"></span>Menguji…{:else}Jalankan uji{/if}
+        </button>
+        {#if quota}
+          <div class="flex justify-between text-sm ta-muted"><span>Sisa uji hari ini</span><span class="tabular-nums">{left} dari {quota.limit}</span></div>
+          <progress class="progress progress-primary w-full" value={left} max={quota.limit} aria-label="Sisa uji hari ini: {left} dari {quota.limit}"></progress>
+        {/if}
+        {#if left === 0}<p class="text-sm text-warning">Jatah uji hari ini sudah terpakai ({quota?.limit} per 24 jam). Coba lagi nanti.</p>{/if}
+        {#if !lab.symbols.length}<p class="text-sm ta-muted">Tambah minimal satu aset di langkah 2.</p>{/if}
+        {#if lab.error}<p role="alert" class="text-sm text-error">{lab.error}</p>{/if}
       </div>
-    </div>
-  {/if}
+    </section>
+
+    <section class="ta-card" aria-labelledby="lab-history">
+      <div class="flex items-center justify-between gap-2 border-b border-base-300 px-5 py-3">
+        <h2 id="lab-history" class="font-semibold">Riwayat uji</h2>
+        {#if lab.shown.length}<span class="text-sm ta-muted">{lab.shown.length} uji</span>{/if}
+      </div>
+      {#if lab.deleting}
+        <div class="flex items-center gap-3 border-b border-base-300 px-5 py-2.5 text-sm">
+          <Icon name="trash" size={16} />
+          <span class="min-w-0 flex-1">Uji <b>{lab.deleting.name}</b> dihapus.</span>
+          <button type="button" class="btn btn-sm" onclick={() => lab.undo()}>Urungkan</button>
+        </div>
+      {/if}
+      <ul class="ta-rows">
+        {#if lab.busy && lab.running}
+          <li>
+            <div class="ta-row" aria-current="true">
+              <span class="min-w-0 flex-1">
+                <span class="ta-row-title">{lab.running.name} · {timeframeLabel(lab.running.config.timeframe)}</span>
+                <span class="ta-row-sub">{joinId(lab.running.config.symbols.map(name))} · baru saja</span>
+                <span class="badge badge-soft badge-info mt-1.5 gap-1.5"><span class="loading loading-spinner loading-xs" aria-hidden="true"></span>Menguji…</span>
+              </span>
+            </div>
+          </li>
+        {/if}
+        {#each lab.shown as run (run.id)}
+          {@const v = verdictOf(run)}
+          <li>
+            <button type="button" class="ta-row" aria-current={lab.result?.id === run.id ? 'true' : undefined} onclick={() => openRun(run.id)}>
+              <span class="min-w-0 flex-1">
+                <span class="ta-row-title">{run.name} · {timeframeLabel(run.config.timeframe)}</span>
+                <span class="ta-row-sub">{joinId(run.config.symbols.map(name))} · {formatDateTime(run.createdAt)}</span>
+                <span class="badge badge-soft {v.badge} mt-1.5 gap-1"><Icon name={v.icon} size={14} stroke={2.4} />{v.word}</span>
+              </span>
+              <span class="shrink-0 text-right">
+                <span class="block font-semibold tabular-nums {tone(run.total?.oos.net)}">{formatR(run.total?.oos.net)}</span>
+                <span class="ta-row-sub">{run.total?.oos.n ?? 0} trade</span>
+              </span>
+            </button>
+          </li>
+        {:else}
+          {#if !lab.busy}
+            <li class="px-3 py-4 text-sm ta-muted">{lab.loaded ? 'Belum ada uji. Tiap uji yang kamu jalankan tersimpan di sini bersama hasilnya.' : 'Memuat…'}</li>
+          {/if}
+        {/each}
+      </ul>
+      {#if lab.shown.length}<p class="px-5 pb-4 text-xs ta-muted">Angka kanan: rata-rata per trade di data uji, setelah biaya. Buka satu uji untuk menghapusnya.</p>{/if}
+    </section>
+  </aside>
+
+  <section class="ta-detail {detailShown ? '' : 'max-lg:hidden'}" aria-label="Hasil uji">
+    {#if detailShown}
+      <button type="button" class="btn btn-ghost btn-sm w-fit lg:hidden" onclick={() => (showForm = true)}><Icon name="left" size={16} />Uji baru dan riwayat</button>
+    {/if}
+    {#if lab.busy && lab.running}
+      <div class="ta-verdict" data-tone="info">
+        <span class="ta-verdict-icon"><span class="loading loading-spinner loading-md" aria-hidden="true"></span></span>
+        <p class="ta-verdict-title">Sedang menguji…</p>
+        <p class="ta-verdict-reason">
+          {lab.running.name} · {timeframeLabel(lab.running.config.timeframe)} di {joinId(lab.running.config.symbols.map(name))}, {periodLabel(lab.running.config.days)}.
+        </p>
+        <p class="ta-verdict-note">Biasanya beberapa detik; riwayat panjang bisa 1–2 menit. Boleh pindah tab: hasilnya tersimpan di Riwayat uji.</p>
+      </div>
+      <div class="ta-card flex flex-col gap-3 p-5" aria-hidden="true">
+        <span class="skeleton h-4 w-2/5"></span>
+        <span class="skeleton h-48 w-full"></span>
+        <span class="skeleton h-3 w-3/4"></span>
+      </div>
+    {:else if lab.result}
+      {#key lab.result.id}<LabResult r={lab.result} onform={() => (showForm = true)} />{/key}
+    {:else}
+      <div class="flex flex-col gap-5 rounded-[calc(var(--radius-box)*1.6)] border-[1.5px] border-dashed border-base-300 p-7">
+        <div class="flex items-center gap-3">
+          <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent"><Icon name="lab" size={22} stroke={2} /></span>
+          <h2 class="ta-title">{lab.shown.length ? 'Pilih uji di riwayat' : 'Hasil ujimu muncul di sini'}</h2>
+        </div>
+        <p class="max-w-[62ch] text-[1.0625rem] leading-relaxed">
+          {#if lab.shown.length}
+            Buka uji lama dari Riwayat uji, atau atur uji baru di kiri lalu tekan <b>Jalankan uji</b>.
+          {:else}
+            Langkah 1 sampai 3 di kiri sudah terisi pilihan yang umum dipakai. Tekan <b>Jalankan uji</b> untuk melihat hasil pertamamu, biasanya dalam beberapa detik.
+          {/if}
+        </p>
+        {#if !lab.shown.length}
+          <div class="flex flex-col gap-2.5">
+            <p class="text-sm font-semibold ta-muted">Yang akan kamu lihat</p>
+            <ul class="ta-checks">
+              <li class="ta-check" data-state="skip">
+                <span class="ta-check-mark"><Icon name="check" size={16} /></span>
+                <span><span class="ta-check-title block">Lolos atau tidak lolos</span><span class="block text-sm ta-muted">Tiga syarat yang sama untuk semua indikator, dicek berurutan.</span></span>
+              </li>
+              <li class="ta-check" data-state="skip">
+                <span class="ta-check-mark"><Icon name="info" size={16} /></span>
+                <span><span class="ta-check-title block">Untung atau rugi per trade, setelah biaya</span><span class="block text-sm ta-muted">Dalam R: 1R adalah risiko satu trade, jarak entry ke stop loss.</span></span>
+              </li>
+              <li class="ta-check" data-state="skip">
+                <span class="ta-check-mark"><Icon name="signals" size={16} /></span>
+                <span><span class="ta-check-title block">Kurva data awal, lalu data uji</span><span class="block text-sm ta-muted">Bagian akhir riwayat yang belum pernah dipakai memeriksa hasilnya.</span></span>
+              </li>
+            </ul>
+          </div>
+          <p class="text-sm ta-muted">
+            Belum tahu mau menguji apa? <button type="button" class="link link-accent" onclick={() => ws.setDock('library')}>Lihat semua indikator di Indikator saya</button>.
+          </p>
+        {/if}
+      </div>
+    {/if}
+  </section>
 </div>

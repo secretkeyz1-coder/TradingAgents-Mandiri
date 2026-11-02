@@ -161,11 +161,20 @@ async function runLab(config: RunConfig, code: string | null) {
         ? { pass: false, reason: "Sudah rugi di data awal setelah biaya." }
         : (total.oos.net ?? 0) <= 0
           ? { pass: false, reason: "Untung di data awal, tapi rugi di data uji: kemungkinan hanya cocok dengan masa lalu." }
-          : { pass: true, reason: "Positif setelah biaya di data awal dan di data uji. Jalankan di buku catatan live sebelum dipakai." };
+          : { pass: true, reason: "Untung setelah biaya di data awal, dan tetap untung di data uji yang belum pernah dipakai." };
   return { symbols, total, equity, verdict, ms: Date.now() - started };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The lab runs an account started in the last 24 hours, against its plan's labRuns (also shown in /api/usage). */
+export async function labRunsToday(userId: string): Promise<number> {
+  const [{ today }] = await db
+    .select({ today: sql<number>`count(*)::int` })
+    .from(labRuns)
+    .where(and(eq(labRuns.userId, userId), gte(labRuns.createdAt, new Date(Date.now() - 86_400_000))));
+  return today;
+}
 
 export const labApi = new Hono<AppEnv>();
 
@@ -214,12 +223,9 @@ labApi.post("/lab/run", async (c) => {
     name = script.name;
     code = script.code;
   }
-  const [{ today }] = await db
-    .select({ today: sql<number>`count(*)::int` })
-    .from(labRuns)
-    .where(and(eq(labRuns.userId, user.id), gte(labRuns.createdAt, new Date(Date.now() - 86_400_000))));
+  const today = await labRunsToday(user.id);
   const perDay = limitsOf(user).labRuns;
-  if (today >= perDay) return c.json({ error: capMessage(user, perDay, "uji Lab per 24 jam") }, 429);
+  if (today >= perDay) return c.json({ error: capMessage(user, perDay, "uji indikator per 24 jam") }, 429);
   const lease = await holdLease(RUN_LEASE, RUN_LEASE_MS);
   if (!lease) return c.json({ error: "Lab sedang menjalankan uji lain. Coba lagi sebentar lagi." }, 429);
   try {

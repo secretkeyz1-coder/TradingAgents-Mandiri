@@ -2,12 +2,16 @@
   // The assets a test runs on, as chips with the names people know (Bitcoin, Emas, Bank Central
   // Asia), added from the asset finder (search, or a market's list) instead of typed engine codes.
   // It holds engine spellings (BTC-USD, GC=F, BBCA.JK); an asset the engine cannot read is refused
-  // with a note. Used by Uji indikator (LabView) and Uji saran AI (AnalysisForm).
+  // with a note. Used by Uji indikator (LabView) and Uji saran AI (AnalysisForm). Its buttons are all
+  // type="button": the chips sit inside forms, where a stray submit would start a test. Focus goes back
+  // to "Tambah aset" when the finder closes, and to the next chip's × when one is removed.
+  import { tick } from 'svelte';
   import { friendlyName } from '../beginner/plain';
   import { keepPlaced, placeMenu } from '../chart/menuSide';
   import { layoutOf, viewport } from '../stores/viewport.svelte';
   import { toTradingView, toYahoo } from '../tv';
   import AssetFinder from './AssetFinder.svelte';
+  import Icon from './Icon.svelte';
 
   let { symbols = $bindable([]), max = 5 }: { symbols?: string[]; max?: number } = $props();
 
@@ -15,16 +19,37 @@
   let note = $state('');
   let place = $state({ left: 0, width: 0, maxHeight: 0 });
   let root: HTMLDivElement | undefined = $state();
+  let row: HTMLDivElement | undefined = $state();
+  let addButton: HTMLButtonElement | undefined = $state();
+
+  /** After a change, focus lands on `index`'s ×, else "Tambah aset", else the last ×. */
+  async function refocus(index: number | null) {
+    await tick();
+    const removers = [...(row?.querySelectorAll<HTMLButtonElement>('[data-remove]') ?? [])];
+    const target = index != null ? (removers[Math.min(index, removers.length - 1)] ?? addButton) : (addButton ?? removers.at(-1));
+    target?.focus();
+  }
+
+  function close() {
+    open = false;
+    refocus(null);
+  }
 
   function add(tv: string) {
     const yahoo = toYahoo(tv);
-    open = false;
     if (!yahoo) {
       note = `${friendlyName(tv)} belum bisa diuji: datanya tidak terbaca mesin.`;
+      close();
       return;
     }
     note = '';
     if (!symbols.includes(yahoo) && symbols.length < max) symbols = [...symbols, yahoo];
+    close();
+  }
+
+  function remove(s: string, index: number) {
+    symbols = symbols.filter((x) => x !== s);
+    refocus(index);
   }
 
   $effect(() => {
@@ -40,25 +65,29 @@
   });
 </script>
 
-<div class="flex flex-col gap-1">
-  <div class="flex flex-wrap items-center gap-1.5">
-    {#each symbols as s (s)}
-      <span class="badge badge-ghost gap-1" title={s}>
-        {friendlyName(toTradingView(s))}
-        <button class="cursor-pointer" aria-label="Hapus {friendlyName(toTradingView(s))}" onclick={() => (symbols = symbols.filter((x) => x !== s))}>×</button>
+<div class="flex flex-col gap-1.5">
+  <div class="flex flex-wrap items-center gap-2" bind:this={row}>
+    {#each symbols as s, i (s)}
+      {@const name = friendlyName(toTradingView(s))}
+      <span class="inline-flex h-9 items-center gap-0.5 rounded-full border border-base-300 bg-base-200 pr-1 pl-3 text-sm font-medium" title={s}>
+        {name}
+        <button type="button" data-remove class="btn btn-ghost btn-circle btn-xs" aria-label="Hapus {name} dari uji" onclick={() => remove(s, i)}>
+          <Icon name="x" size={14} stroke={2.2} />
+        </button>
       </span>
     {/each}
     {#if symbols.length < max}
       <div class="relative" bind:this={root}>
         <button
+          bind:this={addButton}
           type="button"
-          class="btn btn-ghost btn-xs"
+          class="btn btn-sm h-9 rounded-full border-dashed border-base-300 bg-transparent font-medium text-accent shadow-none"
           aria-haspopup="dialog"
           aria-expanded={open}
           onclick={() => {
             if (!open && root) place = placeMenu(root, 22);
             open = !open;
-          }}>+ Aset</button
+          }}><Icon name="plus" size={16} />Tambah aset</button
         >
         {#if open}
           <div
@@ -69,7 +98,7 @@
             role="dialog"
             aria-label="Tambah aset"
           >
-            <AssetFinder browse autofocus={layoutOf(viewport) !== 'narrow'} onpick={add} onclose={() => (open = false)} />
+            <AssetFinder browse autofocus={layoutOf(viewport) !== 'narrow'} onpick={add} onclose={close} />
           </div>
         {/if}
       </div>

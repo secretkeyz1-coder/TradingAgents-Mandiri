@@ -126,13 +126,17 @@ h2 {
 .toggle-xs[type="checkbox"],
 .checkbox-xs { --size: calc(var(--size-selector, 0.25rem) * 5); }
 
-/* Small text reads at 4.5:1 or more in both themes. daisyUI writes field hints at 60% ink, placeholders
-   and unselected tabs at 50% (3.1 to 4.3:1 on paper), soft alerts in their own tone, and amber is a fill
-   colour that reads at 2:1 as text on paper. Hints and placeholders take 70% ink (6:1), unselected tabs
-   78% as .ta-nav does (7.5:1), soft alerts ink on their tint, and amber text is mixed toward the ink in
-   oklab, which keeps its hue and flips with the theme (5.2:1 light, 12:1 dark). */
+/* Small text reads at 4.5:1 or more in both themes. daisyUI writes field hints, table headers and stat
+   labels at 60% ink, placeholders and unselected tabs at 50% (3.1 to 4.3:1 on paper), soft alerts in their
+   own tone, and amber is a fill colour that reads at 2:1 as text on paper. Hints, placeholders, table
+   headers and stat labels take 70% ink (6:1), unselected tabs 78% as .ta-nav does (7.5:1), soft alerts ink
+   on their tint, and amber text (soft amber badges too) is mixed toward the ink in oklab, which keeps its
+   hue and flips with the theme (5.2:1 light, 12:1 dark). */
 .label,
-::placeholder { color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+::placeholder,
+.table thead,
+.stat-title,
+.stat-desc { color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
 .tabs > .tab:not(:checked, label:has(:checked), .tab-active, [aria-selected="true"], [aria-current="true"], [aria-current="page"], [aria-pressed="true"], :disabled, .tab-disabled, [aria-disabled="true"]) {
   color: color-mix(in oklch, var(--color-base-content) 78%, transparent);
 }
@@ -140,7 +144,8 @@ h2 {
   .tabs > .tab:not(:disabled, .tab-disabled, [aria-disabled="true"]):hover { color: var(--color-base-content); }
 }
 .alert-soft { color: var(--color-base-content); }
-.text-warning { color: color-mix(in oklab, var(--color-warning) 55%, var(--color-base-content)); }
+.text-warning,
+.badge-soft.badge-warning { color: color-mix(in oklab, var(--color-warning) 55%, var(--color-base-content)); }
 
 /* iOS Safari zooms the whole page into a focused field whose text is under 16px, so phones get 16px fields. */
 @media (max-width: 639px) {
@@ -156,6 +161,7 @@ h2 {
 /* Third-party loaders and pulses stop for people who asked for less motion. */
 @media (prefers-reduced-motion: reduce) {
   .loading,
+  .skeleton,
   .animate-pulse {
     animation: none !important;
   }
@@ -245,3 +251,109 @@ h2 {
 .md table { display: block; overflow-x: auto; border-collapse: collapse; font-size: 0.9em; font-variant-numeric: tabular-nums; }
 .md th, .md td { border: 1px solid var(--color-base-300); padding: 0.35em 0.6em; text-align: left; }
 .md hr { border-color: var(--color-base-300); }
+
+/* Uji strategi (PageScreen and the four views in workspace/dock): the tabs read as a path, each page
+   sets up or lists on the left and opens one item on the right, and a result leads with one verdict
+   whose colour always comes with a word and an icon. Colours are theme tokens; text on a tone is mixed
+   toward the ink in oklab, as .text-warning is, so it reads in both themes. They sit in the components
+   layer so a utility on the same element still wins (max-lg:hidden showing a phone one side, pt-0). */
+@layer components {
+.ta-journey { display: flex; flex-shrink: 0; align-items: stretch; gap: 0.25rem; overflow-x: auto; padding: 0.5rem 1rem 0; border-bottom: 1px solid var(--color-base-300); background: var(--color-base-100); scrollbar-width: none; }
+.ta-journey-step { display: flex; align-items: center; gap: 0.75rem; min-height: 3.75rem; padding: 0.5rem 0.875rem 0.625rem; border-bottom: 3px solid transparent; color: color-mix(in oklch, var(--color-base-content) 78%, transparent); white-space: nowrap; cursor: pointer; }
+.ta-journey-step[aria-current="page"] { color: var(--color-base-content); border-bottom-color: var(--color-primary); }
+@media (hover: hover) {
+  .ta-journey-step:hover { color: var(--color-base-content); }
+}
+.ta-journey-icon { display: grid; flex: none; place-items: center; width: 2.125rem; height: 2.125rem; border-radius: 0.625rem; background: var(--color-base-200); }
+.ta-journey-step[aria-current="page"] .ta-journey-icon { background: var(--color-primary); color: var(--color-primary-content); }
+.ta-journey-hint { display: block; font-size: 0.75rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-journey-arrow { align-self: center; color: color-mix(in oklch, var(--color-base-content) 55%, transparent); }
+.ta-journey-apart { display: flex; margin: 0 0 0.5rem auto; padding-left: 0.75rem; border-left: 1px solid var(--color-base-300); }
+@media (max-width: 767px) {
+  .ta-journey { gap: 0; padding: 0 0.25rem; }
+  .ta-journey-step { min-height: 3rem; padding: 0.375rem 0.625rem 0.5rem; }
+  .ta-journey-icon, .ta-journey-hint, .ta-journey-arrow { display: none; }
+  .ta-journey-apart { margin: 0; padding: 0; border: 0; }
+}
+
+.ta-split { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem; padding: 1.25rem 1rem 2.5rem; }
+@media (min-width: 64rem) {
+  .ta-split { grid-template-columns: minmax(19rem, 23rem) minmax(0, 1fr); padding: 1.5rem 1.5rem 3rem; }
+}
+.ta-side, .ta-detail { display: flex; min-width: 0; flex-direction: column; gap: 1rem; }
+.ta-detail { gap: 1.25rem; }
+.ta-card { min-width: 0; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); }
+.ta-title { font-size: 1.625rem; font-weight: 700; line-height: 1.15; text-wrap: balance; }
+.ta-section-title { font-size: 1.25rem; font-weight: 650; line-height: 1.25; }
+.ta-muted { color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-big { font-size: 1.875rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ta-up { color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content)); }
+.ta-down { color: color-mix(in oklab, var(--color-error) 70%, var(--color-base-content)); }
+
+/* Numbered steps: the number carries the order the form is filled in. */
+.ta-steps { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.ta-step { position: relative; display: grid; grid-template-columns: 2rem minmax(0, 1fr); column-gap: 0.875rem; padding-bottom: 1.375rem; }
+.ta-step:last-child { padding-bottom: 0; }
+.ta-step::before { content: ""; position: absolute; top: 2.25rem; bottom: 0.25rem; left: 0.9375rem; width: 2px; border-radius: 2px; background: var(--color-base-300); }
+.ta-step:last-child::before { display: none; }
+.ta-step-n { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; background: var(--color-primary); color: var(--color-primary-content); font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ta-step-t { font-weight: 650; line-height: 2rem; }
+.ta-step-b { display: flex; grid-column: 2; min-width: 0; flex-direction: column; gap: 0.5rem; }
+
+/* The verdict: one word, its reason, its caveat. */
+.ta-verdict { --ta-tone: var(--color-info); --ta-tone-content: var(--color-info-content); display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 0.25rem 1.125rem; padding: 1.375rem 1.5rem; border: 1px solid color-mix(in oklch, var(--ta-tone) 45%, transparent); border-radius: calc(var(--radius-box) * 1.6); background: color-mix(in oklab, var(--ta-tone) 12%, var(--color-base-100)); }
+.ta-verdict[data-tone="warn"] { --ta-tone: var(--color-warning); --ta-tone-content: var(--color-warning-content); }
+.ta-verdict[data-tone="pass"] { --ta-tone: var(--color-success); --ta-tone-content: var(--color-success-content); }
+.ta-verdict[data-tone="loss"] { --ta-tone: var(--color-error); --ta-tone-content: var(--color-error-content); }
+.ta-verdict-icon { display: grid; grid-row: span 3; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: 1rem; background: var(--ta-tone); color: var(--ta-tone-content); }
+.ta-verdict-title { font-size: 2.125rem; font-weight: 750; line-height: 1.05; letter-spacing: -0.025em; color: color-mix(in oklab, var(--ta-tone) 55%, var(--color-base-content)); }
+.ta-verdict-reason { font-size: 1.0625rem; line-height: 1.45; text-wrap: pretty; }
+.ta-verdict-note { font-size: 0.8125rem; color: color-mix(in oklch, var(--color-base-content) 80%, transparent); }
+@media (max-width: 639px) {
+  .ta-verdict { grid-template-columns: 2.75rem minmax(0, 1fr); padding: 1rem 1.125rem; }
+  .ta-verdict-icon { width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; }
+  .ta-verdict-title { font-size: 1.75rem; }
+}
+
+/* A test's pass conditions, in the order the server checks them (server/src/lab.ts). */
+.ta-checks { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.ta-check { display: grid; grid-template-columns: 1.875rem minmax(0, 1fr) auto; align-items: center; gap: 0.875rem; padding: 0.75rem 1rem; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); }
+.ta-check-mark { display: grid; place-items: center; width: 1.875rem; height: 1.875rem; border-radius: 999px; background: var(--color-base-200); color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-check[data-state="ok"] .ta-check-mark { background: color-mix(in oklch, var(--color-success) 16%, transparent); color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content)); }
+.ta-check[data-state="no"] { border-color: color-mix(in oklch, var(--color-error) 50%, transparent); }
+.ta-check[data-state="no"] .ta-check-mark { background: color-mix(in oklch, var(--color-error) 16%, transparent); color: color-mix(in oklab, var(--color-error) 70%, var(--color-base-content)); }
+.ta-check[data-state="skip"] .ta-check-title { color: color-mix(in oklch, var(--color-base-content) 75%, transparent); }
+.ta-check-title { font-weight: 600; }
+.ta-check-value { font-size: 1.125rem; font-weight: 650; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Two sides compared; the one that decides is ringed. */
+.ta-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.75rem; }
+.ta-cmp { display: flex; min-width: 0; flex-direction: column; gap: 0.75rem; padding: 1rem 1.125rem; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); }
+.ta-cmp[data-key] { border-color: color-mix(in oklch, var(--color-primary) 60%, transparent); box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary) 60%, transparent); }
+.ta-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.625rem; margin: 0; }
+.ta-kv dt { font-size: 0.75rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-kv dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* What to do after a result: the likely next step filled, the rest outlined. */
+.ta-next { display: grid; grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr)); gap: 0.625rem; }
+.ta-nx { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.875rem 1rem; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); color: var(--color-base-content); text-align: left; cursor: pointer; }
+.ta-nx[data-main] { border-color: transparent; background: var(--color-primary); color: var(--color-primary-content); }
+@media (hover: hover) {
+  .ta-nx:not([data-main]):hover { border-color: color-mix(in oklch, var(--color-primary) 55%, transparent); }
+  .ta-nx[data-main]:hover { background: color-mix(in oklab, var(--color-primary) 88%, white); }
+}
+.ta-nx-title { display: block; font-weight: 650; }
+.ta-nx-sub { display: block; font-size: 0.8125rem; line-height: 1.4; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-nx[data-main] .ta-nx-sub { color: color-mix(in oklch, var(--color-primary-content) 90%, transparent); }
+
+/* A list whose rows open an item; the open one is ringed and marked aria-current. */
+.ta-rows { display: flex; flex-direction: column; gap: 0.125rem; margin: 0; padding: 0.5rem; list-style: none; }
+.ta-row { display: flex; align-items: center; gap: 0.75rem; width: 100%; min-height: 4rem; padding: 0.625rem 0.75rem; border-radius: var(--radius-field); color: var(--color-base-content); text-align: left; cursor: pointer; }
+@media (hover: hover) {
+  .ta-row:hover { background: var(--color-base-200); }
+}
+.ta-row[aria-current="true"] { background: var(--color-base-200); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-primary) 60%, transparent); }
+.ta-row-title { display: block; font-weight: 600; }
+.ta-row-sub { display: block; font-size: 0.8125rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-group-label { display: flex; justify-content: space-between; padding: 0.875rem 1.25rem 0.25rem; font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+}

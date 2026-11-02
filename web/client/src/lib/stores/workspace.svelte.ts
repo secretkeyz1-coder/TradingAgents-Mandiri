@@ -17,6 +17,7 @@ import { acceptHandoffs } from '../tabs';
 import { MARKET_TABS, toTradingView, toYahoo } from '../tv';
 import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
+import { lab } from './lab.svelte';
 import { RunStream } from './run.svelte';
 import { layoutOf, viewport } from './viewport.svelte';
 
@@ -44,7 +45,12 @@ export const MARKET_LIST_LABEL = 'Daftar harga';
  * The app's screens, in the top bar's order, each with the tabs it holds: on Pasar and Riset
  * AI they fill the bottom panel under the chart, on Pantau and Uji strategi the whole page.
  */
-export const SCREENS: { key: Screen; label: string; tabs: { key: DockTab; label: string }[] }[] = [
+export const SCREENS: {
+  key: Screen;
+  label: string;
+  /** `hint` says what a tab is for, `short` names it on a phone, `apart` sets it off the screen's path. */
+  tabs: { key: DockTab; label: string; hint?: string; short?: string; apart?: boolean }[];
+}[] = [
   { key: 'beranda', label: 'Beranda', tabs: [] },
   { key: 'pasar', label: 'Pasar', tabs: [{ key: 'screener', label: 'Screener' }] },
   {
@@ -68,12 +74,14 @@ export const SCREENS: { key: Screen; label: string; tabs: { key: DockTab; label:
   {
     key: 'uji',
     label: 'Uji strategi',
-    // Named by the question each answers, the most used and the cheapest first.
+    // In the order a trader works: pick or write an indicator, test it on history, then follow its
+    // live record. Testing the AI's own calls is a path of its own, set apart. The screen still opens
+    // on Uji indikator (DEFAULT_TAB), whose first step picks the indicator.
     tabs: [
-      { key: 'lab', label: 'Uji indikator' },
-      { key: 'backtest', label: 'Uji saran AI' },
-      { key: 'signals', label: 'Rekam jejak live' },
-      { key: 'library', label: 'Indikator saya' },
+      { key: 'library', label: 'Indikator saya', hint: 'Pilih atau buat indikator', short: 'Indikator' },
+      { key: 'lab', label: 'Uji indikator', hint: 'Untung atau rugi di riwayat', short: 'Uji' },
+      { key: 'signals', label: 'Rekam jejak live', hint: 'Sinyal nyata, setelah biaya', short: 'Live' },
+      { key: 'backtest', label: 'Uji saran AI', hint: 'Seberapa sering AI benar', short: 'Saran AI', apart: true },
     ],
   },
 ];
@@ -247,7 +255,7 @@ class Workspace {
 
   /** A tab whose job is still running. */
   live(tab: DockTab) {
-    return (tab === 'report' && !!this.run?.live) || (tab === 'backtest' && !!this.backtest?.live);
+    return (tab === 'report' && !!this.run?.live) || (tab === 'backtest' && !!this.backtest?.live) || (tab === 'lab' && lab.busy);
   }
 
   setMarket(key: string) {

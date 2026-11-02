@@ -1,20 +1,89 @@
 <script lang="ts">
-  // Uji strategi → Uji saran AI: how often the AI's call was right in the past. Start one (the AI
-  // analyses an asset on past dates without seeing what came after), pick one from the list, or
-  // follow the open one (progress, the per-rating score, each asset's decisions on its chart). A
-  // failed one says why in the list. Opening one shows its result in place; "Semua backtest" goes
-  // back to the form and the list.
+  // Uji strategi → Uji saran AI: how often the AI's call was right in the past. Set up on the left
+  // (AnalysisForm: assets, dates, the indicators it reads, and the quota it costs, said before it starts),
+  // with every earlier test under it carrying its score; the open one fills the right: how many calls were
+  // right, by rating, the calls on the chart, and what failed. "Right" is the engine's: the asset against a
+  // benchmark over the holding window (IHSG for .JK, which web/worker adds, else tradingagents'
+  // benchmark_map default, the S&P 500), and the page says so in words. A phone shows one side at a time.
+  import type { BacktestSummary } from '../../api';
+  import { auth } from '../../auth.svelte';
+  import { friendlyName, ratingLean } from '../../beginner/plain';
   import DecisionChart from '../../DecisionChart.svelte';
-  import { formatDateTime, formatPercent, ratingBadge, readIndicators } from '../../format';
+  import { formatDateTime, formatPercent, RATING_DIRECTION, readIndicators } from '../../format';
   import { jobs } from '../../stores/jobs.svelte';
   import { ws } from '../../stores/workspace.svelte';
   import StatusBadge from '../../StatusBadge.svelte';
   import { toTradingView } from '../../tv';
   import AnalysisForm from '../AnalysisForm.svelte';
+  import Icon from '../Icon.svelte';
+
+  jobs.refresh();
 
   const bt = $derived(ws.backtest);
   let activeTicker = $state('');
   const shown = $derived(bt && bt.tickers.includes(activeTicker) ? activeTicker : (bt?.tickers[0] ?? ''));
+  /** On a phone, the form and history shown over an open test. */
+  let showForm = $state(false);
+  let lastId = '';
+  $effect(() => {
+    // A test just started or opened comes into view.
+    const id = bt?.id ?? '';
+    if (id && id !== lastId) showForm = false;
+    lastId = id;
+  });
+  const detailShown = $derived(!!bt && !showForm);
+
+  const name = (t: string) => friendlyName(toTradingView(t));
+  const names = (tickers: string[]) => tickers.map(name).join(', ');
+  const day = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const span = (r: { start: string; end: string }) => (r.start === r.end ? day(r.start) : `${day(r.start)} – ${day(r.end)}`);
+  const every = (n: number) => (n === 1 ? 'tiap hari' : n === 7 ? 'tiap minggu' : n === 14 ? 'tiap 2 minggu' : n === 30 ? 'tiap bulan' : `tiap ${n} hari`);
+  /** What a call is scored against, per tradingagents' benchmark_map (web/worker adds IHSG for .JK). */
+  const yardstick = (tickers: string[]) =>
+    [tickers.some((t) => t.toUpperCase().endsWith('.JK')) && 'saham .JK dibanding IHSG', tickers.some((t) => !t.toUpperCase().endsWith('.JK')) && 'aset lain dibanding S&P 500 (SPY)']
+      .filter(Boolean)
+      .join('; ');
+
+  /** A history row's state, in one chip. */
+  function chip(b: BacktestSummary): { text: string; cls: string; spin: boolean } {
+    if (b.status === 'queued') return { text: 'Menunggu giliran', cls: 'badge-ghost', spin: false };
+    if (b.status === 'running') return { text: b.progress ? `Berjalan ${b.progress.done} dari ${b.progress.total}` : 'Berjalan', cls: 'badge-info', spin: true };
+    if (b.status === 'failed') return { text: 'Gagal', cls: 'badge-error', spin: false };
+    if (b.status === 'cancelled') return { text: 'Dibatalkan', cls: 'badge-ghost', spin: false };
+    if (b.score?.calls) return { text: `Benar ${b.score.hits} dari ${b.score.calls}`, cls: 'badge-neutral', spin: false };
+    return { text: 'Belum bisa dinilai', cls: 'badge-ghost', spin: false };
+  }
+
+  function pick(b: BacktestSummary) {
+    showForm = false;
+    ws.openBacktest(b.id, { symbol: toTradingView(b.ticker.split(',')[0]) });
+  }
+
+  const cells = $derived(bt?.result?.cells ?? []);
+  const calls = $derived(bt?.directional.length ?? 0);
+  const hits = $derived(bt ? bt.directional.filter((c) => c.alpha! * RATING_DIRECTION[c.rating] > 0).length : 0);
+  const holds = $derived(cells.filter((c) => (RATING_DIRECTION[c.rating] ?? 0) === 0).length);
+  const pending = $derived(bt?.result?.summary?.pending ?? 0);
+  const holding = $derived((bt?.result?.summary?.holding ?? '5 trading days').replace('trading days', 'hari bursa'));
+  /** Each rating: its calls, how many were right, and how far they beat the benchmark in their own direction. */
+  const byRating = $derived.by(() => {
+    const order = ['Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'];
+    const groups = new Map<string, { count: number; calls: number; hits: number; edges: number[] }>();
+    for (const c of cells) {
+      const g = groups.get(c.rating) ?? { count: 0, calls: 0, hits: 0, edges: [] };
+      const dir = RATING_DIRECTION[c.rating] ?? 0;
+      g.count++;
+      if (!c.pending && c.alpha != null && dir !== 0) {
+        g.calls++;
+        if (c.alpha * dir > 0) g.hits++;
+        g.edges.push(c.alpha * dir);
+      }
+      groups.set(c.rating, g);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => order.indexOf(a) - order.indexOf(b))
+      .map(([rating, g]) => ({ rating, label: ratingLean(rating).label, ...g, edge: g.edges.length ? g.edges.reduce((a, b) => a + b, 0) / g.edges.length : null }));
+  });
 
   async function resume() {
     const next = await bt?.resume();
@@ -32,207 +101,176 @@
   }
 </script>
 
-{#snippet back()}
-  <button class="btn btn-ghost btn-xs -ml-2 w-fit gap-1" onclick={() => ws.closeBacktest()}>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
-    Semua backtest
-  </button>
-{/snippet}
+<div class="ta-split">
+  <aside class="ta-side {detailShown ? 'max-lg:hidden' : ''}" aria-label="Uji baru dan riwayat uji AI">
+    <section class="ta-card p-5" aria-labelledby="bt-new">
+      <div class="mb-1 flex items-baseline justify-between gap-2">
+        <h2 id="bt-new" class="ta-section-title">Uji baru</h2>
+        <span class="text-sm ta-muted">3 langkah, lalu mulai</span>
+      </div>
+      <p class="mb-4 text-sm ta-muted">AI menganalisa aset di tanggal-tanggal lampau tanpa melihat sesudahnya, lalu sarannya dicocokkan dengan harga sesudahnya.</p>
+      <AnalysisForm mode="backtest" />
+    </section>
 
-{#if !bt}
-  <div class="@container p-4">
-    <div class="grid gap-6 @2xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-      <section class="min-w-0" aria-labelledby="backtest-new">
-        <h3 id="backtest-new" class="text-base font-semibold">Seberapa sering saran AI benar di masa lalu?</h3>
-        <p class="mt-0.5 mb-3 text-xs text-base-content/70">
-          AI menganalisa aset di tanggal-tanggal lampau tanpa melihat sesudahnya, lalu arah sarannya dibandingkan dengan harga sesudahnya. Tiap tanggal memakai 1 kuota analisa.
-        </p>
-        <AnalysisForm mode="backtest" />
-      </section>
-
-      <section class="min-w-0" aria-labelledby="backtest-list">
-        <div class="mb-1 flex flex-wrap items-center gap-2">
-          <h3 id="backtest-list" class="text-sm font-semibold">Uji sebelumnya</h3>
-          <button class="btn btn-ghost btn-xs ml-auto" onclick={() => jobs.refresh()}>Muat ulang</button>
-        </div>
-        {#if jobs.error}<p class="text-sm text-error">{jobs.error}</p>{/if}
-        {#if jobs.backtests.length === 0}
-          <p class="py-6 text-sm text-base-content/70">{jobs.loaded ? 'Belum ada. Isi formulir di samping untuk memulai.' : 'Memuat…'}</p>
+    <section class="ta-card" aria-labelledby="bt-history">
+      <div class="flex items-center justify-between gap-2 border-b border-base-300 px-5 py-3">
+        <h2 id="bt-history" class="font-semibold">Riwayat uji AI</h2>
+        <button type="button" class="btn btn-ghost btn-xs" onclick={() => jobs.refresh()}><Icon name="refresh" size={14} />Muat ulang</button>
+      </div>
+      {#if jobs.error}<p role="alert" class="px-5 pt-3 text-sm text-error">{jobs.error}</p>{/if}
+      <ul class="ta-rows">
+        {#each jobs.backtests as b (b.id)}
+          {@const c = chip(b)}
+          <li>
+            <button type="button" class="ta-row" aria-current={ws.backtest?.id === b.id ? 'true' : undefined} onclick={() => pick(b)}>
+              <span class="min-w-0 flex-1">
+                <span class="ta-row-title">{names(b.ticker.split(','))}</span>
+                <span class="ta-row-sub">{span(b.request)} · {every(b.request.everyNDays)}{jobs.everyone && b.owner ? ` · ${b.owner}` : ''}</span>
+                {#if b.status === 'failed' && b.error}<span class="ta-row-sub truncate" title={b.error}>{b.error}</span>{/if}
+              </span>
+              <span class="badge badge-soft {c.cls} shrink-0 gap-1.5">{#if c.spin}<span class="loading loading-spinner loading-xs" aria-hidden="true"></span>{/if}{c.text}</span>
+            </button>
+          </li>
         {:else}
-          <div class="overflow-x-auto">
-            <table class="table table-sm">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  {#if jobs.everyone}<th>Pemilik</th>{/if}
-                  <th>Rentang</th>
-                  <th>Status</th>
-                  <th class="hidden md:table-cell">Dibuat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each jobs.backtests as b (b.id)}
-                  <tr>
-                    <td>
-                      <button
-                        class="link link-hover font-mono font-semibold"
-                        onclick={() => ws.openBacktest(b.id, { symbol: toTradingView(b.ticker.split(',')[0]) })}
-                      >
-                        {b.ticker.split(',').join(', ')}
-                      </button>
-                    </td>
-                    {#if jobs.everyone}<td class="font-mono text-xs">{b.owner ?? '–'}</td>{/if}
-                    <td class="whitespace-nowrap text-xs tabular-nums">{b.request.start} – {b.request.end} · tiap {b.request.everyNDays} hari</td>
-                    <td>
-                      <StatusBadge
-                        status={b.status}
-                        detail={b.progress && (b.status === 'running' || b.status === 'queued') ? `${b.progress.done}/${b.progress.total}` : ''}
-                      />
-                      {#if b.status === 'failed' && b.error}<span class="mt-0.5 block max-w-64 truncate text-xs text-base-content/70" title={b.error}>{b.error}</span>{/if}
-                    </td>
-                    <td class="hidden text-xs text-base-content/70 md:table-cell">{formatDateTime(b.createdAt)}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {/if}
-      </section>
-    </div>
-  </div>
-{:else if bt.loadError}
-  <div class="flex flex-col gap-2 p-4">
-    {@render back()}
-    <p class="text-sm text-error">Backtest tidak bisa dimuat: {bt.loadError}</p>
-  </div>
-{:else if bt.backtest}
-  {@const b = bt.backtest}
-  {@const s = bt.result?.summary}
-  <div class="flex flex-col gap-5 p-4">
-    <header class="flex flex-col gap-1">
-      {@render back()}
+          <li class="px-3 py-4 text-sm ta-muted">{jobs.loaded ? 'Belum ada. Isi Uji baru di atas untuk memulai.' : 'Memuat…'}</li>
+        {/each}
+      </ul>
+    </section>
+  </aside>
+
+  <section class="ta-detail {detailShown ? '' : 'max-lg:hidden'}" aria-label="Hasil uji saran AI">
+    {#if detailShown}
+      <button type="button" class="btn btn-ghost btn-sm w-fit lg:hidden" onclick={() => (showForm = true)}><Icon name="left" size={16} />Uji baru dan riwayat</button>
+    {/if}
+    {#if !bt}
+      <div class="flex flex-col gap-5 rounded-[calc(var(--radius-box)*1.6)] border-[1.5px] border-dashed border-base-300 p-7">
+        <div class="flex items-center gap-3">
+          <span class="grid size-12 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent"><Icon name="backtest" size={22} stroke={2} /></span>
+          <h2 class="ta-title">{jobs.backtests.length ? 'Pilih uji di riwayat' : 'Hasil uji AI muncul di sini'}</h2>
+        </div>
+        <p class="max-w-[62ch] text-[1.0625rem] leading-relaxed">
+          {jobs.backtests.length ? 'Buka uji lama dari Riwayat uji AI, atau atur uji baru di kiri.' : 'Atur aset dan tanggal di kiri. Biaya kuotanya terlihat sebelum kamu menekan Mulai uji.'}
+        </p>
+        <dl class="grid max-w-[70ch] gap-x-4 gap-y-2 text-sm sm:grid-cols-[11rem_1fr]">
+          <dt class="font-semibold">Benar</dt>
+          <dd class="ta-muted">Saran beli benar bila aset mengungguli patokannya dalam 5 hari bursa sesudahnya; saran jual benar bila aset kalah dari patokannya. Patokannya IHSG untuk saham .JK, S&P 500 untuk aset lain.</dd>
+          <dt class="font-semibold">Tunggu dulu</dt>
+          <dd class="ta-muted">Tidak punya arah, jadi tidak dinilai.</dd>
+          <dt class="font-semibold">Tanpa melihat sesudahnya</dt>
+          <dd class="ta-muted">Di tiap tanggal, AI dan indikator hanya membaca data sampai tanggal itu.</dd>
+        </dl>
+      </div>
+    {:else if bt.loadError}
+      <p role="alert" class="alert alert-soft alert-error items-start text-sm"><Icon name="alert" />Uji ini tidak bisa dimuat: {bt.loadError}</p>
+    {:else if bt.backtest}
+      {@const b = bt.backtest}
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex flex-wrap items-center gap-2">
-            <h3 class="font-mono text-lg font-semibold">{bt.tickers.join(', ')}</h3>
+            <h2 class="ta-title">{names(bt.tickers)}</h2>
             <StatusBadge status={b.status} />
           </div>
-          <p class="text-sm text-base-content/70">
-            {b.request.start} – {b.request.end} · tiap {b.request.everyNDays} hari · {b.request.provider} · {b.request.deepModel} · dibuat
-            {formatDateTime(b.createdAt)}
+          <p class="mt-1 text-sm ta-muted">
+            {span(b.request)} · {every(b.request.everyNDays)} · dibuat {formatDateTime(b.createdAt)}{auth.isAdmin ? ` · ${b.request.provider} · ${b.request.deepModel}` : ''}
           </p>
-          {#if b.request.indicators?.length}
-            <p class="text-sm text-base-content/70">Indikator yang dibaca AI: {readIndicators(b.request)}</p>
-          {/if}
+          {#if b.request.indicators?.length}<p class="text-sm ta-muted">Indikator yang dibaca AI: {readIndicators(b.request)}</p>{/if}
         </div>
-        <div class="flex flex-wrap gap-1.5">
+        <div class="flex flex-wrap gap-2">
           {#if bt.live}
-            <button class="btn btn-sm" onclick={() => bt.cancel()} disabled={bt.busy}>Batalkan</button>
+            <button type="button" class="btn btn-sm" onclick={() => bt.cancel()} disabled={bt.busy}>Batalkan</button>
           {:else}
-            {#if bt.result && (s?.pending || bt.result.failures.length)}
-              <button class="btn btn-sm" onclick={resume} disabled={bt.busy} title="Lewati sel yang sudah jadi, nilai ulang yang pending">
-                Lanjutkan dan nilai ulang
-              </button>
+            {#if bt.result && (pending || bt.result.failures.length)}
+              <button type="button" class="btn btn-sm" onclick={resume} disabled={bt.busy}><Icon name="refresh" size={16} />Lanjutkan dan nilai ulang</button>
             {/if}
-            <button class="btn btn-ghost btn-sm" onclick={remove} disabled={bt.busy}>Hapus</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick={remove} disabled={bt.busy}><Icon name="trash" size={16} />Hapus</button>
           {/if}
         </div>
       </div>
-    </header>
 
-    {#if bt.error}
-      <div role="alert" class="alert alert-error alert-soft items-start">
-        <pre class="whitespace-pre-wrap font-sans text-sm">{bt.error}</pre>
-      </div>
-    {/if}
+      {#if bt.error}<p role="alert" class="alert alert-soft alert-error items-start text-sm"><Icon name="alert" />{bt.error}</p>{/if}
 
-    {#if bt.live && bt.progress}
-      <div class="flex flex-col gap-1.5">
-        <p class="text-sm tabular-nums">
-          Sel {Math.min(bt.progress.done + 1, bt.progress.total)} dari {bt.progress.total}
-          {#if bt.progress.ticker}· {bt.progress.ticker}{bt.progress.date ? ` · ${bt.progress.date}` : ''}{/if}
-          <span class="text-base-content/70">· {bt.elapsed}</span>
-        </p>
-        <progress class="progress progress-accent w-full" value={bt.progress.done} max={bt.progress.total}></progress>
-      </div>
-    {/if}
-
-    {#if s}
-      <div class="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <dl class="grid grid-cols-3 gap-3 lg:grid-cols-1">
-          <div>
-            <dt class="text-xs text-base-content/70">Arah benar</dt>
-            <dd class="text-2xl font-semibold tabular-nums">{bt.hitRate == null ? '—' : `${Math.round(bt.hitRate * 100)}%`}</dd>
-            <dd class="text-xs text-base-content/70">{bt.directional.length} keputusan berarah</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-base-content/70">Sel dinilai</dt>
-            <dd class="text-2xl font-semibold tabular-nums">{s.resolved}</dd>
-            <dd class="text-xs text-base-content/70">{s.pending} pending · {s.unscored} tanpa rating</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-base-content/70">Jendela</dt>
-            <dd class="text-lg font-semibold">{s.holding.replace('trading days', 'hari bursa')}</dd>
-            <dd class="text-xs text-base-content/70">vs IHSG untuk .JK</dd>
-          </div>
-        </dl>
-        <div class="min-w-0 overflow-x-auto">
-          <table class="table table-sm">
-            <thead><tr><th>Rating</th><th class="text-right">Jumlah</th><th class="text-right">Arah benar</th><th class="text-right">Rata-rata alpha</th></tr></thead>
-            <tbody>
-              {#each Object.entries(s.byRating) as [rating, score] (rating)}
-                <tr>
-                  <td><span class="badge badge-sm {ratingBadge(rating)}">{rating}</span></td>
-                  <td class="text-right tabular-nums">{score.count}</td>
-                  <td class="text-right tabular-nums">{score.hitRate == null ? 'tanpa arah' : `${Math.round(score.hitRate * 100)}%`}</td>
-                  <td class="text-right tabular-nums" class:text-success={score.meanAlpha > 0} class:text-error={score.meanAlpha < 0}>
-                    {formatPercent(score.meanAlpha)}
-                  </td>
-                </tr>
-              {:else}
-                <tr><td colspan="4" class="text-base-content/70">Belum ada sel yang selesai dinilai.</td></tr>
-              {/each}
-            </tbody>
-          </table>
+      {#if bt.live}
+        <div class="ta-verdict" data-tone="info">
+          <span class="ta-verdict-icon"><span class="loading loading-spinner loading-md" aria-hidden="true"></span></span>
+          <p class="ta-verdict-title">Sedang berjalan</p>
+          <p class="ta-verdict-reason">
+            {bt.progress
+              ? `AI sedang menganalisa ${bt.progress.ticker ? name(bt.progress.ticker) : 'aset'}${bt.progress.date ? ` pada ${day(bt.progress.date)}` : ''}, tanggal ke-${Math.min(bt.progress.done + 1, bt.progress.total)} dari ${bt.progress.total}.`
+              : 'Menunggu giliran di antrean analisa.'}
+          </p>
+          <p class="ta-verdict-note">Tiap tanggal butuh beberapa menit. Boleh tinggalkan halaman ini; hasilnya muncul di Riwayat uji AI. · {bt.elapsed}</p>
         </div>
-      </div>
-    {/if}
-
-    {#if bt.result}
-      <section class="flex flex-col gap-3 border-t border-base-300 pt-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h4 class="text-sm font-semibold">Keputusan di chart</h4>
-          <div class="flex items-center gap-2">
-            {#if bt.tickers.length > 1}
-              <div role="tablist" class="tabs tabs-box tabs-xs">
-                {#each bt.tickers as t (t)}
-                  <button role="tab" class="tab font-mono" class:tab-active={t === shown} aria-selected={t === shown} onclick={() => (activeTicker = t)}>{t}</button>
-                {/each}
-              </div>
-            {/if}
-            <button class="btn btn-ghost btn-xs" onclick={() => ws.setSymbol(toTradingView(shown))}>Fokuskan</button>
-          </div>
-        </div>
-        {#key shown}
-          <DecisionChart symbol={shown} decisions={bt.decisionsFor(shown)} height={300} />
-        {/key}
-      </section>
-
-      {#if bt.result.failures.length || bt.result.settlementFailures.length}
-        <section class="border-t border-base-300 pt-4">
-          <h4 class="mb-1 text-sm font-semibold">Sel yang gagal</h4>
-          <ul class="flex flex-col gap-1 text-sm">
-            {#each bt.result.failures as f (f.ticker + f.date)}
-              <li><span class="font-mono">{f.ticker} {f.date}</span>: {f.error}</li>
-            {/each}
-            {#each bt.result.settlementFailures as f, i (i)}
-              <li><span class="font-mono">{f.ticker}</span> (penilaian): {f.error}</li>
-            {/each}
-          </ul>
-        </section>
+        {#if bt.progress}
+          <progress class="progress progress-info w-full" value={bt.progress.done} max={bt.progress.total} aria-label="{bt.progress.done} dari {bt.progress.total} tanggal selesai"></progress>
+        {/if}
       {/if}
+
+      {#if bt.result?.summary}
+        <div class="ta-verdict" data-tone="info">
+          <span class="ta-verdict-icon"><Icon name="backtest" size={26} stroke={2.2} /></span>
+          <p class="ta-verdict-title">{calls ? `Benar ${hits} dari ${calls} saran` : 'Belum ada saran yang bisa dinilai'}</p>
+          <p class="ta-verdict-reason">
+            {calls
+              ? `Saran berarah AI cocok dengan harga ${holding} sesudahnya pada ${hits} dari ${calls} tanggal (${Math.round((hits / calls) * 100)}%).`
+              : 'Semua saran Tunggu dulu, atau tanggalnya belum lewat masa penilaian.'}{holds ? ` ${holds} saran Tunggu dulu tidak dinilai.` : ''}{pending ? ` ${pending} masih menunggu harga.` : ''}
+          </p>
+          <p class="ta-verdict-note">Dinilai dibanding patokan: {yardstick(bt.tickers)}.{calls && calls < 20 ? ` ${calls} saran masih sedikit: anggap ini petunjuk awal.` : ''}</p>
+        </div>
+
+        {#if byRating.length}
+          <div class="ta-compare">
+            {#each byRating as g (g.rating)}
+              <div class="ta-cmp gap-1">
+                <span class="text-sm ta-muted">Saran {g.label}</span>
+                <span class="text-xl font-bold tabular-nums">{g.calls ? `${g.hits} dari ${g.calls} benar` : `${g.count} saran`}</span>
+                <span class="text-xs {g.edge == null ? 'ta-muted' : g.edge > 0 ? 'ta-up' : 'ta-down'}">
+                  {g.edge == null ? 'tidak dinilai' : `hasil rata-rata ${formatPercent(g.edge)} dibanding patokan, searah saran`}
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      {/if}
+
+      {#if bt.result}
+        <section class="ta-card" aria-labelledby="bt-chart">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-base-300 px-5 py-3">
+            <h3 id="bt-chart" class="font-semibold">Saran AI di chart</h3>
+            <div class="flex flex-wrap items-center gap-2">
+              {#if bt.tickers.length > 1}
+                <div class="join" role="group" aria-label="Aset">
+                  {#each bt.tickers as t (t)}
+                    <button type="button" class="btn btn-xs join-item" class:btn-neutral={t === shown} aria-pressed={t === shown} onclick={() => (activeTicker = t)}>{name(t)}</button>
+                  {/each}
+                </div>
+              {/if}
+              <button type="button" class="btn btn-ghost btn-xs" onclick={() => ws.setSymbol(toTradingView(shown))}>Buka di chart</button>
+            </div>
+          </div>
+          <div class="p-3">
+            {#key shown}
+              <DecisionChart symbol={shown} decisions={bt.decisionsFor(shown)} height={300} />
+            {/key}
+          </div>
+        </section>
+
+        {#if bt.result.failures.length || bt.result.settlementFailures.length}
+          <section class="ta-card p-5" aria-labelledby="bt-failed">
+            <h3 id="bt-failed" class="mb-2 font-semibold">Tanggal yang gagal</h3>
+            <ul class="flex flex-col gap-1 text-sm">
+              {#each bt.result.failures as f (f.ticker + f.date)}
+                <li><span class="font-medium">{name(f.ticker)}, {day(f.date)}</span>: {f.error}</li>
+              {/each}
+              {#each bt.result.settlementFailures as f, i (i)}
+                <li><span class="font-medium">{name(f.ticker)}</span> (penilaian): {f.error}</li>
+              {/each}
+            </ul>
+            <p class="mt-2 text-xs ta-muted">Lanjutkan dan nilai ulang menjalankan lagi hanya yang gagal atau belum dinilai.</p>
+          </section>
+        {/if}
+      {/if}
+    {:else}
+      <div class="grid place-items-center p-8"><span class="loading loading-spinner" aria-label="Memuat"></span></div>
     {/if}
-  </div>
-{:else}
-  <div class="grid place-items-center p-8"><span class="loading loading-spinner"></span></div>
-{/if}
+  </section>
+</div>

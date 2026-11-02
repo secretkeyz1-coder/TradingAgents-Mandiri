@@ -88,6 +88,8 @@ export type AnalysisSummary = {
   error?: string | null;
   /** Who started it; filled in when an admin lists everyone's. */
   owner?: string | null;
+  /** A backtest's settled directional calls and how many were right (null before any result). */
+  score?: { calls: number; hits: number } | null;
 };
 
 /** An account as the page sees it (no password hash). */
@@ -596,6 +598,8 @@ export type Usage = {
   /** `left` also counts the server's total across users; null = no cap. */
   analyses: { used: number; limit: number; left: number | null };
   chat: { used: number; limit: number; left: number | null };
+  /** Uji indikator runs in the last 24 hours, against the plan's. */
+  lab?: { used: number; limit: number };
   resetsAt: string;
 };
 
@@ -770,14 +774,21 @@ export type AgentTurn = {
   timeframe?: Interval;
 };
 
+/** Every call to the server. A failure always reads as Indonesian with what to do next: the browser's own
+ * "Failed to fetch" when the network drops, and a bare status code when a proxy answers without a body. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: { 'content-type': 'application/json', ...init?.headers },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...init?.headers },
+    });
+  } catch {
+    throw new Error('Tidak bisa terhubung ke server. Periksa koneksi internet, lalu coba lagi.');
+  }
   const body = await res.json().catch(() => ({}));
   if (res.status === 401) auth.expired();
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(body.error ?? `Server sedang bermasalah (kode ${res.status}). Coba lagi sebentar lagi.`);
   return body as T;
 }
 

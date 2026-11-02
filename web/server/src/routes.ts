@@ -14,6 +14,8 @@ import { getCandles, INTERVALS, RANGES, SYMBOL_PATTERN, type Interval } from "./
 import { catalogFor, modelsFor, standardFor } from "./models";
 import { publicRequest, readingsSchema, snapshotReadings } from "./readings";
 import { briefFor } from "./site";
+import { labRunsToday } from "./lab";
+import { limitsOf } from "./plans";
 import { overLimit, room, usage } from "./usage";
 import { isVenue } from "./venues";
 import { gist } from "./watch";
@@ -128,7 +130,11 @@ export const forgetTypical = () => (typical = null);
 
 api.get("/options", async (c) => c.json({ ...catalogFor(c.get("user"), await getCatalog()), typicalMinutes: await typicalMinutes() }));
 
-/** Today's use against the daily caps (see usage.ts); `left` also respects the server's total, null = no cap. */
+/**
+ * Today's use against the daily caps (see usage.ts); `left` also respects the server's total, null = no
+ * cap. `lab` is Uji indikator's runs in the last 24 hours against the plan's, so the page can say what is
+ * left before the run is refused.
+ */
 api.get("/usage", async (c) => {
   const user = c.get("user");
   const u = await usage(user);
@@ -136,8 +142,24 @@ api.get("/usage", async (c) => {
     ...u,
     analyses: { ...u.analyses, left: finite(await room(user, "analyses")) },
     chat: { ...u.chat, left: finite(await room(user, "chat")) },
+    lab: { used: await labRunsToday(user.id), limit: limitsOf(user).labRuns },
   });
 });
+
+/** What a rating claims, as tradingagents.backtest scores it: up, down, or no direction. */
+const DIRECTION: Record<string, number> = { Buy: 1, Overweight: 1, Hold: 0, Underweight: -1, Sell: -1 };
+
+/** Each backtest's settled directional calls and how many its alpha proved right, counted as the page's BacktestStream does. */
+async function backtestScores(ids: string[]) {
+  const rows = ids.length ? await db.select({ id: analyses.id, result: analyses.result }).from(analyses).where(inArray(analyses.id, ids)) : [];
+  return new Map(
+    rows.map((r) => {
+      if (!r.result) return [r.id, null] as const;
+      const calls = r.result.cells.filter((cell) => !cell.pending && cell.alpha != null && (DIRECTION[cell.rating] ?? 0) !== 0);
+      return [r.id, { calls: calls.length, hits: calls.filter((cell) => cell.alpha! * DIRECTION[cell.rating] > 0).length }] as const;
+    }),
+  );
+}
 
 /** The user's analyses or backtests; an admin may ask for everyone's with ?scope=all. */
 api.get("/analyses", async (c) => {
@@ -164,7 +186,9 @@ api.get("/analyses", async (c) => {
     .where(and(eq(analyses.kind, kind), all ? undefined : eq(analyses.userId, user.id)))
     .orderBy(desc(analyses.createdAt))
     .limit(100);
-  return c.json(rows.map((r) => ({ ...r, request: publicRequest(r.request) })));
+  // A backtest's list row carries its score, so Uji saran AI's history shows results without opening each.
+  const scores = kind === "backtest" ? await backtestScores(rows.map((r) => r.id)) : null;
+  return c.json(rows.map((r) => ({ ...r, request: publicRequest(r.request), ...(scores ? { score: scores.get(r.id) ?? null } : {}) })));
 });
 
 api.post("/backtests", async (c) => {

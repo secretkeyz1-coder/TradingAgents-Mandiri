@@ -67,11 +67,17 @@ export function formatPercent(fraction: number | null | undefined, signed = true
   return signed && fraction > 0 ? `+${text}%` : `${text}%`;
 }
 
-/** A result in R (multiples of the risk taken), signed, with the Indonesian decimal comma: +1,25R, −0,96R. */
+/**
+ * A result in R (multiples of the risk taken), signed, with the Indonesian decimal comma: +1,25R, −0,96R.
+ * A value too small for two decimals gets a third (−0,004R) rather than a signed zero, which read as a
+ * loss of nothing; one that rounds to zero even then is plain 0,00R.
+ */
 export function formatR(x: number | null | undefined, digits = 2): string {
   if (x == null || Number.isNaN(x)) return '–';
-  const text = Math.abs(x).toLocaleString('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${x > 0 ? '+' : x < 0 ? '−' : ''}${text}R`;
+  const places = digits === 2 && x !== 0 && Math.abs(x) < 0.005 ? 3 : digits;
+  const text = Math.abs(x).toLocaleString('id-ID', { minimumFractionDigits: places, maximumFractionDigits: places });
+  const zero = !/[1-9]/.test(text);
+  return `${zero ? '' : x > 0 ? '+' : '−'}${zero ? (0).toLocaleString('id-ID', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : text}R`;
 }
 
 /**

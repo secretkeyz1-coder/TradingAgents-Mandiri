@@ -115,7 +115,7 @@ export class BacktestStream {
   }
 
   async remove(): Promise<boolean> {
-    if (!confirm(`Hapus backtest ${this.tickers.join(', ')}?`)) return false;
+    if (!confirm(`Hapus uji saran AI ${this.tickers.join(', ')}? Hasilnya tidak bisa dikembalikan.`)) return false;
     this.busy = true;
     try {
       await api.remove(this.id);

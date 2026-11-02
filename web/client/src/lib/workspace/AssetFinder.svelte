@@ -120,7 +120,7 @@
   {#if browse && !text.trim()}
     <div role="tablist" class="tabs tabs-border tabs-xs shrink-0 flex-nowrap overflow-x-auto" aria-label="Pasar">
       {#each MARKET_TABS as tab (tab.key)}
-        <button role="tab" class="tab whitespace-nowrap" class:tab-active={tab.key === market} aria-selected={tab.key === market} onclick={() => (market = tab.key)}>
+        <button type="button" role="tab" class="tab whitespace-nowrap" class:tab-active={tab.key === market} aria-selected={tab.key === market} onclick={() => (market = tab.key)}>
           {SHORT[tab.key] ?? tab.label}
         </button>
       {/each}
