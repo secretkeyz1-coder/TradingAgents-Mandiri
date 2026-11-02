@@ -1,8 +1,9 @@
 <script lang="ts">
-  // Riset AI's start: which asset to research, before the chart and the AI panel open, so an
-  // analysis never starts on whatever symbol happened to be in focus. The last asset opened is one
-  // click away (stores/workspace recent), then Pantauanku, well-known assets and the latest
-  // analyses with their rating; the search box (AssetFinder) takes anything else.
+  // Riset AI's start: which asset to research. On a wide screen it sits where the chart will be,
+  // beside the AI panel, which names the asset it works on until one is picked here (ADR 0018); on
+  // a phone it is the whole screen. The last asset opened is one click away (stores/workspace
+  // recent), then Pantauanku, well-known assets and the latest analyses with their rating; the
+  // search box (AssetFinder) takes anything else. Picking one opens its chart in this place.
   import { friendlyName, STARTERS } from '../beginner/plain';
   import { ratingBadge } from '../format';
   import { jobs } from '../stores/jobs.svelte';

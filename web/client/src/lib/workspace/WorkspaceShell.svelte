@@ -4,10 +4,11 @@
   // Uji strategi are pages of tabs. Pasar and Riset AI are chart screens: each of their panels
   // (the market list on Pasar, Riset AI's panel, the bottom panel) is docked to its edge,
   // floats as a window over the chart, or waits in the tray, as the layout store says, and
-  // focus mode gives the chart the whole window. Pasar opens at its market board (MarketBoard,
-  // the screener below it) and Riset AI at its asset picker (AssetPicker); the chart and the
-  // other panels come once an asset is picked. On a phone each screen is one column behind a
-  // bottom tab bar. Panels talk only through the workspace store.
+  // focus mode gives the chart the whole window. Both open split (ADR 0018): Pasar with its market
+  // list beside the chart of the symbol in focus, the screener below; Riset AI with its asset picker
+  // beside its AI panel, and the chart takes the picker's place once an asset is picked. On a phone
+  // each screen is one column behind a bottom tab bar (PhoneScreen: Pasar's board, then a chart).
+  // Panels talk only through the workspace store.
   import { onMount } from 'svelte';
   import ScriptEditor from '../chart/ScriptEditor.svelte';
   import { agent } from '../stores/agent.svelte';
@@ -26,7 +27,6 @@
   import Dock from './Dock.svelte';
   import FloatingWindow from './FloatingWindow.svelte';
   import { SCREEN_ICONS } from './icons';
-  import MarketBoard from './MarketBoard.svelte';
   import MarketPanel from './MarketPanel.svelte';
   import PageScreen from './PageScreen.svelte';
   import PhoneScreen from './PhoneScreen.svelte';
@@ -48,6 +48,11 @@
   const narrow = $derived(layoutOf(viewport) === 'narrow');
   const chartScreen = $derived(isChartScreen(ws.screen));
   const chartOpen = $derived(isChartScreen(ws.screen) && ws.open[ws.screen]);
+
+  // A wide Pasar always has a chart beside its list: the symbol in focus (a phone starts at its board).
+  $effect(() => {
+    if (!narrow && ws.screen === 'pasar' && !ws.open.pasar) ws.keepChart();
+  });
 
   // On a chart screen F toggles focus mode and Escape leaves it; with a chart open Alt+↑/↓ steps
   // to the asset before or after in its market's list. Not while the key is meant for a field.
@@ -81,11 +86,11 @@
   const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
   /**
-   * The panels a chart screen has: with a chart open, the market list on Pasar, Riset AI's panel on
-   * Riset AI, the bottom panel on both; Pasar's market board keeps only its bottom panel (the screener).
+   * The panels a chart screen has: the market list on Pasar and Riset AI's panel on Riset AI, from the
+   * start; the bottom panel on Pasar, and on Riset AI once an asset is open (the picker needs none).
    */
   const here = (id: PanelId) =>
-    id === 'dock' ? ws.screen === 'pasar' || ws.open.riset : id === 'market' ? ws.screen === 'pasar' && ws.open.pasar : ws.screen === 'riset' && ws.open.riset;
+    id === 'dock' ? ws.screen === 'pasar' || ws.open.riset : id === 'market' ? ws.screen === 'pasar' : ws.screen === 'riset';
   const docked = (id: PanelId) => here(id) && layout.effective(id) === 'dock';
   const hasMarket = $derived(docked('market'));
   const hasAi = $derived(docked('ai'));
@@ -156,8 +161,6 @@
   <div class="min-h-0 flex-1"><DashboardScreen /></div>
 {:else if ws.screen === 'pantau' || ws.screen === 'uji'}
   <div class="min-h-0 flex-1"><PageScreen screen={ws.screen} /></div>
-{:else if ws.screen === 'riset' && !ws.open.riset}
-  <div class="min-h-0 flex-1"><AssetPicker /></div>
 {:else}
   <div class="relative flex min-h-0 flex-1 bg-base-100" data-workspace bind:clientWidth={outerW} bind:clientHeight={outerH}>
     <div class="grid min-h-0 min-w-0 flex-1" style="grid-template-columns: {columns};" bind:clientWidth={boxW} bind:clientHeight={boxH}>
@@ -178,7 +181,7 @@
       {/if}
 
       <div class="grid min-h-0 min-w-0" style="grid-template-rows: {rows};">
-        <div class="min-h-0 min-w-0 overflow-hidden">{#if ws.screen === 'pasar' && !ws.open.pasar}<MarketBoard />{:else}<ChartPanel />{/if}</div>
+        <div class="min-h-0 min-w-0 overflow-hidden">{#if ws.screen === 'riset' && !ws.open.riset}<AssetPicker />{:else}<ChartPanel />{/if}</div>
         {#if hasDock}
           {#if ws.dockSize === 'normal'}
             <div class="flex min-w-0 flex-col">

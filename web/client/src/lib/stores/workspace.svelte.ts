@@ -18,6 +18,7 @@ import { MARKET_TABS, toTradingView, toYahoo } from '../tv';
 import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
 import { RunStream } from './run.svelte';
+import { layoutOf, viewport } from './viewport.svelte';
 
 export type Screen = 'beranda' | 'pasar' | 'riset' | 'pantau' | 'uji';
 /** The screens that show the chart, with panels around it. */
@@ -82,8 +83,11 @@ export const screenOf = (tab: DockTab): Screen => SCREENS.find((s) => s.tabs.som
 export const isChartScreen = (s: Screen): s is ChartScreen => s === 'pasar' || s === 'riset';
 const DEFAULT_TAB: Record<Exclude<Screen, 'beranda'>, DockTab> = { pasar: 'screener', riset: 'history', pantau: 'watch', uji: 'lab' };
 const SCREEN_PATH = /^\/(beranda|pasar|riset|pantau|uji)$/;
-const DEFAULT_SYMBOL = 'IDX:COMPOSITE';
+/** The chart a browser that never opened an asset starts on: crypto trades all day, so it always moves. */
+const DEFAULT_SYMBOL = 'BINANCE:BTCUSDT';
 const ID = /^[0-9a-f-]{36}$/;
+/** On a wide screen Pasar is always split, its list beside a chart (ADR 0018); a phone starts at its board. */
+const splitPasar = () => layoutOf(viewport) !== 'narrow';
 
 class Workspace {
   screen = $state<Screen>('beranda');
@@ -122,10 +126,11 @@ class Workspace {
     acceptHandoffs((symbol) => this.setSymbol(symbol));
   }
 
-  /** Open a screen as it was left; Pasar and Riset AI open at their start. */
+  /** Open a screen as it was left; Pasar and Riset AI open at their start (on a wide screen Pasar's start is its chart: keepChart). */
   go(screen: Screen) {
     if (screen !== 'beranda' && screenOf(this.dock) !== screen) this.dock = this.#resume(screen);
-    if (isChartScreen(screen)) this.open[screen] = false;
+    if (isChartScreen(screen)) this.open[screen] = screen === 'pasar' && splitPasar();
+    if (this.open.pasar && screen === 'pasar') this.market = marketOf(this.symbol) ?? this.market;
     this.screen = screen;
     this.#write('push');
   }
@@ -151,9 +156,18 @@ class Workspace {
     this.#write('push');
   }
 
-  /** From a chart back to its screen's start: Pasar's market board, Riset AI's asset picker. */
+  /** Pasar on a wide screen always shows a chart beside its list (ADR 0018): the symbol in focus, with no history entry of its own. */
+  keepChart() {
+    if (this.screen !== 'pasar' || this.open.pasar) return;
+    this.open.pasar = true;
+    // The list opens on the chart's market, so the two never show different markets.
+    this.market = marketOf(this.symbol) ?? this.market;
+    this.#write('replace');
+  }
+
+  /** From a chart back to its screen's start: Pasar's market board (on a phone), Riset AI's asset picker. */
   closeChart() {
-    if (!isChartScreen(this.screen)) return;
+    if (!isChartScreen(this.screen) || (this.screen === 'pasar' && splitPasar())) return;
     this.open[this.screen] = false;
     this.#write('push');
   }
@@ -346,11 +360,13 @@ class Workspace {
     else if (path === '/') this.screen = 'beranda';
 
     // A chart screen shows its chart when the URL names a symbol (or, on Riset AI, an analysis).
-    if (isChartScreen(this.screen)) this.open[this.screen] = Boolean(symbol) || (this.screen === 'riset' && q.has('run'));
+    // A wide Pasar shows the chart of the symbol in focus even when the URL names none.
+    if (isChartScreen(this.screen)) this.open[this.screen] = Boolean(symbol) || (this.screen === 'riset' && q.has('run')) || (this.screen === 'pasar' && splitPasar());
+    const filled = this.screen === 'pasar' && this.open.pasar && !symbol;
 
     const market = q.get('m');
     if (market && MARKET_TABS.some((t) => t.key === market)) this.market = market;
-    else if (canonical) this.market = (symbol && marketOf(symbol.toUpperCase())) || 'idx';
+    else if (canonical) this.market = marketOf((symbol ?? (filled ? this.symbol : '')).toUpperCase()) || 'idx';
     const view = q.get('v');
     // The AI chart is the default: the app's own indicators, signals and notifications live there.
     if (view === 'ai' || view === 'tv') this.chartView = view;
@@ -394,7 +410,7 @@ class Workspace {
       this.#lastTab[screen] = this.dock;
     }
 
-    if (legacy || !canonical) this.#write('replace');
+    if (legacy || !canonical || filled) this.#write('replace');
   }
 
   #write(mode: 'push' | 'replace') {

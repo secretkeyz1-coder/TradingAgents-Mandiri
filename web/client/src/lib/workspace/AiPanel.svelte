@@ -2,7 +2,9 @@
   // Riset AI for the symbol in focus: ask the agent (Tanya), or run a full analysis and
   // follow it (Jalankan: the open analysis at a glance, the latest decision on record, the
   // form). The history, report and log of the same work sit in the bottom panel under this
-  // destination; backtests have their own, Uji strategi.
+  // destination; backtests have their own, Uji strategi. Beside Riset AI's asset picker, before a
+  // chart is open, it names the asset it works on, so nothing starts on one the user did not mean.
+  import { friendlyName } from '../beginner/plain';
   import { ratingBadge, ratingTone, renderMarkdown } from '../format';
   import { jobs } from '../stores/jobs.svelte';
   import { AI_MODES, ws } from '../stores/workspace.svelte';
@@ -49,6 +51,13 @@
       </div>
       {#if onclose}<PanelClose label="Tutup panel Riset AI" onclick={onclose} />{/if}
     </header>
+  {/if}
+
+  {#if !bare && ws.screen === 'riset' && !ws.open.riset}
+    <p class="shrink-0 border-b border-base-300 bg-base-200/60 px-3 py-2 text-xs">
+      Riset untuk <strong class="font-semibold">{friendlyName(ws.symbol)}</strong>. Pilih aset lain di kiri, atau
+      <button class="link" onclick={() => ws.research(ws.symbol)}>buka chart-nya</button>.
+    </p>
   {/if}
 
   {#if ws.aiMode === 'chat'}
