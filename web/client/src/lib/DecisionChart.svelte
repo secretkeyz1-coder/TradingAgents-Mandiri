@@ -305,6 +305,21 @@
   // --- Scalper Pro+ (indicators/scalper.ts), drawn from the same candles.
   const band = new BandPrimitive();
   const ind = $derived(tools && indicators.showScalper && candles.length ? scalper(candles, indicators.scalper) : null);
+  /**
+   * How Scalper's latest setup has gone since. The engine reports that setup even after it ended, so
+   * the bars after it say whether the stop or the target was touched first (both in one bar counts as
+   * the stop, the cautious reading). Only an open setup is a plan, or gets its levels drawn across the chart.
+   */
+  const scalperState = $derived.by(() => {
+    const s = ind?.setup;
+    if (!s) return null;
+    for (let i = s.index + 1; i < candles.length; i++) {
+      const c = candles[i];
+      if (s.side === 'BUY' ? c.low <= s.stopLoss : c.high >= s.stopLoss) return { setup: s, outcome: 'loss' as const, exitIndex: i };
+      if (s.side === 'BUY' ? c.high >= s.takeProfit : c.low <= s.takeProfit) return { setup: s, outcome: 'win' as const, exitIndex: i };
+    }
+    return { setup: s, outcome: 'open' as const, exitIndex: null };
+  });
   let indSeries: ISeriesApi<'Line'>[] = [];
   let indLines: IPriceLine[] = [];
   $effect(() => {
@@ -347,9 +362,12 @@
       const color = setup.side === 'BUY' ? p.up : p.down;
       const level = (price: number, c: string, title: string, style: LineStyle) =>
         indLines.push(candleSeries!.createPriceLine({ price, color: c, lineWidth: 2, lineStyle: style, axisLabelVisible: true, title }));
-      level(setup.entry, gold, setup.side, LineStyle.Solid);
-      level(setup.stopLoss, p.down, 'SL', LineStyle.Dashed);
-      level(setup.takeProfit, p.up, 'TP', LineStyle.Dashed);
+      // An ended setup keeps its zone where it was made, but its levels no longer run across the chart as if live.
+      if (scalperState?.outcome === 'open') {
+        level(setup.entry, gold, setup.side === 'BUY' ? 'Beli' : 'Jual', LineStyle.Solid);
+        level(setup.stopLoss, p.down, 'SL', LineStyle.Dashed);
+        level(setup.takeProfit, p.up, 'TP', LineStyle.Dashed);
+      }
       const end = Math.min(setup.index + Math.round(s.extendBars), candles.length - 1);
       band.set({
         from: toTime(candles[setup.index].time),
@@ -589,11 +607,8 @@
   const plans = $derived.by((): Plan[] => {
     const at = (index: number) => candles[index]?.time ?? '';
     const out: Plan[] = [];
-    // Scalper reports its latest setup even after it ended: one whose stop or target a later bar touched is no plan.
-    const ended = (s: { index: number; side: 'BUY' | 'SELL'; stopLoss: number; takeProfit: number }) =>
-      candles.slice(s.index + 1).some((c) => (s.side === 'BUY' ? c.low <= s.stopLoss || c.high >= s.takeProfit : c.high >= s.stopLoss || c.low <= s.takeProfit));
-    if (ind?.setup && !ended(ind.setup)) {
-      const s = ind.setup;
+    if (scalperState?.outcome === 'open') {
+      const s = scalperState.setup;
       out.push({ key: 'scalper', source: 'Scalper Pro+', side: s.side, entry: s.entry, stopLoss: s.stopLoss, takeProfit: s.takeProfit, time: at(s.index) });
     }
     const pobOpen = pobRes?.signals.findLast((s) => s.outcome === 'open');
@@ -617,6 +632,41 @@
     const d = new Date(`${day(t)}T00:00:00Z`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'UTC' });
     return t.length > 10 ? `${d} ${t.slice(11, 16)}` : d;
   };
+  // --- The readouts over the chart: one short label per indicator saying what it is doing now, in words.
+  const SIDE = { BUY: 'Beli', SELL: 'Jual' } as const;
+  const TREND = { BULLISH: 'naik', BEARISH: 'turun', SIDEWAYS: 'mendatar' } as const;
+  const SWEEP = { 'LOW SWEPT': 'low tersapu', 'HIGH SWEPT': 'high tersapu', NONE: 'tidak ada' } as const;
+  const TONE = { up: 'text-success', down: 'text-error', muted: 'text-base-content/70' } as const;
+  type Label = { text: string; tone: keyof typeof TONE };
+  const live = (side: 'BUY' | 'SELL'): Label => ({ text: `${SIDE[side]} aktif`, tone: side === 'BUY' ? 'up' : 'down' });
+  const timeframeLabel = $derived(TIMEFRAMES.find((t) => t.value === timeframe)?.label ?? timeframe);
+  /** Which indicator's details are open under the labels: one at a time, none at first. */
+  let readout = $state<string | null>(null);
+  /** Scalper: its trend, then its latest setup and whether that still runs or already hit TP or SL. */
+  const scalperLabel = $derived.by((): Label | null => {
+    if (!ind || !indicators.scalper.showDashboard) return null;
+    const st = scalperState;
+    const trend = `tren ${TREND[ind.trend]}`;
+    if (!st) return { text: `${trend} · belum ada sinyal`, tone: 'muted' };
+    const what = `${SIDE[st.setup.side]} ${stamp(candles[st.setup.index].time)}`;
+    if (st.outcome === 'open') return { text: `${trend} · ${what} aktif`, tone: st.setup.side === 'BUY' ? 'up' : 'down' };
+    return { text: `${trend} · ${what} kena ${st.outcome === 'win' ? 'TP' : 'SL'}`, tone: 'muted' };
+  });
+  const pobLabel = $derived<Label>(pobActive ? live(pobActive.side) : { text: 'menunggu retest zona', tone: 'muted' });
+  const fibLabel = $derived<Label>(
+    fibOpen ? live(fibOpen.side) : fibRes?.active ? { text: `menunggu pullback ${fibRes.active.dir === 1 ? 'Beli' : 'Jual'}`, tone: 'muted' } : { text: 'menunggu kaki baru', tone: 'muted' },
+  );
+  const scriptLabel = (card: (typeof scriptCards)[number]): Label =>
+    'loading' in card ? { text: 'menjalankan…', tone: 'muted' } : 'error' in card ? { text: 'skrip error', tone: 'down' } : card.open ? live(card.open.side) : { text: 'tidak ada sinyal aktif', tone: 'muted' };
+  /** Under the toolbar when indicators are on but none has an open setup: why the plan card is missing. */
+  const noPlan = $derived.by(() => {
+    const st = scalperState;
+    if (st && st.outcome !== 'open') {
+      return `Belum ada setup terbuka. Setup Scalper terakhir (${SIDE[st.setup.side]} ${stamp(candles[st.setup.index].time)}) sudah kena ${st.outcome === 'win' ? 'TP' : 'SL'}; rencana baru muncul di sini saat indikator memberi setup berikutnya.`;
+    }
+    return 'Belum ada setup terbuka dari indikator yang menyala. Rencana (entry, SL, TP, dan ukuran posisi) muncul di sini saat ada setup baru.';
+  });
+
   async function pobSkill() {
     try {
       const { version } = await api.installSkill('pob-bystra');
@@ -784,7 +834,7 @@
     if (setup && indicators.scalper.showZone) {
       const at = candles[setup.index].time;
       const buy = setup.side === 'BUY';
-      list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: setup.side });
+      list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: buy ? 'Beli' : 'Jual' });
     }
     for (const sig of pobRes?.signals ?? []) {
       const at = candles[sig.index].time;
@@ -821,7 +871,22 @@
       <TradePlan {plans} {symbol} {timeframe} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
     {:else if tools && !anyIndicator && candles.length}
       <p class="text-xs text-base-content/70">Rencana trading (entry, SL, TP, dan ukuran posisi) muncul di sini saat indikator memberi setup. Nyalakan dari menu Indikator.</p>
+    {:else if tools && candles.length}
+      <p class="text-xs text-base-content/70">{noPlan}</p>
     {/if}
+  {/snippet}
+  {#snippet readoutChip(key: string, name: string, label: Label)}
+    <button
+      class="btn btn-xs h-auto min-h-6 max-w-full gap-1.5 border-base-300 bg-base-100/90 py-0.5 font-normal shadow-sm"
+      class:btn-active={readout === key}
+      aria-expanded={readout === key}
+      title="Rincian {name}"
+      onclick={() => (readout = readout === key ? null : key)}
+    >
+      <span class="shrink-0 font-semibold">{name}</span>
+      <span class="truncate {TONE[label.tone]}">{label.text}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shrink-0 transition-transform" class:rotate-180={readout === key} aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+    </button>
   {/snippet}
   <div class="flex flex-wrap items-center justify-between gap-2">
     <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/70">
@@ -914,29 +979,47 @@
   <!-- The workspace chart fills its desktop panel; on a phone and elsewhere it has a fixed height. -->
   <div class="relative w-full" class:min-h-48={tools && fill} class:flex-1={tools && fill} style={tools && fill ? '' : `height: ${height}px`}>
     <div bind:this={container} class="h-full w-full"></div>
-    {#if tools && ((ind && indicators.scalper.showDashboard) || pobRes || fibRes || scriptCards.length)}
-    <!-- One overlay for the readouts, clear of the price scale and the time axis: the Scalper table top right,
-         the indicator cards bottom left in the width the table leaves. Too narrow for the two side by side (a
-         phone), the cards get the height under the table instead, so neither ever covers the other. -->
-    <div class="@container pointer-events-none absolute top-2 right-16 bottom-8 left-2 z-10">
-    <div class="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] gap-2 @min-[26rem]:grid-cols-[minmax(0,18rem)_auto] @min-[26rem]:grid-rows-1">
-    {#if ind && indicators.scalper.showDashboard}
-      <table class="col-start-1 row-start-1 w-52 self-start justify-self-end rounded-box border border-warning/50 bg-base-100/90 text-xs shadow-sm @min-[26rem]:col-start-2">
-        <caption class="rounded-t-box bg-base-200 px-2 py-1 text-left font-semibold text-warning">Scalper Pro+ · {timeframe}</caption>
-        <tbody class="font-mono tabular-nums">
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Trend</td><td class="px-2 text-right" class:text-success={ind.trend === 'BULLISH'} class:text-error={ind.trend === 'BEARISH'}>{ind.trend}</td></tr>
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Sinyal terakhir</td><td class="px-2 text-right" class:text-success={ind.setup?.side === 'BUY'} class:text-error={ind.setup?.side === 'SELL'}>{ind.setup?.side ?? 'WAIT'}</td></tr>
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">RSI</td><td class="px-2 text-right">{ind.rsi.toFixed(1).replace('.', ',')}</td></tr>
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Sweep</td><td class="px-2 text-right">{ind.sweep}</td></tr>
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Entry</td><td class="px-2 text-right">{ind.setup ? priceText(ind.setup.entry) : '—'}</td></tr>
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Stop loss</td><td class="px-2 text-right text-error">{ind.setup ? priceText(ind.setup.stopLoss) : '—'}</td></tr>
-          <tr><td class="px-2 py-0.5 font-sans text-base-content/70">Take profit</td><td class="px-2 pb-1 text-right text-success">{ind.setup ? priceText(ind.setup.takeProfit) : '—'}</td></tr>
-        </tbody>
-      </table>
-    {/if}
-    {#if pobRes || fibRes || scriptCards.length}
-      <div class="pointer-events-auto col-start-1 row-start-2 flex max-h-full w-72 max-w-full flex-col gap-2 self-end justify-self-start overflow-x-hidden overflow-y-auto @min-[26rem]:row-start-1 @min-[26rem]:max-h-[75%]">
+    {#if tools && (scalperLabel || pobRes || fibRes || scriptCards.length)}
+    <!-- The readouts as one row of short labels at the top left, clear of the newest candles and the price
+         scale: each says what its indicator is doing now. A label opens its details under the row, one at a
+         time, and a second click closes them, so nothing covers the candles unless asked for. -->
+    <div class="pointer-events-none absolute top-2 right-16 bottom-8 left-2 z-10 flex flex-col items-start gap-2">
+      <div class="pointer-events-auto flex max-w-full flex-wrap gap-1.5" role="group" aria-label="Status indikator">
+        {#if scalperLabel}{@render readoutChip('scalper', 'Scalper', scalperLabel)}{/if}
+        {#each scriptCards as card (card.id)}{@render readoutChip(card.id, card.name, scriptLabel(card))}{/each}
+        {#if pobRes}{@render readoutChip('pob', 'PoB', pobLabel)}{/if}
+        {#if fibRes}{@render readoutChip('fib', 'Fib', fibLabel)}{/if}
+      </div>
+      {#if readout}
+      <div class="pointer-events-auto flex max-h-full w-72 max-w-full flex-col overflow-x-hidden overflow-y-auto">
+      {#if readout === 'scalper' && ind && scalperLabel}
+        <section class="flex w-full shrink-0 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Scalper Pro+">
+          <span class="font-semibold">Scalper Pro+ · {timeframeLabel}</span>
+          <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+            <dt class="text-base-content/70">Tren</dt>
+            <dd class="text-right" class:text-success={ind.trend === 'BULLISH'} class:text-error={ind.trend === 'BEARISH'}>{TREND[ind.trend]}</dd>
+            <dt class="text-base-content/70">RSI</dt>
+            <dd class="text-right tabular-nums">{ind.rsi.toFixed(1).replace('.', ',')}</dd>
+            <dt class="text-base-content/70">Sapuan likuiditas</dt>
+            <dd class="text-right">{SWEEP[ind.sweep]}</dd>
+          </dl>
+          {#if scalperState}
+            {@const st = scalperState}
+            <p class="font-medium {TONE[scalperLabel.tone]}">
+              {SIDE[st.setup.side]} {stamp(candles[st.setup.index].time)}:
+              {st.exitIndex == null ? 'masih berjalan' : `kena ${st.outcome === 'win' ? 'TP' : 'SL'} ${stamp(candles[st.exitIndex].time)}`}
+            </p>
+            <p class="font-mono tabular-nums text-base-content/80">E {priceText(st.setup.entry)} · SL {priceText(st.setup.stopLoss)} · TP {priceText(st.setup.takeProfit)}</p>
+            {#if st.exitIndex != null}
+              <p class="text-base-content/70">Setup ini sudah selesai dan levelnya tidak berlaku lagi. Tunggu sinyal berikutnya.</p>
+            {/if}
+          {:else}
+            <p class="text-base-content/70">Belum ada sinyal di candle yang dimuat.</p>
+          {/if}
+        </section>
+      {/if}
       {#each scriptCards as card (card.id)}
+        {#if readout === card.id}
         <section
           class="flex w-full shrink-0 flex-col gap-1 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm"
           aria-label={card.published ? card.name : `Skrip ${card.name}`}
@@ -967,8 +1050,9 @@
             </p>
           {/if}
         </section>
+        {/if}
       {/each}
-      {#if pobRes}
+      {#if readout === 'pob' && pobRes}
       <section class="flex w-full shrink-0 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="PoB BYSTRA">
         <div class="flex items-center gap-2">
           <span class="font-semibold">PoB BYSTRA · HTF {pobRes.htf}</span>
@@ -1011,10 +1095,10 @@
         {/if}
       </section>
       {/if}
-      {#if fibRes}
+      {#if readout === 'fib' && fibRes}
         <section class="flex w-full shrink-0 flex-col gap-1.5 rounded-box border border-base-300 bg-base-100/95 p-2.5 text-xs shadow-sm" aria-label="Fib Golden Zone">
           <div class="flex items-center gap-2">
-            <span class="font-semibold">Fib Golden Zone · {timeframe}</span>
+            <span class="font-semibold">Fib Golden Zone · {timeframeLabel}</span>
             <button class="btn btn-ghost btn-xs ml-auto" aria-expanded={fibTally} onclick={() => (fibTally = !fibTally)}>{fibTally ? 'Tutup' : 'Tally'}</button>
           </div>
           {#if fibOpen}
@@ -1024,7 +1108,7 @@
             </p>
           {:else if fibRes.active}
             {@const leg = fibRes.active}
-            <p class="font-medium">Menunggu pullback {leg.dir === 1 ? 'BUY' : 'SELL'}</p>
+            <p class="font-medium">Menunggu pullback {leg.dir === 1 ? 'Beli' : 'Jual'}</p>
             <p class="text-base-content/80">
               Kaki {priceText(leg.fromPrice)} → {priceText(leg.toPrice)}. Zona
               <span class="font-mono">{priceText(fibLevel(leg, 0.5))}–{priceText(fibLevel(leg, 0.618))}</span>, batal bila tutup melewati
@@ -1047,8 +1131,7 @@
         </section>
       {/if}
       </div>
-    {/if}
-    </div>
+      {/if}
     </div>
     {/if}
     {#if tools && indicators.showScalper && indicators.settingsOpen}
