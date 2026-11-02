@@ -107,10 +107,11 @@ class Workspace {
   /** The tab the open screen shows (in its bottom panel, or as its page). */
   dock = $state<DockTab>('history');
   /**
-   * How far each chart screen's bottom panel is open. Pasar's screener starts folded to its
-   * header, one click away, so the chart gets the height; Riset AI's history and report start open.
+   * How far each chart screen's bottom panel is open. Both start folded to their tabs, one click
+   * away, so the chart gets the height; Riset AI's opens by itself for an analysis (its report or
+   * log) and for a link that names a tab.
    */
-  #dockSizes = $state<Record<ChartScreen, DockSize>>({ pasar: 'min', riset: 'normal' });
+  #dockSizes = $state<Record<ChartScreen, DockSize>>({ pasar: 'min', riset: 'min' });
   get dockSize(): DockSize {
     return isChartScreen(this.screen) ? this.#dockSizes[this.screen] : 'normal';
   }
@@ -408,6 +409,8 @@ class Workspace {
     }
 
     const screen = this.screen;
+    // A link to an analysis, or one naming a bottom tab, shows that panel open.
+    if (isChartScreen(screen) && ((screen === 'riset' && this.run) || (dock && screenOf(dock) === screen))) this.#dockSizes[screen] = 'normal';
     if (screen !== 'beranda') {
       // A canonical URL leaves out the screen's default tab; an old link to an analysis opens
       // its report; a bare screen path (the top bar, a typed URL) finds the screen as it was left.

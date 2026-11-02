@@ -1,8 +1,9 @@
 <script lang="ts">
   // The bottom panel of a chart screen ("Panel bawah"): Pasar's screener, or Riset AI's
   // history, report and log (stores/workspace SCREENS). Docked, it can be made bigger, folded
-  // to its header (Pasar's screener starts so, leaving the height to the chart), or closed (the
-  // Tata letak menu brings it back); a floating window sizes itself instead.
+  // to its header (both chart screens start so, leaving the height to the chart; an analysis
+  // opens Riset AI's), or closed (the Tata letak menu brings it back); a floating window sizes
+  // itself instead.
   import { SCREENS, ws } from '../stores/workspace.svelte';
   import PanelClose from './PanelClose.svelte';
   import TabView from './TabView.svelte';
