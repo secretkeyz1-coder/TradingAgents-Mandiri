@@ -9,6 +9,7 @@
   import AlertsView from './dock/AlertsView.svelte';
   import BacktestView from './dock/BacktestView.svelte';
   import HistoryView from './dock/HistoryView.svelte';
+  import JournalView from './dock/JournalView.svelte';
   import LabView from './dock/LabView.svelte';
   import LogView from './dock/LogView.svelte';
   import ReportView from './dock/ReportView.svelte';
@@ -36,6 +37,8 @@
   <WatchView />
 {:else if tab === 'alerts'}
   <AlertsView />
+{:else if tab === 'journal'}
+  <JournalView />
 {:else}
   {#key market.key}
     <TradingViewWidget

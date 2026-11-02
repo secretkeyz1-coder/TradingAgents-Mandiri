@@ -27,7 +27,7 @@ Mode Pro punya lima layar, dipilih dari menu di bilah atas (di ponsel dari tab b
 | Beranda | Ringkasan hari ini di atas: pasar utama (IHSG, emas, Bitcoin, USD/IDR, S&P 500) dengan perubahan hari ini dan garis sebulan, apa yang terjadi sejak terakhir buka (sinyal baru, alert harga yang kena, analisa yang selesai; dari menit aktivitas), Pantauanku dengan harga live dan keputusan AI terakhir, dan ringkasan pasar AI. Di bawahnya kinerja sinyalmu: call dari notifikasi sinyal dan hasilnya untuk 7 hari sampai 1 tahun (jumlah call, TP, SL, rasio menang, total R, R kumulatif per hari, per indikator, per aset, riwayat call yang bisa disaring), lalu yang berjalan sekarang, kuota hari ini, analisa terjadwal, dan alert harga |
 | Pasar | Daftar harga per pasar (IDX, US, Crypto, Forex, Komoditas) di kiri, dengan harga terakhir dan perubahan hari ini dari `GET /api/quotes` (data harian yang sama dengan chart), chart di tengah ("Keputusan AI", bawaan sejak November 2026: harga terakhir dan perubahan hari ini, candle + marker setiap keputusan, dengan Indikator dan Notifikasi, dan kartu Rencana trading: setup indikator terbaru yang masih terbuka sebagai entry, SL, TP, dan R:R, kalkulator ukuran posisi dari modal dan risiko per trade (lot IDX, oz emas, unit kripto), alert harga di ketiga level sekali tekan, dan salin rencana; atau TradingView), Screener di panel bawah |
 | Riset AI | Chart simbol aktif, panel **Tanya** (agent chart) dan **Jalankan** (analisa yang terbuka, keputusan terakhir, form analisa) di kanan, dan Riwayat, Laporan, Log di panel bawah |
-| Pantau | Hanya yang kamu pantau: Analisa terjadwal dan Alert (semua alert harga dan sinyal) |
+| Pantau | Hanya yang kamu pantau: Analisa terjadwal, Alert (semua alert harga dan sinyal), dan Jurnal (trade yang kamu ambil) |
 | Uji strategi | Backtest (form, daftar, hasil), Lab, dan Strategi live (buku sinyal strategi bawaan) |
 
 Di Pasar dan Riset AI tiap panel bisa menempel, melayang di atas chart, atau ditutup (tombol × di kepalanya; tombolnya menunggu di pojok chart sampai dibuka lagi), dan menu Tata letak menyimpan susunannya. Mode fokus (tombol F) memberi chart seluruh jendela. Tiap layar ingat tab terakhirnya.
@@ -158,6 +158,24 @@ API:
 - `GET /api/price-alerts?symbol=`: daftar level, jumlah terpakai, batas paket, dan status Telegram/email.
 - `POST /api/price-alerts {symbol, tvSymbol, price, label?}`: menolak harga yang sama dengan harga sekarang dan level di atas batas paket; level yang sama dikembalikan apa adanya.
 - `DELETE /api/price-alerts/:id`.
+
+### Jurnal trading (Pantau → Jurnal)
+
+Catatan trade yang benar-benar diambil, supaya trader bisa melihat apa yang berhasil dan dalam suasana hati apa (`server/src/journal.ts`).
+
+- **Mencatat:** tombol **Saya ambil** di kartu Rencana trading chart membuka form kecil: harga masuk (terisi entry rencana, bisa diubah), catatan, dan perasaan saat masuk (Tenang, Yakin, Ragu, FOMO, Takut, Balas dendam; boleh dikosongkan). SL, TP, sumber ("Scalper Pro+ 15m"), dan uang yang dipertaruhkan (dari kalkulator ukuran posisi bila sedang terbuka) ikut tersimpan. Trade juga bisa diisi sendiri di tab Jurnal untuk aset yang sedang dibuka.
+- **Ditolak bila:** SL dan TP tidak di sisi yang benar (Beli: SL di bawah entry, TP di atasnya; Jual sebaliknya), atau harga sekarang sudah melewati SL atau TP.
+- **Selesai otomatis:** tiap menit, bersama notifikasi harga dan dari candle 15m yang sama, trade berjalan ditutup di TP (untung) atau SL (rugi) kalau high/low candle setelah trade dicatat, atau harga terbaru, menyentuhnya. Candle yang menyentuh keduanya dihitung kena SL, karena urutan di dalam candle tidak diketahui. Penutupan memakai satu update bersyarat, jadi tidak pernah dobel walau ada dua instance. Pemilik Telegram yang terhubung dikabari sekali.
+- **Ditutup sendiri atau tidak jadi:** trade berjalan bisa ditutup di harga tertentu, atau ditandai "Tidak jadi" (tidak dihitung di hasil).
+- **Hasil dalam R** (risiko satu trade, jarak entry ke SL): TP memberi jarak TP dibagi jarak SL, SL memberi −1R. Tab Jurnal merangkum 7/30/90 hari: jumlah selesai, persentase untung, total dan rata-rata R, per perasaan dan per sumber, beserta rupiahnya bila ukuran posisi ikut tersimpan. Beranda menampilkan ringkasan 30 hari dan trade yang masih berjalan.
+- **Rekap mingguan:** mulai Minggu pukul 19.00 WIB, anggota dengan Telegram terhubung yang mencatat atau menutup trade pekan itu mendapat rekap (sejak Senin 00.00 WIB): selesai, untung, total R, terbaik dan terburuk, per perasaan, dan perasaan yang paling merugikan bila terjadi lebih dari sekali. Klaimnya di tabel `notices`, jadi terkirim sekali per pekan.
+- **Jatah:** trade berjalan sekaligus dibatasi paket (`journal` di `shared/plans.ts`: Gratis 10, Pro 50, Creator 100), karena pemeriksa harga mengikuti semuanya. Trade yang sudah selesai tidak dibatasi.
+
+API:
+- `GET /api/journal?days=`: trade berjalan, trade yang dibuka atau selesai dalam `days` hari (bawaan 30), ringkasannya, batas paket, dan status Telegram.
+- `POST /api/journal {symbol, tvSymbol, side, entry, stopLoss, takeProfit, source?, label?, mood?, note?, riskIdr?}`.
+- `PATCH /api/journal/:id {mood?, note?, close?: {price}, cancel?: true}`: menutup atau membatalkan hanya trade yang masih berjalan.
+- `DELETE /api/journal/:id`.
 
 ### Kripto multi-bursa (tombol Bursa di chart)
 
@@ -305,7 +323,7 @@ API: `GET /api/session`, `GET /api/auth/config`, `POST /api/login`, `POST /api/l
 
 ### Paket dan pembayaran
 
-- Paket ada di `shared/plans.ts` (dipakai server, aplikasi, dan situs): Gratis, Pro (Rp149.000/bulan atau Rp1.490.000/tahun), Creator (Rp399.000/bulan atau Rp3.990.000/tahun), dan harga founding Pro Rp79.000/bulan untuk 100 pelanggan pertama. Paket membedakan kapasitas: analisa AI dan chat per hari, uji Lab per hari, notifikasi, simbol watchlist, skrip. Di luar kapasitas ada halaman rekam jejak publik untuk Creator, dan indikator chart yang dibuka admin untuk tiap paket (Katalog indikator di bawah; semuanya terbuka untuk semua paket sampai admin mengubahnya). Admin memakai kapasitas Creator dengan batas analisa dan chat dari `DAILY_*`.
+- Paket ada di `shared/plans.ts` (dipakai server, aplikasi, dan situs): Gratis, Pro (Rp149.000/bulan atau Rp1.490.000/tahun), Creator (Rp399.000/bulan atau Rp3.990.000/tahun), dan harga founding Pro Rp79.000/bulan untuk 100 pelanggan pertama. Paket membedakan kapasitas: analisa AI dan chat per hari, uji Lab per hari, notifikasi, simbol watchlist, skrip, trade berjalan di jurnal. Di luar kapasitas ada halaman rekam jejak publik untuk Creator, dan indikator chart yang dibuka admin untuk tiap paket (Katalog indikator di bawah; semuanya terbuka untuk semua paket sampai admin mengubahnya). Admin memakai kapasitas Creator dengan batas analisa dan chat dari `DAILY_*`.
 - Paket berlaku sampai tanggalnya, lalu akun kembali ke Gratis; notifikasi dan simbol watchlist di atas batas Gratis dijeda (yang terlama tetap jalan).
 - Pembayaran manual: anggota memesan di menu akun → **Paket & tagihan**. Jumlahnya harga ditambah kode unik 3 digit supaya mudah dicocokkan dengan mutasi rekening; rekening atau QRIS-nya dari `PAYMENT_INSTRUCTIONS`, dan pesanan kedaluwarsa setelah 3 hari. Setelah anggota menekan "Saya sudah bayar", admin mendapat Telegram dan email, lalu mengonfirmasi atau menolak di Konsol admin → **Pembayaran** (berisi ringkasan anggota, paket aktif, trial, dan pendapatan). Konfirmasi memperpanjang paket dari tanggal berakhirnya bila paketnya sama, atau mulai hari itu.
 - Paket yang diatur admin di Konsol admin → Pengguna tercatat sebagai pemberian (Rp0) di riwayat pembayaran.

@@ -185,7 +185,7 @@ export type CouponQuote = { code: string; plans: Partial<Record<'pro' | 'creator
 /** Where a member was in the app when a minute was counted (server/src/activity.ts). */
 export type ActivityScreen = 'beranda' | 'pasar' | 'riset' | 'pantau' | 'uji' | 'pemula';
 /** Things a member did that the server records. */
-export type ActivityKind = 'login' | 'analysis' | 'backtest' | 'chat' | 'lab' | 'alert' | 'price_alert' | 'watch' | 'script';
+export type ActivityKind = 'login' | 'analysis' | 'backtest' | 'chat' | 'lab' | 'alert' | 'price_alert' | 'watch' | 'script' | 'journal';
 /** Active minutes in one hour of the week, WIB (dow 1 = Monday). */
 export type ActivityHeat = { dow: number; hour: number; minutes: number };
 /** GET /api/admin/activity: members' use of the app over the last `days` days. */
@@ -663,6 +663,51 @@ export type Ledger = {
   items: LedgerItem[];
 };
 
+/** How the trader felt taking a journal trade. */
+export type JournalMood = 'calm' | 'confident' | 'unsure' | 'fomo' | 'fear' | 'revenge';
+/** open until the price check settles it at TP (win) or SL (loss), or its owner closes (closed) or drops it (cancelled). */
+export type JournalStatus = 'open' | 'win' | 'loss' | 'closed' | 'cancelled';
+/** A trade in the member's journal (server/src/journal.ts); `r` is its result in R once closed. */
+export type JournalTrade = {
+  id: string;
+  symbol: string;
+  tvSymbol: string;
+  side: 'BUY' | 'SELL';
+  entry: number;
+  stopLoss: number;
+  takeProfit: number;
+  source: string;
+  label: string | null;
+  mood: JournalMood | null;
+  note: string | null;
+  /** Rupiah lost if the stop is hit, when the trade came with a size. */
+  riskIdr: number | null;
+  status: JournalStatus;
+  exitPrice: number | null;
+  r: number | null;
+  openedAt: string;
+  closedAt: string | null;
+  notified: boolean;
+};
+export type JournalGroup = { key: string; n: number; wins: number; totalR: number };
+/** Every open trade, the trades of the last `days` days, and the summary of those closed. */
+export type Journal = {
+  days: number;
+  items: JournalTrade[];
+  summary: { closed: number; wins: number; winRate: number | null; totalR: number; avgR: number | null; byMood: JournalGroup[]; bySource: JournalGroup[] };
+  open: number;
+  /** Open trades the plan allows at once. */
+  max: number;
+  telegram: { bot: boolean; chat: boolean };
+};
+export type JournalNew = Pick<JournalTrade, 'symbol' | 'tvSymbol' | 'side' | 'entry' | 'stopLoss' | 'takeProfit'> & {
+  source?: string;
+  label?: string;
+  mood?: JournalMood;
+  note?: string;
+  riskIdr?: number;
+};
+
 /** Some live signals in brief: closed, still open, paid after costs, and the mean net R. */
 export type LedgerBrief = { closed: number; open: number; wins: number; winRate: number | null; expectancy: number | null };
 /** Each engine and timeframe the ledger follows, over `days`, on all tracked symbols and on each (GET /api/ledger/record). */
@@ -848,6 +893,11 @@ export const api = {
   priceLevelAdd: (body: { symbol: string; tvSymbol: string; price: number; label?: string }) =>
     request<PriceLevel>('/price-alerts', { method: 'POST', body: JSON.stringify(body) }),
   priceLevelRemove: (id: string) => request<{ ok: true }>(`/price-alerts/${id}`, { method: 'DELETE' }),
+  journal: (days = 30) => request<Journal>(`/journal?days=${days}`),
+  journalAdd: (body: JournalNew) => request<JournalTrade>('/journal', { method: 'POST', body: JSON.stringify(body) }),
+  journalUpdate: (id: string, patch: { mood?: JournalMood | null; note?: string | null; close?: { price: number }; cancel?: true }) =>
+    request<JournalTrade>(`/journal/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  journalRemove: (id: string) => request<{ ok: true }>(`/journal/${id}`, { method: 'DELETE' }),
   /** The engines and published indicators this account may test, its own scripts, and the history each timeframe allows. */
   lab: () =>
     request<{

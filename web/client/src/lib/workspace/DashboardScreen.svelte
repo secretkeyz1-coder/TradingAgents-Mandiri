@@ -3,11 +3,12 @@
   // Pantauanku, the AI brief), then how the member's signals are doing. The calls their notifications made over a
   // chosen period (server/src/alerts.ts GET /alerts/history: live signals only, R from targets
   // and stops), by day, by indicator and by asset, with the calls themselves; beside them what
-  // runs now and what today holds (open calls, quota, scheduled analyses, price alerts). Each
-  // part leads to the screen that acts on it.
+  // runs now and what today holds (open calls, the trade journal, quota, scheduled analyses, price
+  // alerts). Each part leads to the screen that acts on it.
   import { INDICATOR_NAMES, SIGNAL_STATUS, TIMEFRAME_LABELS } from '../alertLabels';
-  import { api, INTERVALS, type Interval, type PriceLevels, type SignalCall, type SignalHistory } from '../api';
+  import { api, INTERVALS, type Interval, type Journal, type PriceLevels, type SignalCall, type SignalHistory } from '../api';
   import { ratingBadge } from '../format';
+  import { signedR } from '../journalLabels';
   import { usage } from '../stores/usage.svelte';
   import { watch } from '../stores/watch.svelte';
   import { ws } from '../stores/workspace.svelte';
@@ -33,6 +34,8 @@
   let data = $state<SignalHistory | null>(null);
   let error = $state('');
   let levels = $state<PriceLevels | null>(null);
+  let journal = $state<Journal | null>(null);
+  let journalFailed = $state(false);
   let filter = $state<Filter>('all');
 
   $effect(() => {
@@ -54,6 +57,10 @@
     .catch(() => {
       /* the side column just leaves price alerts out */
     });
+  api
+    .journal(30)
+    .then((j) => (journal = j))
+    .catch(() => (journalFailed = true));
 
   const s = $derived(data?.summary);
   const period = $derived(PERIODS.find((p) => p.days === days)?.label ?? `${days} hari`);
@@ -280,6 +287,36 @@
                   <span class="ml-auto truncate text-xs text-base-content/70">{name(c.indicator)} {tf(c.timeframe)}</span>
                 </span>
                 <span class="font-mono text-xs tabular-nums text-base-content/70">E {price(c.entry)} · SL {price(c.stopLoss)} · TP {price(c.takeProfit)}</span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+
+      <section aria-labelledby="journal-title">
+        <div class="flex items-baseline justify-between gap-2">
+          <h2 id="journal-title" class="text-sm font-semibold">Jurnal</h2>
+          <button class="link link-hover text-xs" onclick={() => ws.setDock('journal')}>Buka</button>
+        </div>
+        {#if !journal}
+          <p class="mt-1 text-sm text-base-content/70">{journalFailed ? 'Jurnal belum bisa dimuat.' : 'Memuat…'}</p>
+        {:else if !journal.items.length}
+          <p class="mt-1 text-sm text-base-content/70">Belum ada trade. Tekan Saya ambil di kartu Rencana chart untuk mencatatnya.</p>
+        {:else}
+          {@const j = journal.summary}
+          <p class="mt-1 text-sm">
+            {journal.open} berjalan {#if j.closed}
+              · 30 hari: {j.closed} selesai, {pct(j.winRate)} untung,
+              <span class="font-medium tabular-nums" class:text-success={j.totalR > 0} class:text-error={j.totalR < 0}>{signedR(j.totalR)}</span>{/if}
+          </p>
+          <ul class="mt-2 flex flex-col gap-1.5">
+            {#each journal.items.filter((t) => t.status === 'open').slice(0, 4) as t (t.id)}
+              <li class="flex items-center justify-between gap-2 text-sm">
+                <button class="link link-hover font-mono" onclick={() => ws.setSymbol(t.tvSymbol)}>{t.symbol}</button>
+                <span class="text-xs tabular-nums">
+                  <span class:text-success={t.side === 'BUY'} class:text-error={t.side === 'SELL'}>{t.side === 'BUY' ? 'Beli' : 'Jual'}</span>
+                  {price(t.entry)}
+                </span>
               </li>
             {/each}
           </ul>

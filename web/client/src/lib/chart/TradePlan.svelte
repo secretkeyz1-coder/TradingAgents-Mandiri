@@ -11,9 +11,13 @@
   // within the plan's notification allowance), and the plan as text to copy into a broker app
   // or a group. Capital and risk are remembered in this browser. Research, not advice.
   // Under the plan, the engine's live record on this timeframe (RecordLine): how often its
-  // signals have paid after costs, so the plan is weighed before it is taken.
-  import { api } from '../api';
+  // signals have paid after costs, so the plan is weighed before it is taken. "Saya ambil" puts
+  // the plan in the journal (POST /api/journal) with the trader's own entry, mood and note, and
+  // the money at risk when the sizing is open; the server then settles it at TP or SL.
+  import { TIMEFRAME_LABELS } from '../alertLabels';
+  import { api, type JournalMood } from '../api';
   import { friendlyName } from '../beginner/plain';
+  import MoodPicker from '../MoodPicker.svelte';
   import { ws } from '../stores/workspace.svelte';
   import RecordLine from './RecordLine.svelte';
 
@@ -128,6 +132,53 @@
     busy = false;
   }
 
+  // --- "Saya ambil": the plan into the journal.
+  let taking = $state(false);
+  let takenEntry = $state<number | null>(null);
+  let mood = $state<JournalMood | null>(null);
+  let memo = $state('');
+  let saving = $state(false);
+  let takeError = $state('');
+  /** The plan just recorded, so the card says where it went. */
+  let taken = $state<string | null>(null);
+
+  function startTaking() {
+    taking = !taking;
+    takenEntry = plan?.entry ?? null;
+    takeError = '';
+  }
+
+  async function take(e: SubmitEvent) {
+    e.preventDefault();
+    if (!plan || takenEntry == null) return;
+    saving = true;
+    takeError = '';
+    try {
+      await api.journalAdd({
+        symbol,
+        tvSymbol: ws.symbol,
+        side: plan.side,
+        entry: takenEntry,
+        stopLoss: plan.stopLoss,
+        takeProfit: plan.takeProfit,
+        source: plan.key,
+        label: `${plan.source.split(' · ')[0]} ${TIMEFRAME_LABELS[timeframe as keyof typeof TIMEFRAME_LABELS] ?? timeframe}`.slice(0, 80),
+        mood: mood ?? undefined,
+        note: memo.trim() || undefined,
+        // What the stop would cost at the size shown, from the entry the trader got.
+        riskIdr: open && size && size.units > 0 && toIdr ? Math.round(size.units * Math.abs(takenEntry - plan.stopLoss) * toIdr) : undefined,
+      });
+      taking = false;
+      mood = null;
+      memo = '';
+      taken = plan.key;
+    } catch (err) {
+      takeError = (err as Error).message;
+    } finally {
+      saving = false;
+    }
+  }
+
   async function copy() {
     if (!plan) return;
     const text = `${friendlyName(ws.symbol)} · ${plan.side === 'BUY' ? 'Beli' : 'Jual'} · Entry ${price(plan.entry)} · SL ${price(plan.stopLoss)} · TP ${price(plan.takeProfit)}${rr ? ` · R:R 1:${rr.toFixed(1).replace('.', ',')}` : ''} (${plan.source}). Riset, bukan saran investasi.`;
@@ -152,6 +203,7 @@
       {#if rr}<span class="tabular-nums">R:R 1:{rr.toFixed(1).replace('.', ',')}</span>{/if}
       <span class="ml-auto flex items-center gap-1">
         <button class="btn btn-ghost btn-xs" onclick={copy}>{copied ? 'Tersalin' : 'Salin'}</button>
+        <button class="btn btn-xs" aria-expanded={taking} title="Catat rencana ini di jurnal sebagai trade yang kamu ambil" onclick={startTaking}>Saya ambil</button>
         <button class="btn btn-xs" aria-expanded={open} onclick={() => (open = !open)}>{open ? 'Tutup' : 'Ukuran posisi & alert'}</button>
       </span>
     </div>
@@ -168,6 +220,28 @@
       {#if decision}<span>· keputusan AI terakhir {decision.rating} ({decision.date})</span>{/if}
     </div>
     <RecordLine source={plan.key} {timeframe} {symbol} lead="Rekam jejak" exact showScope />
+    {#if taking}
+      <form class="flex flex-col gap-2 border-t border-base-300 pt-2" onsubmit={take} aria-label="Catat ke jurnal">
+        <p class="text-xs text-base-content/70">
+          Catat ke jurnal: {plan.side === 'BUY' ? 'Beli' : 'Jual'}, SL {price(plan.stopLoss)}, TP {price(plan.takeProfit)}. Jurnal menutupnya otomatis saat harga menyentuh TP atau SL.
+        </p>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="flex flex-col gap-0.5 text-xs">
+            Harga masukmu
+            <input class="input input-xs w-32 tabular-nums" type="number" step="any" min="0" required bind:value={takenEntry} />
+          </label>
+          <input class="input input-xs min-w-0 grow basis-56" maxlength="500" placeholder="Catatan singkat, misalnya alasan masuk" aria-label="Catatan" bind:value={memo} />
+        </div>
+        <div class="flex flex-col gap-1 text-xs">
+          <span>Perasaan saat masuk (boleh dikosongkan)</span>
+          <MoodPicker bind:value={mood} />
+        </div>
+        {#if takeError}<p class="text-xs text-error" role="alert">{takeError}</p>{/if}
+        <div><button class="btn btn-xs btn-primary" disabled={saving}>Simpan ke jurnal</button></div>
+      </form>
+    {:else if taken === plan.key}
+      <p class="text-xs" role="status">Tercatat di jurnal. <button class="link" onclick={() => ws.setDock('journal')}>Buka Jurnal</button></p>
+    {/if}
     {#if open}
       <div class="flex flex-col gap-2 border-t border-base-300 pt-2">
         <div class="flex flex-wrap items-end gap-3">

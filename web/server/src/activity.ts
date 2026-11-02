@@ -16,7 +16,7 @@ import { leaderOnly } from "./locks";
 export const KEEP_DAYS = 90;
 export const ACTIVITY_SCREENS = ["beranda", "pasar", "riset", "pantau", "uji", "pemula"] as const satisfies readonly ActivityScreen[];
 /** The tabs a screen shows (client stores/workspace.svelte.ts DockTab). */
-export const ACTIVITY_TABS = ["history", "report", "log", "backtest", "lab", "signals", "watch", "alerts", "screener"] as const;
+export const ACTIVITY_TABS = ["history", "report", "log", "backtest", "lab", "signals", "watch", "alerts", "journal", "screener"] as const;
 
 type Who = Pick<User, "id" | "role">;
 

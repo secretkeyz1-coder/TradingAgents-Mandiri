@@ -17,6 +17,7 @@
     log: 'Log',
     watch: 'Analisa terjadwal',
     alerts: 'Alert',
+    journal: 'Jurnal',
     backtest: 'Backtest',
     lab: 'Lab',
     signals: 'Strategi live',
@@ -32,6 +33,7 @@
     price_alert: 'Notifikasi harga baru',
     watch: 'Simbol ke analisa harian',
     script: 'Skrip baru',
+    journal: 'Trade dicatat ke jurnal',
   };
   const INDICATOR: Record<string, string> = { pob: 'PoB BYSTRA', scalper: 'Scalper Pro+', fib: 'Fib GZ' };
   const TF: Record<string, string> = { '15m': '15m', '1h': '1j', '4h': '4j', '1d': 'harian' };
@@ -111,6 +113,7 @@
     }
     if (e.kind === 'price_alert') return `di ${Number(d.price).toLocaleString('id-ID')}`;
     if (e.kind === 'script') return String(d.name ?? '');
+    if (e.kind === 'journal') return `${d.side === 'SELL' ? 'Jual' : 'Beli'}${d.source && d.source !== 'manual' ? ` · dari ${INDICATOR[String(d.source)] ?? 'indikator'}` : ' · diisi sendiri'}`;
     return '';
   }
 

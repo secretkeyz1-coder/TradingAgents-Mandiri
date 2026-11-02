@@ -17,14 +17,14 @@ import { RunStream } from './run.svelte';
 export type Screen = 'beranda' | 'pasar' | 'riset' | 'pantau' | 'uji';
 /** The screens that show the chart, with panels around it. */
 export type ChartScreen = 'pasar' | 'riset';
-export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'lab' | 'signals' | 'watch' | 'alerts' | 'screener';
+export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'lab' | 'signals' | 'watch' | 'alerts' | 'journal' | 'screener';
 export type DockSize = 'min' | 'normal' | 'max';
 export type AiMode = 'chat' | 'analysis';
 export type ChartView = 'tv' | 'ai';
 /** On a phone a chart screen shows one thing at a time: the chart, its side panel, or one of its tabs. */
 export type PhonePane = 'chart' | 'side' | 'dock';
 
-const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'signals', 'watch', 'alerts', 'screener'];
+const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'signals', 'watch', 'alerts', 'journal', 'screener'];
 
 /** The AI panel's two tabs: ask the agent, or run a full analysis. */
 export const AI_MODES: { key: AiMode; label: string }[] = [
@@ -56,6 +56,7 @@ export const SCREENS: { key: Screen; label: string; tabs: { key: DockTab; label:
     tabs: [
       { key: 'watch', label: 'Analisa terjadwal' },
       { key: 'alerts', label: 'Alert' },
+      { key: 'journal', label: 'Jurnal' },
     ],
   },
   {

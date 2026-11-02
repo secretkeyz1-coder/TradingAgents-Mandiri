@@ -29,6 +29,7 @@ import { ledgerPairs, ledgerScriptSignals, recordLedger, resultKey } from "./led
 import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { capMessage, limitsOf, planOf } from "./plans";
+import { settleJournal } from "./journal";
 import { checkPrices, notificationsInUse } from "./price-alerts";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
 import { scalperSignalSettings, type ScalperSignalSettings } from "../../shared/scalper";
@@ -432,6 +433,8 @@ export function startAlertScheduler() {
     if (minute !== lastMinute) {
       lastMinute = minute;
       checkPrices().catch((err) => recordError("prices", err));
+      // Trades in the journal (journal.ts) settle on the same candles.
+      settleJournal().catch((err) => recordError("journal", err));
     }
     const slot = Math.floor((Date.now() - SCAN_DELAY_MS) / (SLOT_MINUTES * 60_000));
     if (slot === lastSlot) return;

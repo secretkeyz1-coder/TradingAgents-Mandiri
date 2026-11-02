@@ -485,6 +485,52 @@ export const priceAlerts = pgTable(
   (t) => [index("price_alerts_active_idx").on(t.active, t.symbol), index("price_alerts_user_idx").on(t.userId, t.createdAt)],
 );
 
+/** open until the price check settles it at its target (win) or stop (loss), or its owner closes (closed) or drops it (cancelled). */
+export type JournalStatus = "open" | "win" | "loss" | "closed" | "cancelled";
+/** How the trader felt taking the trade. */
+export type JournalMood = "calm" | "confident" | "unsure" | "fomo" | "fear" | "revenge";
+
+/**
+ * A member's trade journal (journal.ts): a trade they say they took, from the chart's plan card or
+ * by hand, with its plan (entry, stop, target), how they felt and a note. The minute price check
+ * settles an open trade at its target or stop; the result is kept in R so any size compares.
+ */
+export const journalTrades = pgTable(
+  "journal_trades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: owner().notNull(),
+    /** Yahoo symbol, as the engine reads it (BBCA.JK, BTC-USD, GC=F). */
+    symbol: text("symbol").notNull(),
+    tvSymbol: text("tv_symbol").notNull(),
+    /** For crypto: the venue whose price settles it (venues.ts); empty = the default source. */
+    venue: text("venue").notNull().default(""),
+    side: text("side").$type<"BUY" | "SELL">().notNull(),
+    entry: doublePrecision("entry").notNull(),
+    stopLoss: doublePrecision("stop_loss").notNull(),
+    takeProfit: doublePrecision("take_profit").notNull(),
+    /** Where the idea came from: scalper, pob, fib, a script or catalog key, or manual. */
+    source: text("source").notNull(),
+    /** How lists name the source ("Scalper Pro+ 15m"). */
+    label: text("label"),
+    mood: text("mood").$type<JournalMood>(),
+    note: text("note"),
+    /** Rupiah lost if the stop is hit (the plan card's sizing), so results read in money too. */
+    riskIdr: doublePrecision("risk_idr"),
+    status: text("status").$type<JournalStatus>().notNull().default("open"),
+    /** The newest 15m bar when it was recorded: highs and lows from it and before never settle it. */
+    armedBar: text("armed_bar"),
+    exitPrice: doublePrecision("exit_price"),
+    /** The result in R (risk = entry to stop): the target's distance over the stop's, −1 at the stop. */
+    r: doublePrecision("r"),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** When the message that it settled reached Telegram. */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  },
+  (t) => [index("journal_trades_user_idx").on(t.userId, t.openedAt), index("journal_trades_status_idx").on(t.status)],
+);
+
 /**
  * The signal ledger: every signal the built-in engines fire on the tracked symbols,
  * whoever watches them, frozen at birth and scored against later bars, with the
@@ -750,7 +796,7 @@ export const rateLimits = pgTable(
 /** The places a member can be in the app, as the activity beat names them (analytics.ts). */
 export type ActivityScreen = "beranda" | "pasar" | "riset" | "pantau" | "uji" | "pemula";
 /** Things a member did that the server records where they happen (activity.ts track). */
-export type ActivityKind = "login" | "analysis" | "backtest" | "chat" | "lab" | "alert" | "price_alert" | "watch" | "script";
+export type ActivityKind = "login" | "analysis" | "backtest" | "chat" | "lab" | "alert" | "price_alert" | "watch" | "script" | "journal";
 
 /**
  * One row per minute a member was using the app (activity.ts): sent by the page while its tab is

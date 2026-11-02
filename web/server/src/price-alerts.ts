@@ -35,6 +35,9 @@ export function useQuotes(quote: Quote = liveQuote) {
   readQuote = quote;
 }
 
+/** The prices the minute checks read now (the journal's too, journal.ts): live candles, or the test suite's. */
+export const quotes: Quote = (symbol, venue) => readQuote(symbol, venue);
+
 const price = (v: number) => v.toLocaleString("id-ID", { maximumFractionDigits: Math.abs(v) >= 10 ? 2 : Math.abs(v) >= 0.01 ? 5 : 8 });
 
 /**

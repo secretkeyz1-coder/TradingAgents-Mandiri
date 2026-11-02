@@ -76,6 +76,7 @@
                           "signals",
                           "watch",
                           "alerts",
+                          "journal",
                           "screener"
                         ]
                       },
@@ -2188,6 +2189,209 @@
           },
           {
             "basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
+    "/api/journal": {
+      "get": {
+        "tags": [
+          "journal"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "journal"
+        ],
+        "summary": "Catat trade ke jurnal",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9.\\-=^]{1,20}$"
+                  },
+                  "tvSymbol": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "side": {
+                    "type": "string",
+                    "enum": [
+                      "BUY",
+                      "SELL"
+                    ]
+                  },
+                  "entry": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "stopLoss": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "takeProfit": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "source": {
+                    "default": "manual",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "mood": {
+                    "type": "string",
+                    "enum": [
+                      "calm",
+                      "confident",
+                      "unsure",
+                      "fomo",
+                      "fear",
+                      "revenge"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "riskIdr": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000000000
+                  }
+                },
+                "required": [
+                  "symbol",
+                  "tvSymbol",
+                  "side",
+                  "entry",
+                  "stopLoss",
+                  "takeProfit"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      }
+    },
+    "/api/journal/{id}": {
+      "patch": {
+        "tags": [
+          "journal"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Berhasil"
+          },
+          "400": {
+            "description": "Isian tidak valid; `error` menjelaskannya"
+          },
+          "401": {
+            "description": "Belum masuk"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "journal"
+        ],
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "basic": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
