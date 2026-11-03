@@ -26,6 +26,26 @@ export function standardFor<T extends AnalysisChoice>(user: User, request: T, ti
   return { ...request, analysts: standardAnalysts(tickers), depth: STANDARD_DEPTH, language: STANDARD_LANGUAGE };
 }
 
+/**
+ * A worker's message as this user may read it. A provider error names where it called, and for a member that is the
+ * server's backend URL, which receives the server's API key: it is replaced, with its host, by "server".
+ */
+export async function shownTo(user: User, text: string): Promise<string> {
+  return isAdmin(user) ? text : hideUrl(text, (await getCatalog()).defaults.backendUrl);
+}
+
+/** The text with `url` in it, written whole, without its trailing slash, or as its host, replaced by "server". */
+export function hideUrl(text: string, url: string | null | undefined): string {
+  if (!url) return text;
+  const names = [url, url.replace(/\/+$/, "")];
+  try {
+    names.push(new URL(url).host);
+  } catch {
+    // not a URL: only the text as given is replaced
+  }
+  return names.filter(Boolean).reduce((out, name) => out.split(name).join("server"), text);
+}
+
 /** The form options a user may see: members get no key names or default URLs. */
 export function catalogFor(user: User, catalog: Catalog): Catalog {
   if (isAdmin(user)) return catalog;

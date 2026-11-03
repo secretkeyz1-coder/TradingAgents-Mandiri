@@ -10,7 +10,7 @@ import { z } from "zod";
 import { track } from "./activity";
 import type { AppEnv } from "./auth";
 import { backendUrlRefused } from "./config";
-import { modelsFor } from "./models";
+import { modelsFor, shownTo } from "./models";
 import { db } from "./db";
 import { holdLease, leaseHeld } from "./locks";
 import {
@@ -391,6 +391,7 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
           case "error":
             // The worker already said what went wrong, in the user's terms; no generic exit message on top.
             answered = true;
+            payload.message = await shownTo(user, String(payload.message ?? ""));
             break;
         }
         await send(type, payload);
@@ -401,7 +402,7 @@ agentApi.post("/agent/sessions/:id/messages", async (c) => {
         const { exitCode, stderrTail } = await handle.done;
         if (!answered && !stream.aborted) {
           const tail = stderrTail.trim().split("\n").slice(-3).join("\n");
-          await send("error", { message: `Agent berhenti tanpa jawaban (exit ${exitCode}).\n${tail}` });
+          await send("error", { message: await shownTo(user, `Agent berhenti tanpa jawaban (exit ${exitCode}).\n${tail}`) });
         }
         if (!stream.aborted) await send("end", {});
       } finally {

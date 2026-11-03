@@ -6,6 +6,7 @@ import { expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { analyses } from "../src/db/schema";
+import { hideUrl } from "../src/models";
 import { admin, call, member } from "./helpers";
 
 type Provider = { key: string; apiKeyEnv: string | null; defaultUrl: string | null };
@@ -94,4 +95,16 @@ test("the server settings page is for admins only and shows no secret value", as
   const refused = await call("/api/admin/config", { cookie: m.cookie });
   expect(refused.status).toBe(403);
   expect(refused.body.error).toBe("Khusus admin");
+});
+
+test("a provider error shown to a member names no backend address, whole, without its slash, or as its host", () => {
+  const url = "https://llm.contoh.invalid/v1/";
+  const said = [
+    `Provider tidak menjawab dalam 240 detik (model 'm' di ${url}).`,
+    "Tidak bisa terhubung ke provider (model 'm' di https://llm.contoh.invalid/v1): Connection error.",
+    "HTTPSConnectionPool(host='llm.contoh.invalid', port=443)",
+  ].map((text) => hideUrl(text, url));
+  for (const text of said) expect(text).not.toContain("contoh.invalid");
+  expect(said[0]).toContain("model 'm' di server");
+  expect(hideUrl("tanpa alamat", null)).toBe("tanpa alamat");
 });
