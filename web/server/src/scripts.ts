@@ -18,7 +18,7 @@ import { modelsFor, shownTo } from "./models";
 import { db } from "./db";
 import { signalAlerts, userScripts } from "./db/schema";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
-import { checkScript } from "./script-check";
+import { checkOffThread, type ScriptCheck } from "./script-check";
 import { runOnSymbol, SCRIPT_TIMEFRAMES, type ScriptTimeframe } from "./script-run";
 import { capMessage, limitsOf } from "./plans";
 import { overLimit, spendChat } from "./usage";
@@ -218,9 +218,10 @@ function aiWork(c: Context<AppEnv>, job: ModelFields, work: (step: Step, say: Sa
 }
 
 /**
- * Tests a draft on the chart's bars (script-check.ts) and, while it fails, has the AI repair it, up to MAX_REPAIRS
- * times; answers the last draft with its check. Bars that do not load leave the draft untested, and a repair that
- * fails leaves the draft before it: either way the member gets a script and the reason.
+ * Tests a draft on the chart's bars (script-check.ts, on its own thread) and, while it fails, has the AI repair it, up
+ * to MAX_REPAIRS times; answers the last draft with its check. Bars that do not load, or a check that does not finish,
+ * leave the draft untested, and a repair that fails leaves the draft before it: either way the member gets a script
+ * and the reason.
  */
 async function tested(c: Context<AppEnv>, first: Draft, bars: Promise<TestBars | Error>, say: Say, repair: (draft: Draft, problems: string[]) => Promise<Draft>) {
   const test = await bars;
@@ -228,7 +229,12 @@ async function tested(c: Context<AppEnv>, first: Draft, bars: Promise<TestBars |
   let draft = first;
   for (let repairs = 0; ; repairs++) {
     await say("step", { text: `Menguji di ${test.where}, ${test.bars.length.toLocaleString("id-ID")} candle` });
-    const check = { ...(await checkScript(draft.code, test.bars, test.context)), where: test.where };
+    let check: ScriptCheck & { where: string };
+    try {
+      check = { ...(await checkOffThread(draft.code, test.bars, test.context)), where: test.where };
+    } catch (e) {
+      return { ...draft, check: null, repairs, note: `Tidak bisa menguji skrip: ${(e as Error).message}` };
+    }
     if (!check.problems.length || repairs === MAX_REPAIRS) return { ...draft, check, repairs };
     await say("step", { text: `Memperbaiki (${repairs + 1} dari ${MAX_REPAIRS}): ${check.problems[0]}` });
     try {

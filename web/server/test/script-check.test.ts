@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { SCRIPT_TEMPLATES } from "../../shared/script";
 import { GUIDE_EXAMPLE } from "../../shared/script-guide";
-import { checkScript } from "../src/script-check";
+import { checkOffThread, checkScript } from "../src/script-check";
 import { walkBars } from "./helpers";
 
 const bars = walkBars(1200);
@@ -60,5 +60,28 @@ for (let i = 20; i < n; i += 10) signal(i, "BUY", { entry: high[i] + 3 * atr[i],
     expect(c.ran).toBe(true);
     expect(c.problems).toEqual([]);
     expect(c.drawn.lines).toBeGreaterThan(0);
+  }, 30_000);
+
+  test("on its own thread a draft that never ends is stopped at the run limit, and the server's thread runs meanwhile", async () => {
+    let ticks = 0;
+    const tick = setInterval(() => ticks++, 50);
+    const started = Date.now();
+    const c = await checkOffThread(`while (true) {}`, bars, context);
+    const waited = Date.now() - started;
+    clearInterval(tick);
+    expect(c.ran).toBe(false);
+    expect(c.problems[0]).toContain("batas waktu");
+    expect(waited).toBeLessThan(15_000);
+    // About one tick per 50 ms of the wait: nothing held this thread while the draft ran.
+    expect(ticks).toBeGreaterThan(waited / 50 / 2);
+  }, 30_000);
+
+  test("on its own thread a draft gets the same check as here", async () => {
+    const code = `const ema = ta.ema(close, 10); const atr = ta.atr(14);
+for (let i = 20; i < n - 1; i++) if (close[i] <= ema[i] && close[i + 1] > ema[i]) signal(i, "BUY", { sl: close[i] - 2 * atr[i], tp: close[i] + 4 * atr[i] });`;
+    const here = await checkScript(code, bars, context);
+    const there = await checkOffThread(code, bars, context);
+    expect(there.problems).toEqual(here.problems);
+    expect(there.stats).toEqual(here.stats);
   }, 30_000);
 });

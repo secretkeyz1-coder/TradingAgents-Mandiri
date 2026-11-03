@@ -69,7 +69,7 @@ Two products live in this repo:
 | Sign-in, sessions, 2FA | `server/src/auth.ts`, `server/src/totp.ts` |
 | Pro workspace | `client/src/lib/workspace/`, chart in `client/src/lib/DecisionChart.svelte` |
 | Indicator scripts | runtime `shared/script.ts`, guide and Pine dictionary `shared/script-guide.ts`, templates `shared/script-templates.ts`, editor `client/src/lib/chart/ScriptEditor.svelte` |
-| AI script writer | routes `server/src/scripts.ts` (streamed), draft check `server/src/script-check.ts`, prompts `web/worker/script_translate.py` |
+| AI script writer | routes `server/src/scripts.ts` (streamed), draft check `server/src/script-check.ts` (run on its own thread, `script-check-thread.ts`), prompts `web/worker/script_translate.py` |
 | Pemula screen | `client/src/lib/beginner/` |
 | Admin console | `client/src/lib/admin/` |
 | Public pages | `client/index.html`, `client/<page>/index.html`, `client/src/site/` |

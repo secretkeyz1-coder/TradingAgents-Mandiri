@@ -289,6 +289,8 @@ Skrip Pine Script TradingView menjadi skrip aplikasi (`POST /api/scripts/transla
    - menghasilkan sinyal, plot, garis, atau label;
    - tidak menaruh sebagian besar entry di luar candle sinyal tanpa `wait`;
    - tidak membaca candle sesudah sinyal. Ini diperiksa dengan menjalankan ulang skrip pada candle sampai beberapa sinyalnya, dengan candle berikutnya dibuat datar; sinyal dan plot yang sudah tutup harus sama.
+
+   Pemeriksaan berjalan di thread sendiri (`server/src/script-check-thread.ts`), jadi server tetap melayani permintaan lain selama draf berjalan. Tiap jalan dihentikan di 4 detik (chart berhenti di 3), dan seluruh replay paling lama 10 detik.
 3. **Perbaikan.** Masalah yang ditemukan dikirim balik ke AI, paling banyak 2 kali.
 
 Editor menampilkan langkahnya selagi berjalan (bisa dihentikan), lalu panel **Hasil AI** di bawah kode: lolos uji atau masalah yang tersisa, berapa kali diperbaiki, dan laporannya.

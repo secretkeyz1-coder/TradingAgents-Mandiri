@@ -4,9 +4,10 @@
 // after it. That last one is checked by replaying it on the bars up to some of its signals (and a few points
 // between), with the next bar replaced by a flat one at the last close, as a bar that has only just opened: what it
 // decides on the last closed bar, signals and plot values, must not change. Each problem is said in plain words,
-// for the member and for the repair turn alike.
+// for the member and for the repair turn alike. A draft runs synchronously, so the server checks it on a thread of
+// its own (checkOffThread), and every run stops near the chart's own limit.
 import { runScript, tickOf, type ScriptBar, type ScriptResult, type ScriptSignal } from "../../shared/script";
-import { quickjs } from "./script-run";
+import { quickjs } from "./script-sandbox";
 
 export type ScriptCheck = {
   /** Whether it ran at all on the full series. */
@@ -22,13 +23,17 @@ type Context = { timeframe?: string; tz?: string | null };
 
 /** The chart stops a script after 3 s; a draft slower than this on the server would fail there on a slower device. */
 const SLOW_MS = 2_500;
+/** One run's limit here: past the chart's 3 s the draft fails there anyway, so running it longer only costs the server. */
+const RUN_MS = 4_000;
 /** Replays: at this many of the signals, and at this many points spread over the bars. */
 const SIGNAL_CUTS = 6;
 const SPREAD_CUTS = 3;
 /** The closed bars before a replay's end whose signals and plot values are compared. */
 const TAIL = 3;
 /** Stop replaying once the replays alone have taken this long. */
-const REPLAY_BUDGET_MS = 20_000;
+const REPLAY_BUDGET_MS = 10_000;
+/** A check's thread is stopped past this: its runs end well before, so only a thread that hangs reaches it. */
+const THREAD_MS = 60_000;
 
 const same = (a: number, b: number) => a === b || Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 const sameSignal = (a: ScriptSignal, b: ScriptSignal) =>
@@ -56,7 +61,7 @@ const timeOf = (bars: ScriptBar[], i: number) => bars[i]?.time ?? `#${i}`;
 export async function checkScript(code: string, bars: ScriptBar[], context: Context = {}): Promise<ScriptCheck> {
   const qjs = await quickjs();
   // Every run reads the full series' price step: a shorter one could round to another, and change entries with it.
-  const opts = { timeframe: context.timeframe, tz: context.tz, mintick: tickOf(bars), limits: { timeMs: 10_000 } };
+  const opts = { timeframe: context.timeframe, tz: context.tz, mintick: tickOf(bars), limits: { timeMs: RUN_MS } };
   const started = performance.now();
   const full = runScript(qjs, code, bars, opts);
   const ms = Math.round(performance.now() - started);
@@ -113,4 +118,31 @@ export async function checkScript(code: string, bars: ScriptBar[], context: Cont
     }
   }
   return { ran: true, problems, bars: bars.length, ms, stats: r.stats, drawn: { plots: r.plots.length, lines: r.lines.length, labels: r.labels.length } };
+}
+
+/**
+ * checkScript on a thread of its own (script-check-thread.ts), so the server keeps answering everyone else while a
+ * draft runs. A new thread per check: drafts are rare, and a thread that hangs is simply stopped.
+ */
+export function checkOffThread(code: string, bars: ScriptBar[], context: Context = {}): Promise<ScriptCheck> {
+  const thread = new Worker(new URL("./script-check-thread.ts", import.meta.url));
+  return new Promise<ScriptCheck>((resolve, reject) => {
+    const done = () => {
+      clearTimeout(timer);
+      thread.terminate();
+    };
+    const timer = setTimeout(() => {
+      done();
+      reject(new Error(`pemeriksaan skrip tidak selesai dalam ${THREAD_MS / 1000} detik`));
+    }, THREAD_MS);
+    thread.onmessage = (event: MessageEvent<ScriptCheck>) => {
+      done();
+      resolve(event.data);
+    };
+    thread.onerror = (event) => {
+      done();
+      reject(new Error(event.message || "pemeriksaan skrip berhenti"));
+    };
+    thread.postMessage({ code, bars, context });
+  });
 }
