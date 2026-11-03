@@ -13,11 +13,17 @@ Latarnya:
 1. Arahkan nama domain ke VPS:
    - Record A `@` ke IP VPS.
    - Record A `www` ke IP yang sama, atau CNAME `www` ke `<domain>`.
-2. Pakai status proksi **DNS only** (awan abu-abu). Alasannya:
-   - nginx membaca IP pengunjung dari koneksi. Di balik proksi Cloudflare, semua member tampak datang dari beberapa IP Cloudflare, jadi kunci "10 kata sandi salah" dan batas laju per IP ikut mengunci member lain.
-   - Cloudflare memutus respons yang diam lebih dari 100 detik, termasuk stream analisa.
+2. Pakai status proksi **DNS only** (awan abu-abu), setidaknya untuk `@`. Alasannya:
+   - Aplikasi mengenali pengunjung dari `X-Real-IP`, yang diisi nginx dengan alamat koneksi. Alamat itu dipakai untuk mengunci tebakan kata sandi (10 kali per alamat), membatasi pendaftaran (5 per jam), dan membatasi kiriman email (5 per jam). Di balik proksi Cloudflare, semua member tampak datang dari beberapa IP Cloudflare, jadi pengaman itu ikut mengunci member lain.
+   - Cloudflare memutus respons yang diam lebih dari 100 detik. Stream analisa aman karena mengirim ping tiap 15 detik, tapi stream chat AI belum punya ping.
+   - `www` yang tetap diproksikan tidak masalah, karena ia hanya mengalihkan ke domain utama.
 3. Hapus record A atau AAAA lain untuk `@` dan `www`, kecuali yang di atas.
-4. Tunggu sampai `nslookup <domain>` dan `nslookup www.<domain>` menjawab IP VPS.
+4. Tunggu sampai `nslookup <domain>` menjawab IP VPS. Resolver publik bisa menyimpan jawaban lama selama TTL-nya, biasanya 5 menit.
+
+Proksi Cloudflare bisa dinyalakan belakangan, dengan tiga syarat:
+- nginx membaca IP asli dari `CF-Connecting-IP`, dan hanya mempercayainya dari daftar IP resmi Cloudflare.
+- Stream chat AI diberi ping.
+- SSL Cloudflare diatur ke "Full (strict)".
 
 ## 2. Sertifikat
 
@@ -38,8 +44,12 @@ server {
 EOF
 sudo ln -s /etc/nginx/sites-available/<domain>.conf /etc/nginx/sites-enabled/<domain>.conf
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot certonly --webroot -w /var/www/<domain> -d <domain> -d www.<domain> --key-type ecdsa --non-interactive
+sudo certbot certonly --account <id> --webroot -w /var/www/<domain> -d <domain> -d www.<domain> --key-type ecdsa --non-interactive
 ```
+
+VPS ini punya lebih dari satu akun certbot, dan tanpa `--account` certbot berhenti untuk bertanya. Pakai akun yang sama dengan sertifikat yang sudah ada, yaitu nilai `account =` di `/etc/letsencrypt/renewal/<domain-lama>.conf`.
+
+Sertifikat juga bisa diambil saat record masih diproksikan, selama Cloudflare meneruskan HTTP biasa ke VPS (pengaturan "Always Use HTTPS" mati). Cara mengujinya: taruh berkas di `/var/www/<domain>/.well-known/acme-challenge/`, buka lewat `http://<domain>/...`, lalu hapus lagi.
 
 ## 3. Situs HTTPS
 
