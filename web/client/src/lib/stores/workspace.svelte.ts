@@ -9,14 +9,16 @@
 //
 // Links from before the screens (#/?s=…&run=…, #/analyses/:id, #/backtests/:id,
 // #/chart?symbol=…, #/markets?tab=…, #/?ticker=…) are read too, sent to the screen that now
-// holds what they name, and rewritten to that form. A TradingView widget click arrives as
-// ?tvwidgetsymbol=… and opens that symbol's chart.
+// holds what they name, and rewritten to that form, as is Indikator saya's tab from before it
+// joined Uji indikator (dock=library). A TradingView widget click arrives as ?tvwidgetsymbol=…
+// and opens that symbol's chart.
 import { INTERVALS, type Interval } from '../api';
 import { marketOf, symbolsOf } from '../assets';
 import { acceptHandoffs } from '../tabs';
 import { MARKET_TABS, toTradingView, toYahoo } from '../tv';
 import { BacktestStream } from './backtest.svelte';
 import { jobs } from './jobs.svelte';
+import type { IconName } from '../workspace/icons';
 import { lab } from './lab.svelte';
 import { RunStream } from './run.svelte';
 import { layoutOf, viewport } from './viewport.svelte';
@@ -24,14 +26,14 @@ import { layoutOf, viewport } from './viewport.svelte';
 export type Screen = 'beranda' | 'pasar' | 'riset' | 'pantau' | 'uji';
 /** The screens that show the chart, with panels around it. */
 export type ChartScreen = 'pasar' | 'riset';
-export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'lab' | 'signals' | 'library' | 'watch' | 'alerts' | 'journal' | 'screener';
+export type DockTab = 'history' | 'report' | 'log' | 'backtest' | 'lab' | 'signals' | 'watch' | 'alerts' | 'journal' | 'screener';
 export type DockSize = 'min' | 'normal' | 'max';
 export type AiMode = 'chat' | 'analysis';
 export type ChartView = 'tv' | 'ai';
 /** On a phone a chart screen shows one thing at a time: the chart, its side panel, or one of its tabs. */
 export type PhonePane = 'chart' | 'side' | 'dock';
 
-const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'signals', 'library', 'watch', 'alerts', 'journal', 'screener'];
+const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'signals', 'watch', 'alerts', 'journal', 'screener'];
 
 /** The AI panel's two tabs: ask the agent, or run a full analysis. */
 export const AI_MODES: { key: AiMode; label: string }[] = [
@@ -48,8 +50,8 @@ export const MARKET_LIST_LABEL = 'Daftar harga';
 export const SCREENS: {
   key: Screen;
   label: string;
-  /** `hint` says what a tab is for, `short` names it on a phone, `apart` sets it off the screen's path. */
-  tabs: { key: DockTab; label: string; hint?: string; short?: string; apart?: boolean }[];
+  /** `hint` says what a tab is for, `short` names it on a phone, `apart` sets it off the screen's path, `icon` when not its key's. */
+  tabs: { key: DockTab; label: string; hint?: string; short?: string; apart?: boolean; icon?: IconName }[];
 }[] = [
   { key: 'beranda', label: 'Beranda', tabs: [] },
   { key: 'pasar', label: 'Pasar', tabs: [{ key: 'screener', label: 'Screener' }] },
@@ -74,12 +76,11 @@ export const SCREENS: {
   {
     key: 'uji',
     label: 'Uji strategi',
-    // In the order a trader works: pick or write an indicator, test it on history, then follow its
-    // live record. Testing the AI's own calls is a path of its own, set apart. The screen still opens
-    // on Uji indikator (DEFAULT_TAB), whose first step picks the indicator.
+    // In the order a trader works: pick or write an indicator, see it on a chart and test it on
+    // history (one tab, keyed 'lab' as Uji indikator was before Indikator saya joined it), then
+    // follow its live record. Testing the AI's own calls is a path of its own, set apart.
     tabs: [
-      { key: 'library', label: 'Indikator saya', hint: 'Pilih atau buat indikator', short: 'Indikator' },
-      { key: 'lab', label: 'Uji indikator', hint: 'Untung atau rugi di riwayat', short: 'Uji' },
+      { key: 'lab', label: 'Indikator', hint: 'Pilih, lihat di chart, lalu uji', short: 'Indikator', icon: 'library' },
       { key: 'signals', label: 'Rekam jejak live', hint: 'Sinyal nyata, setelah biaya', short: 'Live' },
       { key: 'backtest', label: 'Uji saran AI', hint: 'Seberapa sering AI benar', short: 'Saran AI', apart: true },
     ],
@@ -368,6 +369,11 @@ class Workspace {
     if (q.get('ai') === 'backtest' || q.get('mode') === 'backtest') {
       legacy = true;
       if (!q.has('dock')) q.set('dock', 'backtest');
+    }
+    // Indikator saya had a tab of its own until it joined Uji indikator.
+    if (q.get('dock') === 'library') {
+      legacy = true;
+      q.set('dock', 'lab');
     }
 
     // A canonical URL (one this class wrote: a screen path) states the whole state; anything

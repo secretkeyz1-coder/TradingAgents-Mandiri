@@ -1,8 +1,9 @@
-// Uji indikator's state (server/src/lab.ts), kept here rather than in LabView so a running test, the
+// Indicator tests' state (server/src/lab.ts), kept here rather than in a view so a running test, the
 // open result and a half-filled form survive leaving the tab: the server finishes and saves the run
-// either way, and the page that comes back finds it. Indikator saya and Rekam jejak live read the same
-// history for each indicator's latest test. A deleted run leaves the list at once and is deleted on the
-// server a few seconds later, so "Urungkan" can bring it back.
+// either way, and the page that comes back finds it. The form's strategy is also the indicator picked
+// on Uji strategi → Indikator. Rekam jejak live reads the same history for each engine's latest test.
+// A deleted run leaves the list at once and is deleted on the server a few seconds later, so
+// "Urungkan" can bring it back.
 import { api, type LabConfig, type LabRun, type LabRunSummary } from '../api';
 import type { IconName } from '../workspace/icons';
 import { announcer } from './announcer.svelte';

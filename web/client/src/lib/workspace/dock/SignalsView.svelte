@@ -2,7 +2,7 @@
   /** An engine another page asked Rekam jejak live to open on ("fib", "scalper", …). */
   let asked = $state<string | null>(null);
 
-  /** Open Rekam jejak live on one engine's record (Uji indikator's "Lihat rekam jejak live"). */
+  /** Open Rekam jejak live on one engine's record (Indikator's "Lihat rekam jejak live"). */
   export function pickSource(key: string) {
     asked = key;
   }
@@ -29,7 +29,6 @@
   import { cryptoBase, CRYPTO_VENUES, onVenue, toTradingView, type VenueId } from '../../tv';
   import Icon from '../Icon.svelte';
   import type { IconName } from '../icons';
-  import { pickStrategy } from './LabView.svelte';
 
   const NAMES: Record<string, string> = { scalper: 'Scalper Pro+', fib: 'Fib Golden Zone', pob: 'PoB BYSTRA', donchian: 'Donchian breakout harian' };
   const TF = TIMEFRAME_NAMES;
@@ -70,7 +69,7 @@
   let detail: HTMLElement | undefined = $state();
 
   $effect(() => {
-    // Uji indikator's "Lihat rekam jejak live": open on that engine.
+    // Indikator's "Lihat rekam jejak live": open on that engine.
     if (asked) {
       source = asked;
       asked = null;
@@ -227,7 +226,8 @@
   const run = $derived(source ? lab.latest(`engine:${source}`) : undefined);
   const canTest = $derived(!!source && !!lab.meta?.engines[source]);
   function testEngine() {
-    pickStrategy(`engine:${source}`);
+    // Indikator opens on the indicator the test form names.
+    lab.strategy = `engine:${source}`;
     ws.setDock('lab');
   }
   function openRun(id: string) {
@@ -396,7 +396,7 @@
               <p>{mine.summary.alerts} notifikasi aktif, belum ada sinyal dalam {periodText}. Tiap sinyal yang kamu terima muncul di sini.</p>
             {:else}
               <p>Belum ada. Pasang notifikasi untuk indikator yang lolos uji: tiap sinyal yang kamu terima dicatat di sini, lalu dinilai dari target dan stop-nya.</p>
-              <button type="button" class="btn btn-sm w-fit" onclick={() => ws.setDock('lab')}>Buka Uji indikator</button>
+              <button type="button" class="btn btn-sm w-fit" onclick={() => ws.setDock('lab')}>Buka Indikator</button>
             {/if}
           {:else}
             {@const s = mine.summary}
@@ -491,7 +491,7 @@
                   </p>
                   <button type="button" class="link link-accent w-fit text-sm font-medium" onclick={() => openRun(run.id)}>Lihat hasil uji</button>
                 {:else}
-                  <p class="text-sm ta-muted">{canTest ? 'Mesin ini belum pernah kamu uji di riwayat. Ujinya memakai kuota Uji indikator.' : 'Mesin ini belum bisa diuji di Uji indikator.'}</p>
+                  <p class="text-sm ta-muted">{canTest ? 'Mesin ini belum pernah kamu uji di riwayat. Ujinya memakai kuota uji indikator harian.' : 'Mesin ini belum bisa diuji dengan paketmu.'}</p>
                 {/if}
               </div>
               <div class="ta-cmp" data-key>

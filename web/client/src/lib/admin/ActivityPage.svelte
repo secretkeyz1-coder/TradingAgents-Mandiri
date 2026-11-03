@@ -19,9 +19,9 @@
     alerts: 'Alert',
     journal: 'Jurnal',
     backtest: 'Uji saran AI',
-    lab: 'Uji indikator',
+    lab: 'Indikator',
     signals: 'Rekam jejak live',
-    library: 'Indikator saya',
+    library: 'Indikator saya (sebelum digabung)',
     screener: 'Screener',
   };
   const KIND: Record<ActivityKind, string> = {

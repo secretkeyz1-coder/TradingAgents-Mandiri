@@ -59,6 +59,7 @@
     fill = true,
     venue = null,
     research = true,
+    only = null,
   }: {
     /** Yahoo symbol, as the engine and the analyses store it (BBCA.JK). */
     symbol: string;
@@ -87,6 +88,11 @@
     venue?: VenueId | null;
     /** Load and mark the AI's decisions (Riset AI); off on Pasar, which shows the market without them. */
     research?: boolean;
+    /**
+     * With tools: draw just this indicator ("engine:fib", "script:<id>", "catalog:<id>"), whatever the chart's
+     * Indikator menu has on, and leave out the menus that would change it (Uji strategi → Indikator's Chart pasar).
+     */
+    only?: string | null;
   } = $props();
 
   // The engine scores a decision over this many trading days from the first close after its date.
@@ -305,9 +311,12 @@
     candleSeries!.applyOptions({ upColor: p.up, downColor: p.down, wickUpColor: p.up, wickDownColor: p.down });
   });
 
+  /** Whether a built-in engine is drawn: the one `only` names, else what the Indikator menu has on. */
+  const shows = (engine: 'scalper' | 'pob' | 'fib', on: boolean) => (only ? only === `engine:${engine}` && indicators.has(engine) : on);
+
   // --- Scalper Pro+ (indicators/scalper.ts), drawn from the same candles.
   const band = new BandPrimitive();
-  const ind = $derived(tools && indicators.showScalper && candles.length ? scalper(candles, indicators.scalper) : null);
+  const ind = $derived(tools && shows('scalper', indicators.showScalper) && candles.length ? scalper(candles, indicators.scalper) : null);
   /**
    * How Scalper's latest setup has gone since. The engine reports that setup even after it ended, so
    * the bars after it say whether the stop or the target was touched first (both in one bar counts as
@@ -384,7 +393,7 @@
   });
   // --- PoB BYSTRA (indicators/pob.ts): every signal marked, the latest one's levels and zone drawn.
   const pobTf = $derived(timeframe === '15m' || timeframe === '1h' ? timeframe : null);
-  const pobRes = $derived(tools && indicators.showPob && pobTf && candles.length ? pob(candles, pobTf) : null);
+  const pobRes = $derived(tools && shows('pob', indicators.showPob) && pobTf && candles.length ? pob(candles, pobTf) : null);
   const pobLast = $derived(pobRes?.signals.at(-1) ?? null);
   const pobActive = $derived(pobLast?.outcome === 'open' ? pobLast : null);
   const pobBand = new BandPrimitive();
@@ -442,7 +451,7 @@
   });
   // --- Fib golden zone (indicators/fib.ts): the leg waiting for its pullback, the running signal, recent ones as segments.
   const fibOk = $derived(timeframe === '15m' || timeframe === '1h' || timeframe === '1d');
-  const fibRes = $derived(tools && indicators.showFib && fibOk && candles.length ? fib(candles) : null);
+  const fibRes = $derived(tools && shows('fib', indicators.showFib) && fibOk && candles.length ? fib(candles) : null);
   const fibLast = $derived(fibRes?.signals.at(-1) ?? null);
   const fibOpen = $derived(fibLast?.outcome === 'open' ? fibLast : null);
   const fibBand = new BandPrimitive();
@@ -528,12 +537,17 @@
   const shownTimes = $derived(new Set(candles.map((c) => c.time)));
   /** The user's own scripts and the published ones it turned on (no editor for those: the admin keeps their code). */
   const enabledScripts = $derived<{ id: string; name: string; code: string; published: boolean }[]>(
-    tools
-      ? [
-          ...scripts.items.filter((s) => indicators.scriptIds.includes(s.id)).map((s) => ({ id: s.id, name: s.name, code: s.code, published: false })),
-          ...indicators.published.map((c) => ({ id: c.key, name: c.name, code: c.code ?? '', published: true })),
-        ]
-      : [],
+    !tools
+      ? []
+      : only
+        ? [
+            ...scripts.items.filter((s) => only === `script:${s.id}`).map((s) => ({ id: s.id, name: s.name, code: s.code, published: false })),
+            ...indicators.catalog.filter((c) => !c.builtin && c.code && c.key === only).map((c) => ({ id: c.key, name: c.name, code: c.code ?? '', published: true })),
+          ]
+        : [
+            ...scripts.items.filter((s) => indicators.scriptIds.includes(s.id)).map((s) => ({ id: s.id, name: s.name, code: s.code, published: false })),
+            ...indicators.published.map((c) => ({ id: c.key, name: c.name, code: c.code ?? '', published: true })),
+          ],
   );
   let scriptRuns = $state<Record<string, ScriptRun>>({});
   $effect(() => {
@@ -627,7 +641,9 @@
     return out.sort((a, b) => b.time.localeCompare(a.time));
   });
   const latestDecision = $derived([...decisions].sort((a, b) => a.date.localeCompare(b.date)).at(-1) ?? null);
-  const anyIndicator = $derived(indicators.showScalper || indicators.showPob || indicators.showFib || enabledScripts.length > 0);
+  const anyIndicator = $derived(
+    shows('scalper', indicators.showScalper) || shows('pob', indicators.showPob) || shows('fib', indicators.showFib) || enabledScripts.length > 0,
+  );
 
   const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', exit: 'keluar oleh kondisi skrip', expired: 'kedaluwarsa', open: 'masih berjalan' };
   /** "28 Okt 21:45" for intraday bars, the date for daily ones. */
@@ -872,7 +888,7 @@
   {#snippet planCard()}
     {#if tools && plans.length}
       <TradePlan {plans} {symbol} {timeframe} {currency} last={candles.at(-1)?.close ?? null} decision={latestDecision} />
-    {:else if tools && !anyIndicator && candles.length}
+    {:else if tools && !anyIndicator && candles.length && !only}
       <p class="text-xs text-base-content/70">Rencana trading (entry, SL, TP, dan ukuran posisi) muncul di sini saat indikator memberi setup. Nyalakan dari menu Indikator.</p>
     {:else if tools && candles.length}
       <p class="text-xs text-base-content/70">{noPlan}</p>
@@ -932,7 +948,7 @@
         {/each}
       </div>
       {#if tools}
-        <IndicatorsMenu pobOk={!!pobTf} {fibOk} {timeframe} {symbol} />
+        {#if !only}<IndicatorsMenu pobOk={!!pobTf} {fibOk} {timeframe} {symbol} />{/if}
         <AlertsMenu {symbol} {venue} last={candles.at(-1)?.close ?? null} />
         <button class="btn btn-xs" class:btn-active={moreTools} aria-expanded={moreTools} onclick={() => (moreTools = !moreTools)}>Lainnya</button>
       {/if}
@@ -970,7 +986,7 @@
           title="Garis kecil seluruh data di bawah chart; geser kotaknya untuk pindah waktu"
           onclick={() => chartPrefs.toggleNavigator()}>Navigasi waktu</button
         >
-        <ScriptsMenu />
+        {#if !only}<ScriptsMenu />{/if}
         {#if cryptoBase(symbol)}<VenuePanel base={cryptoBase(symbol)!} venue={venue ?? 'binance'} />{/if}
       {/if}
       </div>

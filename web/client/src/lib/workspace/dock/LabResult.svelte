@@ -1,5 +1,5 @@
 <script lang="ts">
-  // One Uji indikator result, on LabView's right: the verdict first, then the three conditions it was
+  // One test result, in Uji strategi → Indikator's Detail indikator tab: the verdict first, then the three conditions it was
   // judged on in the order server/src/lab.ts checks them, where the costs went, the curve of data awal
   // then data uji, the two sides compared, each asset, and the next step that fits the verdict. Costs are
   // always written with a minus, since they only ever take away; a trader reads "+0,17R" as profit.
@@ -16,8 +16,8 @@
   import type { IconName } from '../icons';
   import { pickSource } from './SignalsView.svelte';
 
-  /** `onform`: show the form (a phone shows one side at a time) after a result put its settings there. */
-  let { r, onform }: { r: LabRun; onform: () => void } = $props();
+  /** `onform`: show the form after a result put its settings there; `onlist`: show the list of indicators. */
+  let { r, onform, onlist }: { r: LabRun; onform: () => void; onlist: () => void } = $props();
 
   const BIGGER = { '15m': '1h', '1h': '4h', '4h': '1d', '1d': null } as const;
   /** The engines the signal ledger follows live (server/src/ledger.ts). */
@@ -189,7 +189,7 @@
             },
           ]
         : []),
-      { icon: 'library', title: 'Ganti indikator', sub: 'Pilih atau buat di Indikator saya.', main: !allowed, act: () => ws.setDock('library') },
+      { icon: 'library', title: 'Ganti indikator', sub: 'Pilih yang lain di daftar, atau buat baru.', main: !allowed, act: onlist },
       help,
     ];
   });
@@ -246,7 +246,7 @@
 
 <div class="flex flex-wrap items-start justify-between gap-3">
   <div class="min-w-0">
-    <h2 id="lab-result-title" class="ta-title">{r.name} · {timeframeLabel(r.config.timeframe)}</h2>
+    <h3 id="lab-result-title" class="ta-section-title">Hasil uji · {timeframeLabel(r.config.timeframe)}</h3>
     <p class="mt-1 text-sm ta-muted">{meta}</p>
   </div>
   <div class="flex gap-2">
@@ -266,7 +266,7 @@
 
 <section class="flex flex-col gap-2.5" aria-labelledby="lab-checks">
   <div class="flex flex-wrap items-baseline justify-between gap-2">
-    <h3 id="lab-checks" class="ta-section-title">Syarat lolos</h3>
+    <h4 id="lab-checks" class="ta-section-title">Syarat lolos</h4>
     <span class="text-sm ta-muted">Dicek berurutan. Satu gagal, uji tidak lolos.</span>
   </div>
   <ol class="ta-checks">
@@ -287,7 +287,7 @@
 
 <section class="ta-card" aria-labelledby="lab-curve">
   <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-base-300 px-5 py-3">
-    <h3 id="lab-curve" class="font-semibold">Untung-rugi kumulatif, setelah biaya</h3>
+    <h4 id="lab-curve" class="font-semibold">Untung-rugi kumulatif, setelah biaya</h4>
     <div class="flex flex-wrap gap-4 text-sm ta-muted">
       <span class="inline-flex items-center gap-2"><span class="h-0.5 w-4 rounded bg-base-content/45" aria-hidden="true"></span>Data awal: membentuk hasil</span>
       <span class="inline-flex items-center gap-2"><span class="h-1 w-4 rounded bg-accent" aria-hidden="true"></span>Data uji: memeriksa{splitDay ? `, mulai ${splitDay}` : ''}</span>
@@ -365,7 +365,7 @@
 </details>
 
 <section class="flex flex-col gap-2.5" aria-labelledby="lab-next">
-  <h3 id="lab-next" class="ta-section-title">Langkah berikutnya</h3>
+  <h4 id="lab-next" class="ta-section-title">Langkah berikutnya</h4>
   <div class="ta-next">
     {#each next as n (n.title)}
       <button type="button" class="ta-nx" data-main={n.main ? '' : undefined} onclick={n.act}>

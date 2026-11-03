@@ -33,7 +33,7 @@
 
 {#snippet step(t: (typeof s.tabs)[number])}
   <button type="button" class="ta-journey-step" aria-current={ws.dock === t.key ? 'page' : undefined} onclick={() => ws.setDock(t.key)}>
-    <span class="ta-journey-icon"><Icon name={t.key as IconName} /></span>
+    <span class="ta-journey-icon"><Icon name={t.icon ?? (t.key as IconName)} /></span>
     <span class="min-w-0 text-left">
       <span class="block font-semibold leading-tight"><span class="max-md:hidden">{t.label}</span><span class="md:hidden">{t.short ?? t.label}</span>{@render running(t.key)}</span>
       {#if t.hint}<span class="ta-journey-hint">{t.hint}</span>{/if}
@@ -58,7 +58,8 @@
   {/if}
   <!-- relative: sr-only text in a long tab is clipped with the scroller instead of lengthening the page. -->
   <div class="relative min-h-0 flex-1 overflow-auto" bind:this={scroller}>
-    <div class="mx-auto w-full {screen === 'uji' ? 'max-w-[88rem]' : 'max-w-6xl'}">
+    <!-- Uji strategi's Indikator holds three columns (list, indicator, test), so its page runs wider. -->
+    <div class="mx-auto w-full {screen === 'uji' ? 'max-w-[104rem]' : 'max-w-6xl'}">
       {#if screen === 'pantau'}<PantauHead />{/if}
       <TabView tab={ws.dock} />
     </div>

@@ -283,6 +283,21 @@ h2 {
 }
 .ta-side, .ta-detail { display: flex; min-width: 0; flex-direction: column; gap: 1rem; }
 .ta-detail { gap: 1.25rem; }
+
+/* Indikator (IndicatorsView, ADR 0020): the list, the indicator picked and its test card. From 80rem they sit
+   side by side; between 64 and 80rem the card goes under the list, the indicator spanning both rows (its second
+   row takes the rest, so the card stays right under the list); a phone shows one pane at a time. */
+.ta-ind { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem; padding: 1.25rem 1rem 2.5rem; }
+.ta-ind-main { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; }
+@media (min-width: 64rem) {
+  .ta-ind { grid-template-columns: minmax(17.5rem, 21rem) minmax(0, 1fr); grid-template-rows: auto 1fr; grid-template-areas: "list main" "uji main"; padding: 1.5rem 1.5rem 3rem; }
+  .ta-ind-list { grid-area: list; }
+  .ta-ind-main { grid-area: main; }
+  .ta-ind-uji { grid-area: uji; }
+}
+@media (min-width: 80rem) {
+  .ta-ind { grid-template-columns: minmax(16.5rem, 18.5rem) minmax(0, 1fr) minmax(20rem, 22.5rem); grid-template-rows: auto; grid-template-areas: "list main uji"; }
+}
 .ta-card { min-width: 0; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); }
 .ta-title { font-size: 1.625rem; font-weight: 700; line-height: 1.15; text-wrap: balance; }
 .ta-section-title { font-size: 1.25rem; font-weight: 650; line-height: 1.25; }

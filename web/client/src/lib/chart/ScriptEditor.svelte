@@ -167,16 +167,22 @@
     aria-modal="true"
     aria-label="Editor skrip indikator"
   >
+    <!-- Menus, not buttons: a long name wraps left-aligned onto a second line instead of centring or spilling out of a fixed-height button. -->
     <aside class="hidden w-56 shrink-0 flex-col gap-1 overflow-y-auto border-r border-base-300 p-3 md:flex">
-      <span class="text-xs font-semibold text-base-content/70">Skrip Anda ({scripts.items.length}/{scripts.max})</span>
-      {#each scripts.items as s (s.id)}
-        <button class="btn btn-ghost btn-sm justify-start truncate" class:btn-active={id === s.id} onclick={() => pick(s.id)}>{s.name}</button>
-      {/each}
+      <span class="px-3 text-xs font-semibold text-base-content/70">Skrip Anda ({scripts.items.length}/{scripts.max})</span>
+      <!-- The open script is tinted like the workspace's current tab, not daisyUI's solid neutral block. -->
+      <ul class="menu w-full gap-0.5 p-0 [--menu-active-bg:color-mix(in_oklch,var(--color-accent)_16%,transparent)] [--menu-active-fg:var(--color-base-content)]">
+        {#each scripts.items as s (s.id)}
+          <li><button class:menu-active={id === s.id} aria-current={id === s.id ? 'true' : undefined} onclick={() => pick(s.id)}>{s.name}</button></li>
+        {/each}
+      </ul>
       <button class="btn btn-sm mt-1" onclick={() => pick(null)}>+ Skrip baru</button>
-      <span class="mt-4 text-xs font-semibold text-base-content/70">Template</span>
-      {#each scripts.templates as t (t.name)}
-        <button class="btn btn-ghost btn-xs justify-start" onclick={() => useTemplate(t)}>{t.name}</button>
-      {/each}
+      <span class="mt-4 px-3 text-xs font-semibold text-base-content/70">Template</span>
+      <ul class="menu w-full gap-0.5 p-0">
+        {#each scripts.templates as t (t.name)}
+          <li><button onclick={() => useTemplate(t)}>{t.name}</button></li>
+        {/each}
+      </ul>
     </aside>
 
     <div class="flex min-w-0 flex-1 flex-col">

@@ -262,5 +262,5 @@
   </div>
 {/if}
 
-<!-- The script editor, from any screen: the chart's Skrip menu, Indikator saya, Uji indikator. -->
+<!-- The script editor, from any screen: the chart's Skrip menu, Uji strategi → Indikator. -->
 {#if scripts.editorOpen}<ScriptEditor />{/if}

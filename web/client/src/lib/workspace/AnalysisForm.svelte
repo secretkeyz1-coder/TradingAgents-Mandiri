@@ -225,7 +225,7 @@
     </label>
     <span class="text-xs text-base-content/70">{readingNote}</span>
   {:else}
-    <p class="text-xs text-base-content/70">Belum ada indikator. <a class="link" href="#/uji?dock=library">Buka Indikator saya</a></p>
+    <p class="text-xs text-base-content/70">Belum ada indikator. <a class="link" href="#/uji">Buka Indikator</a></p>
   {/if}
 {/snippet}
 

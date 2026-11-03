@@ -2,7 +2,7 @@
   // The assets a test runs on, as chips with the names people know (Bitcoin, Emas, Bank Central
   // Asia), added from the asset finder (search, or a market's list) instead of typed engine codes.
   // It holds engine spellings (BTC-USD, GC=F, BBCA.JK); an asset the engine cannot read is refused
-  // with a note. Used by Uji indikator (LabView) and Uji saran AI (AnalysisForm). Its buttons are all
+  // with a note. Used by Indikator's test card (LabCard) and Uji saran AI (AnalysisForm). Its buttons are all
   // type="button": the chips sit inside forms, where a stray submit would start a test. Focus goes back
   // to "Tambah aset" when the finder closes, and to the next chip's × when one is removed.
   import { tick } from 'svelte';
