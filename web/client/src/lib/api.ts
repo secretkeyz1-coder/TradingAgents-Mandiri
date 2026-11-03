@@ -410,16 +410,21 @@ export type SignalCall = {
   exitTime: string | null;
   /** A target pays its distance over the stop's, a stop costs 1; other endings are not scored. */
   r: number | null;
+  /** When the call came in. */
+  at: string;
 };
 export type SignalTally = { total: number; win: number; loss: number; open: number; r: number };
-/** Beranda's numbers for the last `days`: the calls, their results by indicator, asset and day, and the newest 200 calls. */
+/** Beranda's numbers for the last `days`: the calls, their results by indicator, asset and day, the newest few, and every one running. */
 export type SignalHistory = {
   days: number;
   summary: SignalTally & { exit: number; expired: number; replaced: number; stopped: number; winRate: number | null; alerts: number; max: number };
   byIndicator: (SignalTally & { indicator: string; timeframe: SignalAlert['timeframe'] })[];
   bySymbol: (SignalTally & { symbol: string; tvSymbol: string })[];
   daily: { day: string; win: number; loss: number; r: number }[];
+  /** The newest 8; Riwayat call (`alertCalls`) holds the rest. */
   calls: SignalCall[];
+  /** Every call still followed, whatever its age. */
+  open: SignalCall[];
   /** Names for `script:<id>` indicators; a removed script has none. */
   scriptNames: Record<string, string>;
   /** Telegram is set up for this account, so calls also arrive as messages. */
@@ -475,10 +480,34 @@ export type MarketBrief = {
   createdAt: string;
   content: { headline: string; summary: string; assets: { symbol: string; bias: 'naik' | 'turun' | 'netral'; bull: string; bear: string; watch: string }[]; risk: string };
 } | null;
-/** What happened since the member's previous visit (server analytics.ts /activity/since). */
+/** Where a call stands: still followed, its target or stop hit, or ended another way (exit, expiry, a newer signal, alert removed). */
+export type CallOutcome = 'open' | 'win' | 'loss' | 'other';
+export type CallTally = Record<CallOutcome | 'total', number> & { r: number };
+/** One page of Riwayat call (server alerts.ts /alerts/calls), with the counts per result and per WIB day of the whole filter. */
+export type CallPage = {
+  calls: SignalCall[];
+  /** Where the next page starts; null on the last. */
+  next: string | null;
+  total: number;
+  counts: Record<CallOutcome | 'all', number>;
+  days: { day: string; total: number; win: number; loss: number; open: number; r: number }[];
+};
+export type CallQuery = {
+  days: number;
+  status?: CallOutcome | 'all';
+  symbol?: string;
+  indicator?: string;
+  timeframe?: string;
+  since?: string;
+  before?: string;
+  limit?: number;
+};
+/** What happened since the member's previous visit (server analytics.ts /activity/since): the new calls counted, per asset too. */
 export type SinceVisit = {
   since: string | null;
-  calls: { id: string; tvSymbol: string; indicator: string; timeframe: string; label: string; status: string; at: string }[];
+  signals: CallTally;
+  /** The busiest asset first; `outcomes` are its newest calls' results, newest first. */
+  byAsset: (CallTally & { symbol: string; tvSymbol: string; indicators: { indicator: string; timeframe: string }[]; outcomes: CallOutcome[] })[];
   hits: { id: string; tvSymbol: string; price: number; direction: 'above' | 'below'; at: string }[];
   analyses: { id: string; ticker: string; rating: string | null; at: string }[];
 };
@@ -918,6 +947,9 @@ export const api = {
     request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
   alertHistory: (days: number) => request<SignalHistory>(`/alerts/history?days=${days}`),
+  /** One page of Riwayat call, filtered on the server. */
+  alertCalls: (q: CallQuery) =>
+    request<CallPage>(`/alerts/calls?${new URLSearchParams(Object.entries(q).flatMap(([k, v]) => (v == null || v === '' ? [] : [[k, String(v)]])))}`),
   priceLevels: (symbol?: string) => request<PriceLevels>(`/price-alerts${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`),
   priceLevelAdd: (body: { symbol: string; tvSymbol: string; price: number; label?: string }) =>
     request<PriceLevel>('/price-alerts', { method: 'POST', body: JSON.stringify(body) }),

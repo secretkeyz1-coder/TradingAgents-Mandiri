@@ -12,7 +12,7 @@
   import { friendlyName } from '../../beginner/plain';
   import ConfirmDialog from '../../ConfirmDialog.svelte';
   import { MOOD_LABEL, signedR, STATUS_LABEL } from '../../journalLabels';
-  import { monogram } from '../../marks';
+  import { levelTrack, monogram } from '../../marks';
   import MoodPicker from '../../MoodPicker.svelte';
   import { journal } from '../../stores/journal.svelte';
   import { ws } from '../../stores/workspace.svelte';
@@ -51,17 +51,6 @@
     const timer = setInterval(load, 60_000);
     return () => clearInterval(timer);
   });
-
-  /** Where a running trade stands: its stop on the left, its target on the right, the price now between them. */
-  function track(t: JournalTrade, now: number | null) {
-    const risk = Math.abs(t.entry - t.stopLoss);
-    const reward = Math.abs(t.takeProfit - t.entry);
-    const sl = risk + reward ? (risk / (risk + reward)) * 100 : 50;
-    if (now == null) return { sl, now: null, at: sl, share: 0, toward: 'TP' as const };
-    const moved = t.side === 'BUY' ? now - t.entry : t.entry - now;
-    const share = Math.min(1, moved >= 0 ? (reward ? moved / reward : 0) : risk ? -moved / risk : 0);
-    return { sl, now, at: moved >= 0 ? sl + share * (100 - sl) : sl - share * sl, share, toward: moved >= 0 ? ('TP' as const) : ('SL' as const) };
-  }
 
   /** The mood that cost most, when one cost anything: the pattern the journal is for. */
   const worst = $derived.by(() => {
@@ -408,7 +397,7 @@
         <span class="text-sm ta-muted">{running.length} dari {data.max} · ditutup otomatis di TP atau SL</span>
       </div>
       {#each running as t (t.id)}
-        {@const tr = track(t, prices[t.symbol]?.price ?? null)}
+        {@const tr = levelTrack(t, prices[t.symbol]?.price ?? null)}
         {@const name = friendlyName(t.tvSymbol)}
         <article class="ta-trade" aria-labelledby="trade-{t.id}">
           <div class="flex min-w-0 flex-col gap-2">

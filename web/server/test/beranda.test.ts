@@ -5,7 +5,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { recordMinute } from "../src/activity";
 import { db } from "../src/db";
-import { analyses, priceAlerts, signalEvents } from "../src/db/schema";
+import { analyses, priceAlerts, signalAlerts, signalEvents } from "../src/db/schema";
 import { useDailyCandles } from "../src/routes";
 import { call, member } from "./helpers";
 
@@ -58,14 +58,32 @@ test("since the previous visit: new calls, price levels hit and analyses finishe
   await db.insert(priceAlerts).values({ userId: m.id, symbol: "BBCA.JK", tvSymbol: "IDX:BBCA", direction: "above", price: 5100, active: false, triggeredAt: away });
   await db.insert(analyses).values({ userId: m.id, ticker: "BBCA.JK", tradeDate: "2026-11-01", request: {} as never, status: "completed", rating: "Buy", finishedAt: away });
 
+  // A busy night on one alert: more calls than the old list of 20 held, every one counted.
+  const [alert] = await db.insert(signalAlerts).values({ userId: m.id, symbol: "BTC-USD", tvSymbol: "BINANCE:BTCUSDT", indicator: "scalper", timeframe: "15m", primed: true }).returning();
+  const btc = { userId: m.id, alertId: alert.id, symbol: "BTC-USD", tvSymbol: "BINANCE:BTCUSDT", indicator: "scalper" as const, timeframe: "15m", venue: "", side: "BUY", label: "BUY · uji", entry: 100, stopLoss: 95, takeProfit: 110, notifiedAt: away, createdAt: away };
+  await db.insert(signalEvents).values(
+    Array.from({ length: 25 }, (_, i) => ({ ...btc, signalTime: `2026-11-01 ${String(i).padStart(2, "0")}:00`, status: i < 12 ? ("win" as const) : i < 24 ? ("loss" as const) : ("open" as const) })),
+  );
+
   const r = await call("/api/activity/since", { cookie: m.cookie });
   expect(r.status).toBe(200);
   expect(r.body.since).toBe(new Date(left + 60_000).toISOString());
-  expect(r.body.calls.map((c: { at: string }) => c.at)).toEqual([away.toISOString()]);
+  // A target pays 2R here (10 over a stop of 5), a stop costs 1; the BBCA call has no alert any more, so it is no longer followed.
+  expect(r.body.signals).toEqual({ total: 26, open: 1, win: 12, loss: 12, other: 1, r: 12 });
+  expect(r.body.byAsset).toHaveLength(2);
+  expect(r.body.byAsset[0]).toMatchObject({ tvSymbol: "BINANCE:BTCUSDT", total: 25, win: 12, loss: 12, open: 1, other: 0, r: 12, indicators: [{ indicator: "scalper", timeframe: "15m" }] });
+  expect(r.body.byAsset[0].outcomes).toHaveLength(25);
+  expect(r.body.byAsset[1]).toMatchObject({ tvSymbol: "IDX:BBCA", total: 1, other: 1, outcomes: ["other"], indicators: [{ indicator: "fib", timeframe: "1h" }] });
   expect(r.body.hits).toMatchObject([{ tvSymbol: "IDX:BBCA", price: 5100, direction: "above" }]);
   expect(r.body.analyses).toMatchObject([{ ticker: "BBCA.JK", rating: "Buy" }]);
 
   // A first visit has nothing to compare with.
   const fresh = await member();
-  expect((await call("/api/activity/since", { cookie: fresh.cookie })).body).toEqual({ since: null, calls: [], hits: [], analyses: [] });
+  expect((await call("/api/activity/since", { cookie: fresh.cookie })).body).toEqual({
+    since: null,
+    signals: { total: 0, open: 0, win: 0, loss: 0, other: 0, r: 0 },
+    byAsset: [],
+    hits: [],
+    analyses: [],
+  });
 });

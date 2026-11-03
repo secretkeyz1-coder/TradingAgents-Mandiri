@@ -15,7 +15,7 @@
 // that signal to its end, and what the new inputs fired before the move is recorded
 // as history, never sent as if it were fresh.
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { track } from "./activity";
@@ -494,18 +494,30 @@ alertsApi.get("/alerts", async (c) => {
   });
 });
 
-// The member's own signal calls, for Beranda. A call is a signal that went out live (announced,
-// or due to be when Telegram is not set up), not the history a new alert records silently on
-// its first scan (inserted already closed, never announced). R counts what the engines settle
-// exactly: a target pays its distance over the stop's, a stop costs one; an exit by condition or
-// time is counted, not scored, since its exit price is not kept.
+// The member's own signal calls, for Beranda and its Riwayat call (ADR 0021). A call is a signal
+// that went out live (announced, or due to be when Telegram is not set up), not the history a new
+// alert records silently on its first scan (inserted already closed, never announced). R counts
+// what the engines settle exactly: a target pays its distance over the stop's, a stop costs one;
+// an exit by condition or time is counted, not scored, since its exit price is not kept.
 const HISTORY_DAYS = [7, 30, 90, 365];
-const liveCall = or(isNotNull(signalEvents.notifiedAt), isNull(signalEvents.closeNotifiedAt));
-const rOf = sql<number | null>`case
+/** Beranda's short list: the newest calls; the rest are a click away in Riwayat call. */
+const RECENT_CALLS = 8;
+export const liveCall = or(isNotNull(signalEvents.notifiedAt), isNull(signalEvents.closeNotifiedAt));
+export const rOf = sql<number | null>`case
   when ${signalEvents.status} = 'win' and abs(${signalEvents.entry} - ${signalEvents.stopLoss}) > 0
     then abs(${signalEvents.takeProfit} - ${signalEvents.entry}) / abs(${signalEvents.entry} - ${signalEvents.stopLoss})
   when ${signalEvents.status} = 'loss' then -1
 end`;
+// Where a call stands for its member: still followed, its target or stop hit, or ended another way
+// (an exit by condition, expiry, a newer signal, or its alert removed while it ran).
+const OUTCOME = {
+  open: sql`(${signalEvents.status} = 'open' and ${signalEvents.alertId} is not null)`,
+  win: sql`${signalEvents.status} = 'win'`,
+  loss: sql`${signalEvents.status} = 'loss'`,
+  other: sql`(${signalEvents.status} in ('exit', 'expired', 'replaced') or (${signalEvents.status} = 'open' and ${signalEvents.alertId} is null))`,
+};
+export type CallOutcome = keyof typeof OUTCOME;
+export const outcomeOf = sql<CallOutcome>`case when ${OUTCOME.open} then 'open' when ${OUTCOME.win} then 'win' when ${OUTCOME.loss} then 'loss' else 'other' end`;
 // A signal recorded by the previous release in the moment before migration 0025's columns were
 // filled has its pair only through its alert.
 const evSymbol = sql<string>`coalesce(${signalEvents.symbol}, ${signalAlerts.symbol})`;
@@ -517,22 +529,47 @@ const tally = {
   win: sql<number>`count(*) filter (where ${signalEvents.status} = 'win')::int`,
   loss: sql<number>`count(*) filter (where ${signalEvents.status} = 'loss')::int`,
   // Still running only while its alert watches it; a removed alert's open signal is no longer followed.
-  open: sql<number>`count(*) filter (where ${signalEvents.status} = 'open' and ${signalEvents.alertId} is not null)::int`,
+  open: sql<number>`count(*) filter (where ${OUTCOME.open})::int`,
   r: sql<number>`coalesce(sum(${rOf}), 0)::float`,
+};
+const join = eq(signalEvents.alertId, signalAlerts.id);
+/** The WIB day a call came in, as the member lived it. */
+const wibDay = sql<string>`to_char(${signalEvents.createdAt} at time zone 'Asia/Jakarta', 'YYYY-MM-DD')`;
+/** A member's live calls, those of the last `days` when given. */
+const callsOf = (userId: string, days?: number) =>
+  and(
+    sql`coalesce(${signalEvents.userId}, ${signalAlerts.userId}) = ${userId}`,
+    days ? gte(signalEvents.createdAt, new Date(Date.now() - days * 86_400_000)) : undefined,
+    liveCall,
+  );
+/** A call as Beranda and Riwayat call show it; `at` is when it came in. */
+const callColumns = {
+  id: signalEvents.id,
+  tracked: sql<boolean>`${signalEvents.alertId} is not null`,
+  symbol: evSymbol,
+  tvSymbol: evTvSymbol,
+  indicator: evIndicator,
+  timeframe: evTimeframe,
+  venue: sql<string>`coalesce(${signalEvents.venue}, ${signalAlerts.venue}, '')`,
+  side: signalEvents.side,
+  label: signalEvents.label,
+  entry: signalEvents.entry,
+  stopLoss: signalEvents.stopLoss,
+  takeProfit: signalEvents.takeProfit,
+  status: signalEvents.status,
+  signalTime: signalEvents.signalTime,
+  exitTime: signalEvents.exitTime,
+  r: rOf,
+  at: signalEvents.createdAt,
 };
 
 alertsApi.get("/alerts/history", async (c) => {
   const user = c.get("user");
   const asked = Number(c.req.query("days"));
   const days = HISTORY_DAYS.includes(asked) ? asked : 90;
-  const where = and(
-    sql`coalesce(${signalEvents.userId}, ${signalAlerts.userId}) = ${user.id}`,
-    gte(signalEvents.createdAt, new Date(Date.now() - days * 86_400_000)),
-    liveCall,
-  );
-  const join = eq(signalEvents.alertId, signalAlerts.id);
-  const day = sql<string>`to_char(${signalEvents.createdAt} at time zone 'Asia/Jakarta', 'YYYY-MM-DD')`;
-  const [[totals], byIndicator, bySymbol, daily, calls, scripts, catalog, [held]] = await Promise.all([
+  const where = callsOf(user.id, days);
+  const day = wibDay;
+  const [[totals], byIndicator, bySymbol, daily, calls, open, scripts, catalog, [held]] = await Promise.all([
     db
       .select({
         ...tally,
@@ -560,30 +597,15 @@ alertsApi.get("/alerts/history", async (c) => {
       .orderBy(desc(tally.total))
       .limit(20),
     db.select({ day, win: tally.win, loss: tally.loss, r: tally.r }).from(signalEvents).leftJoin(signalAlerts, join).where(where).groupBy(day).orderBy(asc(day)),
+    db.select(callColumns).from(signalEvents).leftJoin(signalAlerts, join).where(where).orderBy(desc(signalEvents.createdAt)).limit(RECENT_CALLS),
+    // Every call still running, whatever its age: a daily setup can stay open longer than the period shown.
     db
-      .select({
-      id: signalEvents.id,
-      tracked: sql<boolean>`${signalEvents.alertId} is not null`,
-      symbol: evSymbol,
-      tvSymbol: evTvSymbol,
-      indicator: evIndicator,
-      timeframe: evTimeframe,
-      venue: sql<string>`coalesce(${signalEvents.venue}, ${signalAlerts.venue}, '')`,
-      side: signalEvents.side,
-      label: signalEvents.label,
-      entry: signalEvents.entry,
-      stopLoss: signalEvents.stopLoss,
-      takeProfit: signalEvents.takeProfit,
-      status: signalEvents.status,
-      signalTime: signalEvents.signalTime,
-      exitTime: signalEvents.exitTime,
-      r: rOf,
-    })
+      .select(callColumns)
       .from(signalEvents)
       .leftJoin(signalAlerts, join)
-      .where(where)
+      .where(and(callsOf(user.id), OUTCOME.open))
       .orderBy(desc(signalEvents.createdAt))
-      .limit(200),
+      .limit(50),
     db.select({ id: userScripts.id, name: userScripts.name }).from(userScripts).where(eq(userScripts.userId, user.id)),
     catalogScripts(),
     db.select({ n: sql<number>`count(*)::int` }).from(signalAlerts).where(eq(signalAlerts.userId, user.id)),
@@ -596,12 +618,78 @@ alertsApi.get("/alerts/history", async (c) => {
     bySymbol,
     daily,
     calls,
+    open,
     /** Names for `script:<id>` indicators and the published `catalog:<id>` ones shown here; a removed one has none. */
     scriptNames: Object.fromEntries([
       ...scripts.map((s) => [`script:${s.id}`, s.name]),
       ...[...catalog].filter(([key]) => byIndicator.some((i) => i.indicator === key)).map(([key, s]) => [key, s.name]),
     ]),
     telegram: telegramBot() && Boolean(user.telegramChatId),
+  });
+});
+
+/**
+ * Where the next page of Riwayat call starts: the last call's arrival to the microsecond, then its
+ * id, so the calls that keep coming in on top never shift the pages already read.
+ */
+const CURSOR = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6})~([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+export const callsQuery = z.object({
+  days: z.enum(["7", "30", "90", "365"]).default("30").transform(Number),
+  status: z.enum(["all", "open", "win", "loss", "other"]).default("all"),
+  symbol: z.string().regex(SYMBOL_PATTERN).optional(),
+  indicator: z.union([z.enum(["pob", "scalper", "fib"]), z.string().regex(SCRIPT_ID), z.string().regex(CATALOG_KEY)]).optional(),
+  timeframe: z.enum(["15m", "1h", "4h", "1d"]).optional(),
+  since: z.iso.datetime().optional(),
+  before: z.string().regex(CURSOR).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+// Riwayat call (ADR 0021): every call of the period, a page at a time, filtered here rather than
+// in the browser so a filter's count and its list always agree. The counts per result stay within
+// the asset, indicator and "since" filters; the days give each day's heading its totals, whatever
+// page its calls are on.
+alertsApi.get("/alerts/calls", async (c) => {
+  const q = callsQuery.safeParse(c.req.query());
+  if (!q.success) return c.json({ error: "Saringan riwayat call tidak valid" }, 400);
+  const { days, status, symbol, indicator, timeframe, since, before, limit } = q.data;
+  const scope = and(
+    callsOf(c.get("user").id, days),
+    symbol ? sql`${evSymbol} = ${symbol}` : undefined,
+    indicator ? sql`${evIndicator} = ${indicator}` : undefined,
+    timeframe ? sql`${evTimeframe} = ${timeframe}` : undefined,
+    since ? gt(signalEvents.createdAt, new Date(since)) : undefined,
+  );
+  const picked = status === "all" ? scope : and(scope, OUTCOME[status]);
+  const cursor = before?.match(CURSOR);
+  const countWhere = (when: SQL) => sql<number>`count(*) filter (where ${when})::int`;
+  const [rows, [counts], perDay] = await Promise.all([
+    db
+      .select({ ...callColumns, key: sql<string>`to_char(${signalEvents.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') || '~' || ${signalEvents.id}` })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(cursor ? and(picked, sql`(${signalEvents.createdAt}, ${signalEvents.id}) < (${`${cursor[1]}Z`}::timestamptz, ${cursor[2]}::uuid)`) : picked)
+      .orderBy(desc(signalEvents.createdAt), desc(signalEvents.id))
+      .limit(limit + 1),
+    db
+      .select({ all: sql<number>`count(*)::int`, open: countWhere(OUTCOME.open), win: countWhere(OUTCOME.win), loss: countWhere(OUTCOME.loss), other: countWhere(OUTCOME.other) })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(scope),
+    db
+      .select({ day: wibDay, total: tally.total, win: tally.win, loss: tally.loss, open: tally.open, r: tally.r })
+      .from(signalEvents)
+      .leftJoin(signalAlerts, join)
+      .where(picked)
+      .groupBy(wibDay)
+      .orderBy(desc(wibDay)),
+  ]);
+  const page = rows.slice(0, limit);
+  return c.json({
+    calls: page.map(({ key: _key, ...call }) => call),
+    next: rows.length > limit ? page[page.length - 1].key : null,
+    total: status === "all" ? counts.all : counts[status],
+    counts,
+    days: perDay,
   });
 });
 

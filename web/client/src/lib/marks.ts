@@ -38,6 +38,33 @@ export function monogram(tv: string): string {
 /** A change as a signed percentage with the decimal comma: +0,42%, −2,44%. */
 export const percentText = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${(Math.abs(x) * 100).toFixed(2).replace('.', ',')}%`;
 
+/**
+ * Where a running call or trade stands on its track: the stop on the left, the target on the right, the price now
+ * between them. `sl` and `at` are percentages of the track; `share` is how far toward `toward` the price has gone.
+ */
+export function levelTrack(t: { side: string; entry: number; stopLoss: number; takeProfit: number }, now: number | null) {
+  const risk = Math.abs(t.entry - t.stopLoss);
+  const reward = Math.abs(t.takeProfit - t.entry);
+  const sl = risk + reward ? (risk / (risk + reward)) * 100 : 50;
+  if (now == null) return { sl, now: null, at: sl, share: 0, toward: 'TP' as const };
+  const moved = t.side === 'BUY' ? now - t.entry : t.entry - now;
+  const share = Math.min(1, moved >= 0 ? (reward ? moved / reward : 0) : risk ? -moved / risk : 0);
+  return { sl, now, at: moved >= 0 ? sl + share * (100 - sl) : sl - share * sl, share, toward: moved >= 0 ? ('TP' as const) : ('SL' as const) };
+}
+
+const WIB = 'Asia/Jakarta';
+/** The WIB calendar day of a moment, 2026-11-03: calls are grouped by the day a trader in Indonesia lived them. */
+export const wibDate = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: WIB });
+/** The WIB clock of a moment, 06.46. */
+export const wibClock = (iso: string) => new Date(iso).toLocaleTimeString('id-ID', { timeZone: WIB, hour: '2-digit', minute: '2-digit' });
+/** A WIB day as people say it: Hari ini, Kemarin, or the weekday and date (Minggu, 1 Nov). */
+export function dayName(day: string, now = new Date()): string {
+  const today = wibDate(now.toISOString());
+  if (day === today) return 'Hari ini';
+  if (day === wibDate(new Date(now.getTime() - 86_400_000).toISOString())) return 'Kemarin';
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+
 /** Closes as a line in a 100 × 32 box, drawn with preserveAspectRatio="none" and a stroke that does not scale. */
 export function sparkPath(closes: number[]): string {
   if (closes.length < 2) return '';
