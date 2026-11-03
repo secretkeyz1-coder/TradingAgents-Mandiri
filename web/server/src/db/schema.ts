@@ -730,6 +730,27 @@ export const llmUsage = pgTable(
   (t) => [index("llm_usage_created_idx").on(t.createdAt), index("llm_usage_user_created_idx").on(t.userId, t.createdAt)],
 );
 
+/** The caps a deleted row's share is kept for: analyses and chat (usage.ts), Uji indikator runs (lab.ts). */
+export type QuotaKind = "analyses" | "chat" | "lab";
+
+/**
+ * What deleted rows had already taken from a cap (usage.ts keepSpent). The caps count the stored
+ * analyses, chat turns and lab runs, so without this, deleting one gave its share back. Pruned
+ * after two days, past every window.
+ */
+export const spentQuota = pgTable(
+  "spent_quota",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: owner().notNull(),
+    kind: text("kind").$type<QuotaKind>().notNull(),
+    amount: integer("amount").notNull(),
+    /** When it was spent: the deleted row's own time where it has one, so it leaves the window when the row would have. */
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("spent_quota_user_idx").on(t.userId, t.kind, t.at), index("spent_quota_at_idx").on(t.at)],
+);
+
 export const analysisEvents = pgTable(
   "analysis_events",
   {

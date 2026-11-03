@@ -218,6 +218,13 @@
       "when": 1793624187574,
       "tag": "0030_fib_golden_zone_name",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793665008254,
+      "tag": "0031_spent_quota",
+      "breakpoints": true
     }
   ]
 }

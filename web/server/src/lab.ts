@@ -5,7 +5,7 @@
 //
 // Engines run in the Python worker (lab.py) on the bars sent from here; scripts run in the same
 // sandbox as the chart, with longer limits. Scoring happens here, the same way for both.
-import { and, desc, eq, gte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, notInArray, sql, type SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { track } from "./activity";
@@ -19,6 +19,7 @@ import { tradeCost } from "./ledger";
 import { getLabCandles, LAB_MAX_DAYS, SYMBOL_PATTERN, type Interval } from "./market";
 import { quickjs } from "./script-run";
 import { runScript, toScriptBars, type ScriptBar } from "../../shared/script";
+import { keepSpent, spentSince } from "./usage";
 import { storedVenue, VENUE_IDS } from "./venues";
 import { runCommand } from "./worker";
 
@@ -27,7 +28,8 @@ export const LAB_ENGINES: Record<string, { label: string; timeframes: string[] }
   scalper: { label: "Scalper Pro+", timeframes: ["15m", "1h", "4h", "1d"] },
   fib: { label: "Fib Golden Zone", timeframes: ["15m", "1h", "4h", "1d"] },
 };
-const MAX_RUNS_KEPT = 30;
+/** Runs kept per account; older ones go after each new run (trimRuns) but still count toward the day. */
+export const MAX_RUNS_KEPT = 30;
 const ENGINE_TIMEOUT_MS = 3 * 60_000;
 /**
  * One run at a time across instances: a run is minutes of CPU for long histories. A lease
@@ -167,13 +169,28 @@ async function runLab(config: RunConfig, code: string | null) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** The lab runs an account started in the last 24 hours, against its plan's labRuns (also shown in /api/usage). */
+/** The lab runs an account started in the last 24 hours, deleted ones too, against its plan's labRuns (also shown in /api/usage). */
 export async function labRunsToday(userId: string): Promise<number> {
+  const since = new Date(Date.now() - 86_400_000);
   const [{ today }] = await db
     .select({ today: sql<number>`count(*)::int` })
     .from(labRuns)
-    .where(and(eq(labRuns.userId, userId), gte(labRuns.createdAt, new Date(Date.now() - 86_400_000))));
-  return today;
+    .where(and(eq(labRuns.userId, userId), gte(labRuns.createdAt, since)));
+  return today + (await spentSince("lab", since, userId));
+}
+
+/** Deletes an account's runs; one from the last 24 hours still counts toward its labRuns (usage.ts keepSpent). */
+async function deleteRuns(userId: string, which: SQL) {
+  await db.transaction(async (tx) => {
+    const gone = await tx.delete(labRuns).where(and(eq(labRuns.userId, userId), which)).returning({ createdAt: labRuns.createdAt });
+    await keepSpent(tx, "lab", gone.map((r) => ({ userId, amount: 1, at: r.createdAt })));
+  });
+}
+
+/** Keeps an account's newest MAX_RUNS_KEPT runs, after each new one. */
+export async function trimRuns(userId: string) {
+  const keep = await db.select({ id: labRuns.id }).from(labRuns).where(eq(labRuns.userId, userId)).orderBy(desc(labRuns.createdAt)).limit(MAX_RUNS_KEPT);
+  if (keep.length === MAX_RUNS_KEPT) await deleteRuns(userId, notInArray(labRuns.id, keep.map((k) => k.id)));
 }
 
 export const labApi = new Hono<AppEnv>();
@@ -232,9 +249,7 @@ labApi.post("/lab/run", async (c) => {
     await track(user, "lab", config.symbols.length === 1 ? config.symbols[0] : null, { strategy: name, timeframe: config.timeframe, symbols: config.symbols.length });
     const result = await runLab(config, code);
     const [saved] = await db.insert(labRuns).values({ userId: user.id, name, config, result }).returning({ id: labRuns.id, createdAt: labRuns.createdAt });
-    // Keep the newest runs only.
-    const keep = await db.select({ id: labRuns.id }).from(labRuns).where(eq(labRuns.userId, user.id)).orderBy(desc(labRuns.createdAt)).limit(MAX_RUNS_KEPT);
-    await db.delete(labRuns).where(and(eq(labRuns.userId, user.id), notInArray(labRuns.id, keep.map((k) => k.id))));
+    await trimRuns(user.id);
     return c.json({ id: saved.id, createdAt: saved.createdAt, name, config, ...result });
   } finally {
     await lease.release();
@@ -268,6 +283,6 @@ labApi.get("/lab/runs/:id", async (c) => {
 
 labApi.delete("/lab/runs/:id", async (c) => {
   if (!UUID.test(c.req.param("id"))) return c.json({ error: "Tidak ditemukan" }, 404);
-  await db.delete(labRuns).where(and(eq(labRuns.id, c.req.param("id")), eq(labRuns.userId, c.get("user").id)));
+  await deleteRuns(c.get("user").id, eq(labRuns.id, c.req.param("id")));
   return c.json({ ok: true });
 });

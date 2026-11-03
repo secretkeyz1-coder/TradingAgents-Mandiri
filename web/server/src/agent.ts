@@ -26,7 +26,7 @@ import {
   type SkillStatus,
 } from "./db/schema";
 import { SYMBOL_PATTERN } from "./market";
-import { overLimit } from "./usage";
+import { keepSpent, overLimit, turnsToday } from "./usage";
 import { getCatalog, runCommand } from "./worker";
 
 /** Turns sent to the model verbatim; older ones are folded into the session summary. */
@@ -91,7 +91,13 @@ agentApi.delete("/agent/sessions/:id", async (c) => {
   const id = c.req.param("id");
   if (!idSchema.safeParse(id).success) return c.json({ error: "Not found" }, 404);
   if (await leaseHeld(answering(id))) return c.json({ error: "Agent sedang menjawab di sesi ini" }, 409);
-  await db.delete(agentSessions).where(and(eq(agentSessions.id, id), eq(agentSessions.userId, c.get("user").id)));
+  const user = c.get("user");
+  await db.transaction(async (tx) => {
+    // Today's turns in it still count toward the chat cap (usage.ts keepSpent).
+    const turns = await turnsToday(tx, id);
+    const gone = await tx.delete(agentSessions).where(and(eq(agentSessions.id, id), eq(agentSessions.userId, user.id))).returning({ id: agentSessions.id });
+    if (gone.length) await keepSpent(tx, "chat", [{ userId: user.id, amount: turns, at: new Date() }]);
+  });
   return c.json({ ok: true });
 });
 

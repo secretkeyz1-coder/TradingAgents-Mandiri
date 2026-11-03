@@ -4,14 +4,18 @@
 // and the server has a total cap across users. Counted from the rows already
 // stored, per day in WIB, so it survives restarts. A limit of 0 turns that cap off.
 // A member pays for what they got: a run a restart or deploy cut off is given back,
-// and a backtest that stopped early counts the cells it ran.
-import { and, count, eq, gte, type SQL } from "drizzle-orm";
+// and a backtest that stopped early counts the cells it ran. Clearing history gives
+// nothing back: a deleted analysis or chat leaves its share in spent_quota (keepSpent),
+// which Uji indikator's cap (lab.ts) uses the same way.
+import { and, count, eq, gte, lt, sql, type SQL } from "drizzle-orm";
 import type { User } from "./auth";
 import { db } from "./db";
+import { recordError } from "./errors";
 import { SERVER_STOPPED, WORKER_STOPPED } from "./jobs";
+import { leaderOnly } from "./locks";
 import { mailEnabled } from "./mail";
 import { limitsOf, needsPhone, needsVerification, paymentsOpen, planOf } from "./plans";
-import { agentMessages, agentSessions, analyses } from "./db/schema";
+import { agentMessages, agentSessions, analyses, spentQuota, type QuotaKind } from "./db/schema";
 
 const DAY_MS = 86_400_000;
 // Asia/Jakarta has no daylight saving: the day starts at 00:00 UTC+7.
@@ -42,13 +46,13 @@ async function analysesUsed(since: Date, userId?: string): Promise<number> {
     .select({ kind: analyses.kind, status: analyses.status, error: analyses.error, startedAt: analyses.startedAt, progress: analyses.progress })
     .from(analyses)
     .where(and(gte(analyses.createdAt, since), userId ? eq(analyses.userId, userId) : undefined));
-  return rows.reduce((sum, r) => sum + charged(r), 0);
+  return rows.reduce((sum, r) => sum + charged(r), 0) + (await spentSince("analyses", since, userId));
 }
 
 type Run = { kind: string; status: string; error: string | null; startedAt: Date | null; progress: { done: number; total: number } | null };
 
 /** What one stored run takes from the day: an analysis 1 and a backtest its cells, less what the member never got. */
-function charged(r: Run): number {
+export function charged(r: Run): number {
   // Cancelled before it started: no model was called.
   if (r.status === "cancelled" && !r.startedAt) return 0;
   // Cut off by a restart or deploy (jobs.ts): the server's doing, not the member's.
@@ -66,6 +70,36 @@ async function chatUsed(since: Date, userId?: string): Promise<number> {
     .from(agentMessages)
     .innerJoin(agentSessions, eq(agentMessages.sessionId, agentSessions.id))
     .where(and(...where));
+  return (row?.n ?? 0) + (await spentSince("chat", since, userId));
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Keeps what deleted rows had taken from a cap, in the transaction that deletes them; `at` is when
+ * each share was spent. One older than a day falls in no window, so it is not kept.
+ */
+export async function keepSpent(tx: Tx, kind: QuotaKind, shares: { userId: string | null; amount: number; at: Date }[]) {
+  const since = Date.now() - DAY_MS;
+  const rows = shares.flatMap(({ userId, amount, at }) => (userId && amount > 0 && at.getTime() > since ? [{ userId, kind, amount, at }] : []));
+  if (rows.length) await tx.insert(spentQuota).values(rows);
+}
+
+/** What deleted rows of `kind` had taken since `since`: one account's, or every account's. */
+export async function spentSince(kind: QuotaKind, since: Date, userId?: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`coalesce(sum(${spentQuota.amount}), 0)::int` })
+    .from(spentQuota)
+    .where(and(eq(spentQuota.kind, kind), gte(spentQuota.at, since), userId ? eq(spentQuota.userId, userId) : undefined));
+  return row?.n ?? 0;
+}
+
+/** Today's chat turns in one session, as chatUsed counts them: read before the session is deleted. */
+export async function turnsToday(tx: Tx, sessionId: string): Promise<number> {
+  const [row] = await tx
+    .select({ n: count() })
+    .from(agentMessages)
+    .where(and(eq(agentMessages.sessionId, sessionId), eq(agentMessages.role, "user"), gte(agentMessages.createdAt, dayStart())));
   return row?.n ?? 0;
 }
 
@@ -113,4 +147,16 @@ export async function overLimit(user: User, kind: Kind, add = 1): Promise<string
   const more = paymentsOpen() ? " Naikkan paket di menu akun → Paket & tagihan untuk kuota lebih besar." : " Hubungi admin untuk kuota lebih besar.";
   const upgrade = ownFull && user.role !== "admin" && planOf(user) !== "creator" ? more : "";
   return `${head}${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.${upgrade}`;
+}
+
+/** Deletes kept shares older than two days, past every window (tests pass their own clock). */
+export async function pruneSpent(now = Date.now()) {
+  await db.delete(spentQuota).where(lt(spentQuota.at, new Date(now - 2 * DAY_MS)));
+}
+
+/** Prunes kept shares now and once a day, on the instance that runs the schedulers (index.ts). */
+export function startSpentPruning() {
+  const prune = leaderOnly(() => pruneSpent().catch((err) => recordError("usage", err)));
+  prune();
+  setInterval(prune, DAY_MS);
 }

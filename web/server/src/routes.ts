@@ -16,7 +16,7 @@ import { publicRequest, readingsSchema, snapshotReadings } from "./readings";
 import { briefFor } from "./site";
 import { labRunsToday } from "./lab";
 import { limitsOf } from "./plans";
-import { overLimit, room, usage } from "./usage";
+import { charged, keepSpent, overLimit, room, usage } from "./usage";
 import { isVenue } from "./venues";
 import { gist } from "./watch";
 import { getCatalog, type Catalog } from "./worker";
@@ -411,10 +411,23 @@ api.post("/analyses/:id/cancel", async (c) => {
 api.delete("/analyses/:id", async (c) => {
   const id = c.req.param("id");
   if (!(await visible(c, id))) return c.json({ error: "Not found" }, 404);
-  const deleted = await db
-    .delete(analyses)
-    .where(and(eq(analyses.id, id), inArray(analyses.status, TERMINAL)))
-    .returning({ id: analyses.id });
+  const deleted = await db.transaction(async (tx) => {
+    const gone = await tx
+      .delete(analyses)
+      .where(and(eq(analyses.id, id), inArray(analyses.status, TERMINAL)))
+      .returning({
+        userId: analyses.userId,
+        kind: analyses.kind,
+        status: analyses.status,
+        error: analyses.error,
+        startedAt: analyses.startedAt,
+        progress: analyses.progress,
+        createdAt: analyses.createdAt,
+      });
+    // What it took from its owner's day stays taken (usage.ts keepSpent).
+    await keepSpent(tx, "analyses", gone.map((r) => ({ userId: r.userId, amount: charged(r), at: r.createdAt })));
+    return gone;
+  });
   return deleted.length ? c.json({ ok: true }) : c.json({ error: "Hanya analisa yang sudah selesai bisa dihapus" }, 409);
 });
 
