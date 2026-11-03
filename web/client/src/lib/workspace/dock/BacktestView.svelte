@@ -9,7 +9,7 @@
   import { auth } from '../../auth.svelte';
   import { friendlyName, ratingLean } from '../../beginner/plain';
   import DecisionChart from '../../DecisionChart.svelte';
-  import { formatDateTime, formatPercent, RATING_DIRECTION, readIndicators } from '../../format';
+  import { formatDateTime, formatPercent, RATING_DIRECTION, readIndicators, rightBeyondChance } from '../../format';
   import { jobs } from '../../stores/jobs.svelte';
   import { ws } from '../../stores/workspace.svelte';
   import StatusBadge from '../../StatusBadge.svelte';
@@ -65,6 +65,12 @@
   const holds = $derived(cells.filter((c) => (RATING_DIRECTION[c.rating] ?? 0) === 0).length);
   const pending = $derived(bt?.result?.summary?.pending ?? 0);
   const holding = $derived((bt?.result?.summary?.holding ?? '5 trading days').replace('trading days', 'hari bursa'));
+  /** The right calls out of these that guessing would rarely reach: fewer can still be luck. */
+  const need = $derived(rightBeyondChance(calls));
+  /** Stopped before its end (a restart, a deploy, Batalkan): nothing scored yet, but the dates it finished are kept. */
+  const stopped = $derived(!!bt?.backtest && (bt.backtest.status === 'failed' || bt.backtest.status === 'cancelled') && !bt.result);
+  /** Sweeps made since run ids are given at the start can go on from where they stopped. */
+  const resumable = $derived(stopped && !!bt?.backtest?.request.runId);
   /** Each rating: its calls, how many were right, and how far they beat the benchmark in their own direction. */
   const byRating = $derived.by(() => {
     const order = ['Buy', 'Overweight', 'Hold', 'Underweight', 'Sell'];
@@ -108,7 +114,10 @@
         <h2 id="bt-new" class="ta-section-title">Uji baru</h2>
         <span class="text-sm ta-muted">3 langkah, lalu mulai</span>
       </div>
-      <p class="mb-4 text-sm ta-muted">AI menganalisa aset di tanggal-tanggal lampau tanpa melihat sesudahnya, lalu sarannya dicocokkan dengan harga sesudahnya.</p>
+      <p class="mb-4 text-sm ta-muted">
+        AI menganalisa aset di tanggal-tanggal lampau dengan data sampai tanggal itu, lalu arah sarannya dinilai dari 5 hari bursa sesudahnya. Ini menilai
+        arah saran, bukan hasil trading.
+      </p>
       <AnalysisForm mode="backtest" />
     </section>
 
@@ -153,11 +162,25 @@
         </p>
         <dl class="grid max-w-[70ch] gap-x-4 gap-y-2 text-sm sm:grid-cols-[11rem_1fr]">
           <dt class="font-semibold">Benar</dt>
-          <dd class="ta-muted">Saran beli benar bila aset mengungguli patokannya dalam 5 hari bursa sesudahnya; saran jual benar bila aset kalah dari patokannya. Patokannya IHSG untuk saham .JK, S&P 500 untuk aset lain.</dd>
+          <dd class="ta-muted">
+            Saran beli benar bila aset mengungguli patokannya dalam 5 hari bursa sesudahnya, walau harganya ikut turun; saran jual benar bila aset kalah dari
+            patokannya. Contoh: saran beli BTC tetap benar bila BTC turun 1% sementara S&P 500 turun 3%. Patokannya IHSG untuk saham .JK, S&P 500 untuk
+            aset lain.
+          </dd>
           <dt class="font-semibold">Tunggu dulu</dt>
           <dd class="ta-muted">Tidak punya arah, jadi tidak dinilai.</dd>
-          <dt class="font-semibold">Tanpa melihat sesudahnya</dt>
-          <dd class="ta-muted">Di tiap tanggal, AI dan indikator hanya membaca data sampai tanggal itu.</dd>
+          <dt class="font-semibold">Data per tanggal</dt>
+          <dd class="ta-muted">
+            Data yang dibaca AI dan indikator berhenti di tanggal itu. Tapi model AI-nya dilatih dengan data yang lebih baru, jadi untuk tanggal lama ia
+            mungkin sudah tahu kelanjutannya, dan hasilnya bisa tampak lebih bagus dari kenyataan.
+          </dd>
+          <dt class="font-semibold">Berita lama</dt>
+          <dd class="ta-muted">
+            Berita dan media sosial untuk tanggal lama umumnya tidak tersedia, dan laporan keuangan saham IDX tidak dibaca. AI di uji ini membaca lebih
+            sedikit daripada saat analisa hari ini.
+          </dd>
+          <dt class="font-semibold">Bukan uji trading</dt>
+          <dd class="ta-muted">Tidak ada entry, stop loss, target, biaya, atau saldo. Untuk menguji aturan trading dengan biaya, pakai tab Indikator.</dd>
         </dl>
       </div>
     {:else if bt.loadError}
@@ -179,7 +202,9 @@
           {#if bt.live}
             <button type="button" class="btn btn-sm" onclick={() => bt.cancel()} disabled={bt.busy}>Batalkan</button>
           {:else}
-            {#if bt.result && (pending || bt.result.failures.length)}
+            {#if resumable}
+              <button type="button" class="btn btn-primary btn-sm" onclick={resume} disabled={bt.busy}><Icon name="refresh" size={16} />Lanjutkan uji</button>
+            {:else if bt.result && (pending || bt.result.failures.length)}
               <button type="button" class="btn btn-sm" onclick={resume} disabled={bt.busy}><Icon name="refresh" size={16} />Lanjutkan dan nilai ulang</button>
             {/if}
             <button type="button" class="btn btn-ghost btn-sm" onclick={remove} disabled={bt.busy}><Icon name="trash" size={16} />Hapus</button>
@@ -188,6 +213,19 @@
       </div>
 
       {#if bt.error}<p role="alert" class="alert alert-soft alert-error items-start text-sm"><Icon name="alert" />{bt.error}</p>{/if}
+
+      {#if stopped}
+        {@const done = Math.min(bt.progress?.done ?? 0, bt.progress?.total ?? 0)}
+        <div class="ta-verdict" data-tone="warn">
+          <span class="ta-verdict-icon"><Icon name="refresh" size={26} stroke={2.2} /></span>
+          <p class="ta-verdict-title">Uji berhenti setelah {done} dari {bt.progress?.total ?? '?'} tanggal</p>
+          <p class="ta-verdict-reason">
+            {resumable
+              ? 'Tanggal yang sudah selesai tersimpan. Lanjutkan uji menjalankan sisanya saja, dan hanya sisanya yang dihitung dari kuota analisa hari ini.'
+              : 'Uji ini dibuat sebelum uji yang terputus bisa dilanjutkan. Jalankan uji baru dengan aset dan tanggal yang sama di kiri.'}
+          </p>
+        </div>
+      {/if}
 
       {#if bt.live}
         <div class="ta-verdict" data-tone="info">
@@ -211,10 +249,21 @@
           <p class="ta-verdict-title">{calls ? `Benar ${hits} dari ${calls} saran` : 'Belum ada saran yang bisa dinilai'}</p>
           <p class="ta-verdict-reason">
             {calls
-              ? `Saran berarah AI cocok dengan harga ${holding} sesudahnya pada ${hits} dari ${calls} tanggal (${Math.round((hits / calls) * 100)}%).`
+              ? `Pada ${hits} dari ${calls} tanggal (${Math.round((hits / calls) * 100)}%), aset mengungguli patokannya sesudah saran beli, atau kalah darinya sesudah saran jual, dalam ${holding}.`
               : 'Semua saran Tunggu dulu, atau tanggalnya belum lewat masa penilaian.'}{holds ? ` ${holds} saran Tunggu dulu tidak dinilai.` : ''}{pending ? ` ${pending} masih menunggu harga.` : ''}
           </p>
-          <p class="ta-verdict-note">Dinilai dibanding patokan: {yardstick(bt.tickers)}.{calls && calls < 20 ? ` ${calls} saran masih sedikit: anggap ini petunjuk awal.` : ''}</p>
+          <!-- One grid row for the notes: the icon spans the box's first three rows (app.css .ta-verdict). -->
+          <div class="ta-verdict-note flex flex-col gap-1">
+            <p>
+              Dinilai dibanding patokan: {yardstick(bt.tickers)}.
+              {#if calls && need > calls}
+                {calls} saran masih terlalu sedikit: semuanya benar pun masih bisa kebetulan.
+              {:else if calls}
+                Perlu minimal {need} benar dari {calls} supaya bukan sekadar kebetulan seperti lempar koin; {hits >= need ? 'hasil ini melewatinya' : 'hasil ini belum'}.
+              {/if}
+            </p>
+            <p>Ini menilai arah saran, bukan hasil trading. Model AI mungkin sudah tahu kelanjutan tanggal lama, dan berita lama tidak tersedia.</p>
+          </div>
         </div>
 
         {#if byRating.length}

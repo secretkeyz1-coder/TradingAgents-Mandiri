@@ -1,5 +1,6 @@
 // The daily analysis cap (usage.ts) charges what a member got: a run a restart or deploy cut off
-// is given back, a backtest that stopped early counts the cells it ran, and the rest count as before.
+// is given back, a backtest that stopped early counts the cells it ran, a continued one only the
+// cells it had not run yet, and the rest count as before.
 import { expect, test } from "bun:test";
 import { db } from "../src/db";
 import { analyses, type AnalysisRequest } from "../src/db/schema";
@@ -34,6 +35,27 @@ test("a run the server lost does not use up the day's analyses", async () => {
   expect(usage.status).toBe(200);
   // The crashed run and the finished one, the two cells the stopped backtest ran, the five the running one holds.
   expect(usage.body.analyses.used).toBe(1 + 1 + 2 + 5);
+});
+
+test("a continued backtest pays only for the cells its earlier attempts had not run", async () => {
+  const m = await member({ verified: true });
+  const sweep = (status: "completed" | "failed" | "cancelled", done: number) => ({
+    userId: m.id,
+    kind: "backtest" as const,
+    ticker: "BTC-USD",
+    tradeDate: "2026-11-01",
+    request,
+    status,
+    startedAt: new Date(),
+    // Two of its five cells were in the run already, from an attempt a restart had cut off.
+    progress: { done, total: 5, skipped: 2, ticker: null, date: null },
+  });
+  await db.insert(analyses).values([sweep("completed", 5), sweep("failed", 4), sweep("cancelled", 1)]);
+
+  const usage = await call("/api/usage", { cookie: m.cookie });
+  expect(usage.status).toBe(200);
+  // Finished: the three it ran. Stopped after four: the two past the skipped ones. Stopped while skipping: none.
+  expect(usage.body.analyses.used).toBe(3 + 2 + 0);
 });
 
 // The first catalog read starts Python (web/worker), so the chat call can take a while.

@@ -414,7 +414,8 @@ def backtest(job: dict) -> int:
     Every cell is a full analysis, scored later against its benchmark over the
     holding window. Each ticker runs in its own call because a sweep takes one
     asset type; they share one run id, so they share one memory log, and a
-    re-run with the same id skips the cells already done.
+    re-run with the same id skips the cells already done. The server gives the
+    run id when the sweep is made, so one a restart cut off continues under it.
     """
     from tradingagents.backtest import iter_grid, run_backtest
 

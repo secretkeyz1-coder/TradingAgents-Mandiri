@@ -4,7 +4,8 @@
 // and the server has a total cap across users. Counted from the rows already
 // stored, per day in WIB, so it survives restarts. A limit of 0 turns that cap off.
 // A member pays for what they got: a run a restart or deploy cut off is given back,
-// and a backtest that stopped early counts the cells it ran. Clearing history gives
+// a backtest that stopped early counts the cells it ran, and continuing it counts only
+// the cells it had not run yet. Clearing history gives
 // nothing back: a deleted analysis or chat leaves its share in spent_quota (keepSpent),
 // which Uji indikator's cap (lab.ts) uses the same way.
 import { and, count, eq, gte, lt, sql, type SQL } from "drizzle-orm";
@@ -49,7 +50,7 @@ async function analysesUsed(since: Date, userId?: string): Promise<number> {
   return rows.reduce((sum, r) => sum + charged(r), 0) + (await spentSince("analyses", since, userId));
 }
 
-type Run = { kind: string; status: string; error: string | null; startedAt: Date | null; progress: { done: number; total: number } | null };
+type Run = { kind: string; status: string; error: string | null; startedAt: Date | null; progress: { done: number; total: number; skipped?: number } | null };
 
 /** What one stored run takes from the day: an analysis 1 and a backtest its cells, less what the member never got. */
 export function charged(r: Run): number {
@@ -59,7 +60,9 @@ export function charged(r: Run): number {
   const lost = r.status === "failed" && (r.error === WORKER_STOPPED || r.error === SERVER_STOPPED);
   if (r.kind !== "backtest") return lost ? 0 : 1;
   // A backtest holds all its cells while it runs; once it stops early, only those that ran (kept for its resume).
-  return r.status === "failed" || r.status === "cancelled" ? (r.progress?.done ?? 0) : (r.progress?.total ?? 1);
+  const cells = r.status === "failed" || r.status === "cancelled" ? (r.progress?.done ?? 0) : (r.progress?.total ?? 1);
+  // A continued sweep counts the cells of earlier attempts as done; those were charged with them, so not again here.
+  return Math.max(0, cells - (r.progress?.skipped ?? 0));
 }
 
 async function chatUsed(since: Date, userId?: string): Promise<number> {

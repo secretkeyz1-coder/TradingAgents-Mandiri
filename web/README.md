@@ -114,13 +114,24 @@ client/src/lib/
 
 ### Backtest dan marker keputusan
 
-Backtest memakai `tradingagents.backtest.run_backtest` milik engine: tim agent dijalankan penuh di setiap (ticker, tanggal), lalu tiap keputusan dinilai dari harga 5 hari bursa sesudahnya dibanding benchmark, dan dirangkum per rating dengan `summarize`. Satu sel = satu analisa penuh, jadi biayanya sebanyak itu; server membatasi `MAX_BACKTEST_CELLS` (default 40). Sel yang belum lewat 5 hari bursa masih *pending*; tombol "Lanjutkan & nilai ulang" menjalankan backtest yang sama dengan `runId`-nya, melewati sel yang sudah jadi dan menilai yang pending.
+Backtest memakai `tradingagents.backtest.run_backtest` milik engine: tim agent dijalankan penuh di setiap (ticker, tanggal), lalu tiap keputusan dinilai dari harga 5 hari bursa sesudahnya dibanding benchmark, dan dirangkum per rating dengan `summarize`. Satu sel = satu analisa penuh, jadi biayanya sebanyak itu; server membatasi `MAX_BACKTEST_CELLS` (default 40). Sel yang belum lewat 5 hari bursa masih *pending*; tombol "Lanjutkan dan nilai ulang" menjalankan backtest yang sama dengan `runId`-nya, melewati sel yang sudah jadi dan menilai yang pending.
+
+- **Run id sejak awal.** Server memberi `runId` saat uji dibuat (`YYYYMMDD_HHMMSS_` diikuti 6 angka acak), bukan worker di akhir uji.
+  - Uji yang terputus (restart, deploy, Batalkan) menulis "Uji berhenti setelah X dari Y tanggal" dengan tombol **Lanjutkan uji**. Tanggal yang sudah selesai dilewati, dan hanya sisanya yang dihitung dari kuota hari ini: `progress.skipped` dikurangkan di `charged` (`usage.ts`).
+  - `runId` hanya diterima dari uji milik akun itu sendiri (404 untuk akun lain), karena run id menamai folder berisi keputusan uji. Run id juga ditolak selama uji dengan run id itu masih berjalan (409).
+  - Uji yang dibuat sebelum 3 November 2026 hanya punya run id kalau selesai, jadi yang terputus harus dijalankan ulang dari awal.
 
 - Worker web menambahkan benchmark `.JK` → `^JKSE` (IHSG). Peta benchmark engine tidak punya IDX, sehingga tanpa ini saham IDX dinilai terhadap SPY. Crypto dan forex masih memakai default engine (SPY).
 - Chart keputusan (TradingView Lightweight Charts) memakai candle Yahoo dari `GET /api/candles` (cache 15 menit) dan menandai setiap keputusan dari `GET /api/decisions` (analisa selesai + sel backtest). Hasil backtest dinilai dengan alpha engine; analisa tunggal dinilai dari arah harga 5 hari bursa sesudahnya. Hold tidak punya arah, jadi tidak dinilai.
 - **Timeframe** 1j · 4j · 1H · 1M · 1B (parameter `interval`: `1h`, `4h`, `1d`, `1wk`, `1mo`; di URL `tf=`). 4j digabung server dari candle 1 jam, sejajar tengah malam zona waktu bursa. Candle per jam hanya tersedia sampai 1 tahun ke belakang (batas Yahoo), jadi rentang 2T/5T mati di sana. Engine, marker keputusan, dan gambar agent tetap harian: di timeframe lain sebuah tanggal ditaruh di candle pertama hari itu, dan "harga 5 hari" dihitung dari penutupan harian (kosong di mingguan/bulanan).
 - Chart ini ada di chart Keputusan AI dan di hasil backtest (Uji strategi → Uji saran AI).
 - Uji saran AI: form tiga langkah (aset, tanggal, indikator yang dibaca AI) menyebut biayanya sebelum mulai, "Butuh N analisa" dibanding sisa kuota hari ini; bila tidak muat, **Sesuaikan ke kuota** memendekkan rentang ke tanggal terakhir yang muat. Tiap uji di Riwayat uji AI membawa skornya ("Benar 7 dari 12", dari `score` di `GET /api/analyses?kind=backtest`: saran berarah yang sudah dinilai dan berapa yang benar). Hasil yang dibuka menulis "Benar X dari Y saran", hasil per rating, dan patokannya: IHSG untuk saham .JK, S&P 500 (SPY) untuk aset lain. Provider dan model hanya tampil untuk admin.
+- Yang dinilai, dan batas uji ini, ditulis di layar:
+  - **Benar** berarti aset mengungguli patokannya sesudah saran beli, atau kalah darinya sesudah saran jual, walau harganya ikut turun.
+  - **Ambang kebetulan.** Hasil menyebut "perlu minimal N benar dari M", yaitu jumlah benar yang dicapai tebakan (lempar koin) kurang dari 5% kali (`rightBeyondChance` di `client/src/lib/format.ts`), dan apakah hasilnya melewati ambang itu. Contohnya 10 dari 12, 15 dari 20, atau 26 dari 40.
+  - **Ingatan model.** Data per tanggal dikunci, tapi model AI dilatih dengan data yang lebih baru, jadi untuk tanggal lama ia mungkin sudah tahu kelanjutannya.
+  - **Data yang lebih sedikit.** Berita dan media sosial untuk tanggal lama umumnya tidak tersedia, dan laporan keuangan saham IDX tidak dibaca. Jadi AI di uji ini membaca lebih sedikit daripada analisa hari ini.
+  - **Bukan uji trading.** Tidak ada entry, stop loss, target, biaya, atau saldo. Aturan trading dengan biaya diuji di tab Indikator.
 
 ### Indikator yang dibaca AI (Riset AI dan Uji saran AI)
 

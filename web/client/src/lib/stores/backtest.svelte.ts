@@ -100,12 +100,16 @@ export class BacktestStream {
     }
   }
 
-  /** The same sweep under the same run id: done cells are skipped, pending ones settled. Returns the new id. */
+  /**
+   * The same sweep under the same run id: done cells are skipped, pending ones settled, and only the rest count
+   * toward today's analyses. A sweep that stopped early has its run id from the start (routes.ts). Returns the new id.
+   */
   async resume(): Promise<string | null> {
-    if (!this.backtest || !this.result) return null;
+    const runId = this.result?.runId ?? this.backtest?.request.runId;
+    if (!this.backtest || !runId) return null;
     this.busy = true;
     try {
-      return (await api.createBacktest({ ...this.backtest.request, runId: this.result.runId })).id;
+      return (await api.createBacktest({ ...this.backtest.request, runId })).id;
     } catch (e) {
       this.error = (e as Error).message;
       return null;

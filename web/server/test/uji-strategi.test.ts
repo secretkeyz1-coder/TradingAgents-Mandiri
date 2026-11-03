@@ -1,11 +1,16 @@
 // Uji strategi reads two numbers off the server instead of working them out itself: how many Uji indikator
 // runs are left today (/api/usage, the same 24-hour window POST /lab/run enforces), and each backtest's
-// score in the list (/api/analyses?kind=backtest), counted the way the engine scores a call.
+// score in the list (/api/analyses?kind=backtest), counted the way the engine scores a call. A backtest gets
+// its run id when it is made, so one a restart cut off continues, by its own account only and for the cells left.
 import { expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import { PLANS } from "../../shared/plans";
 import { db } from "../src/db";
 import { analyses, labRuns, type BacktestRequest, type BacktestResult } from "../src/db/schema";
-import { call, member } from "./helpers";
+import { SERVER_STOPPED } from "../src/jobs";
+import { admin, call, member } from "./helpers";
+
+const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toLocaleDateString("en-CA");
 
 test("usage says how many lab runs the last 24 hours used, against the plan's", async () => {
   const m = await member();
@@ -47,3 +52,69 @@ test("a backtest in the list carries how many of its directional calls were righ
   expect(plain.body).toHaveLength(1);
   expect("score" in plain.body[0]).toBe(false);
 });
+
+const runOf = async (id: string) => (await db.select().from(analyses).where(eq(analyses.id, id)))[0];
+
+// The first catalog read starts Python (web/worker), so making a backtest can take a while.
+test("a backtest gets its run id when made, and only its own account continues it, paying for the cells left", async () => {
+  const d = (await call("/api/options", { cookie: await admin() })).body.defaults;
+  const m = await member({ plan: "pro", verified: true });
+  const other = await member({ plan: "pro", verified: true });
+  // Three dates a week apart, the last one today.
+  const body = { tickers: ["BTC-USD"], start: day(14), end: day(0), everyNDays: 7, analysts: ["market"], depth: 1, language: "Indonesian", provider: d.provider, quickModel: d.quickModel, deepModel: d.deepModel };
+  const made = await call("/api/backtests", { cookie: m.cookie, body });
+  expect(made.status).toBe(201);
+  expect(made.body.cells).toBe(3);
+  const runId = ((await runOf(made.body.id)).request as BacktestRequest).runId!;
+  expect(runId).toMatch(/^\d{8}_\d{6}_\d{6}$/);
+
+  // While it waits in the queue, a second attempt would analyse the same cells.
+  expect((await call("/api/backtests", { cookie: m.cookie, body: { ...body, runId } })).status).toBe(409);
+
+  // A restart stops it after the first of its three dates.
+  await db
+    .update(analyses)
+    .set({ status: "failed", error: SERVER_STOPPED, startedAt: new Date(), progress: { done: 1, total: 3, skipped: 0, ticker: null, date: null } })
+    .where(eq(analyses.id, made.body.id));
+
+  // Another account's run id names cells it must not read.
+  expect((await call("/api/backtests", { cookie: other.cookie, body: { ...body, runId } })).status).toBe(404);
+
+  const used = async () => (await call("/api/usage", { cookie: m.cookie })).body.analyses.used;
+  const before = await used();
+  const again = await call("/api/backtests", { cookie: m.cookie, body: { ...body, runId } });
+  expect(again.status).toBe(201);
+  const next = await runOf(again.body.id);
+  expect((next.request as BacktestRequest).runId).toBe(runId);
+  expect(next.progress).toMatchObject({ done: 0, total: 3, skipped: 1 });
+  // The stopped attempt keeps its one date; the continuation holds only the two it still has to run.
+  expect(await used()).toBe(before + 2);
+}, 60_000);
+
+test("a sweep finished before run ids came at the start continues under the id in its result, at no cost", async () => {
+  const d = (await call("/api/options", { cookie: await admin() })).body.defaults;
+  const m = await member({ plan: "pro", verified: true });
+  const models = { analysts: ["market"], depth: 1, provider: d.provider, quickModel: d.quickModel, deepModel: d.deepModel, language: "Indonesian" };
+  const request: BacktestRequest = { ...models, tickers: ["BTC-USD"], start: day(14), end: day(0), everyNDays: 7 };
+  const cell = (date: string) => ({ ticker: "BTC-USD", date, rating: "Buy", pending: true, return: null, alpha: null, holding: null });
+  const result: BacktestResult = { runId: "20261030_060412", cells: [cell(day(14)), cell(day(7)), cell(day(0))], summary: null, failures: [], settlementFailures: [] };
+  await db.insert(analyses).values({
+    userId: m.id,
+    kind: "backtest",
+    ticker: "BTC-USD",
+    tradeDate: request.start,
+    request,
+    status: "completed",
+    result,
+    startedAt: new Date(),
+    progress: { done: 3, total: 3, ticker: null, date: null },
+  });
+
+  const used = async () => (await call("/api/usage", { cookie: m.cookie })).body.analyses.used;
+  const before = await used();
+  // All three dates are in the run: settling the pending ones runs no new analysis.
+  const again = await call("/api/backtests", { cookie: m.cookie, body: { ...request, runId: result.runId } });
+  expect(again.status).toBe(201);
+  expect((await runOf(again.body.id)).progress).toMatchObject({ total: 3, skipped: 3 });
+  expect(await used()).toBe(before);
+}, 60_000);

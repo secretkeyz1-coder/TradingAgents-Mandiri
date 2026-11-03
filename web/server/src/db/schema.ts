@@ -26,7 +26,10 @@ export type BacktestRequest = Omit<AnalysisRequest, "ticker" | "date"> & {
   start: string;
   end: string;
   everyNDays: number;
-  /** Re-running with a finished sweep's run id skips the cells it already did. */
+  /**
+   * The run directory the worker writes the sweep's cells to. The server gives it when the sweep is made, so one a
+   * restart cut off can be continued; a sweep run again under the same id skips the cells it already did.
+   */
   runId?: string;
 };
 
@@ -184,7 +187,8 @@ export const analyses = pgTable(
     /** For a backtest: the first grid date. */
     tradeDate: text("trade_date").notNull(),
     request: jsonb("request").$type<AnalysisRequest | BacktestRequest>().notNull(),
-    progress: jsonb("progress").$type<{ done: number; total: number; ticker: string | null; date: string | null }>(),
+    /** skipped: cells an earlier attempt under the same run id had finished, which this one skips and is not charged for. */
+    progress: jsonb("progress").$type<{ done: number; total: number; skipped?: number; ticker: string | null; date: string | null }>(),
     result: jsonb("result").$type<BacktestResult>(),
     status: text("status").$type<AnalysisStatus>().notNull().default("queued"),
     rating: text("rating"),

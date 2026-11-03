@@ -122,7 +122,7 @@ def backtest(job: dict) -> int:
             "meanAlpha": sum(alphas) / len(alphas),
         }
     emit("done", result={
-        "runId": "demo",
+        "runId": job.get("runId") or "demo",
         "cells": cells,
         "summary": {"resolved": len(resolved), "pending": len(cells) - len(resolved), "unscored": 0,
                     "holding": "5 trading days", "byRating": by_rating},

@@ -89,6 +89,21 @@ export const TIMEFRAME_NAMES: Record<string, string> = { '15m': '15 menit', '1h'
 /** What a rating claims will happen (as in tradingagents.backtest): up, down, or no direction. */
 export const RATING_DIRECTION: Record<string, number> = { Buy: 1, Overweight: 1, Hold: 0, Underweight: -1, Sell: -1 };
 
+/**
+ * The fewest right calls out of `calls` that guessing would reach less than 5% of the time: each call a coin flip,
+ * summed from the top of the binomial. More than `calls` when even all right could still be luck (four or fewer).
+ */
+export function rightBeyondChance(calls: number): number {
+  let tail = 0;
+  let ways = 1; // C(calls, right), from right = calls down
+  for (let right = calls; right >= 0; right--) {
+    tail += ways / 2 ** calls;
+    if (tail >= 0.05) return right + 1;
+    ways = (ways * right) / (calls - right + 1);
+  }
+  return 0;
+}
+
 export function formatNumber(n: number | undefined): string {
   return (n ?? 0).toLocaleString('id-ID');
 }

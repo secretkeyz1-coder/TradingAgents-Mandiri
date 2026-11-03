@@ -7,7 +7,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { eq, inArray } from "drizzle-orm";
 import { app } from "../src/app";
 import { db } from "../src/db";
-import { analyses, type AnalysisRequest } from "../src/db/schema";
+import { analyses, type AnalysisRequest, type BacktestRequest } from "../src/db/schema";
 import { cancel, claimNext, enqueue, failOrphans, startRunner, stopListening, stopRunner, subscribe, useJobs, type LiveEvent } from "../src/jobs";
 import type { WorkerEvent, WorkerHandle } from "../src/worker";
 import { member } from "./helpers";
@@ -104,6 +104,31 @@ test("a runner runs a queued analysis, and its live stream gets every event and 
   expect(got.map((e) => e.event)).toEqual(["started", "report", "done", "end"]);
   expect(JSON.parse(got.at(-1)!.data)).toMatchObject({ status: "completed", rating: "Buy" });
   expect(await rowOf(id)).toMatchObject({ status: "completed", rating: "Buy", reportHtml: "<p>laporan</p>" });
+  await stopRunner();
+});
+
+test("a continued backtest keeps the cells it skips through every progress event", async () => {
+  const m = await member();
+  const { analysts, depth, provider, quickModel, deepModel, language } = request;
+  const sweep: BacktestRequest = { analysts, depth, provider, quickModel, deepModel, language, tickers: ["BTC-USD"], start: "2026-10-01", end: "2026-10-29", everyNDays: 7, runId: "20261101_000000_000001" };
+  const [row] = await db
+    .insert(analyses)
+    .values({ userId: m.id, kind: "backtest", ticker: "BTC-USD", tradeDate: sweep.start, request: sweep, progress: { done: 0, total: 5, skipped: 2, ticker: null, date: null } })
+    .returning({ id: analyses.id });
+  useJobs(
+    fake([
+      { type: "started", tickers: ["BTC-USD"], dates: [], total: 5, everyNDays: 7 },
+      { type: "progress", done: 2, total: 5, ticker: "BTC-USD", date: "2026-10-15" },
+      { type: "progress", done: 5, total: 5, ticker: "BTC-USD", date: null },
+      { type: "done", result: { runId: sweep.runId, cells: [], summary: null, failures: [], settlementFailures: [] } },
+    ]),
+  );
+  await startRunner(1);
+  const done = await until(async () => {
+    const [r] = await db.select({ status: analyses.status, progress: analyses.progress }).from(analyses).where(eq(analyses.id, row.id));
+    return r.status === "completed" && r;
+  });
+  expect(done.progress).toMatchObject({ done: 5, total: 5, skipped: 2 });
   await stopRunner();
 });
 

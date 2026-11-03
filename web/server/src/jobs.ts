@@ -290,6 +290,8 @@ function run(row: typeof analyses.$inferSelect) {
             progress: {
               done: Number(payload.done),
               total: Number(payload.total),
+              // The cells an earlier attempt under the same run id finished, counted when the sweep was made (routes.ts).
+              skipped: row.progress?.skipped ?? 0,
               ticker: (payload.ticker as string | null) ?? null,
               date: (payload.date as string | null) ?? null,
             },

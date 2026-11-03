@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -191,10 +192,45 @@ api.get("/analyses", async (c) => {
   return c.json(rows.map((r) => ({ ...r, request: publicRequest(r.request), ...(scores ? { score: scores.get(r.id) ?? null } : {}) })));
 });
 
+/**
+ * A new sweep's run id, in the engine's own form (tradingagents.backtest names a run by when it started), with
+ * random digits so that two accounts starting in the same second never share a run directory.
+ */
+function newRunId(): string {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+  return `${stamp}_${String(randomInt(1_000_000)).padStart(6, "0")}`;
+}
+
+/**
+ * How far this account's earlier attempts under `runId` got: the cells already in the run, which the worker
+ * skips. A run id would name another account's cells just as well, so only the account's own sweep continues,
+ * and not while an attempt still runs, since two attempts would analyse the same cells.
+ */
+async function runSoFar(userId: string, runId: string): Promise<{ done: number } | { error: string; status: 404 | 409 }> {
+  const earlier = await db
+    .select({ status: analyses.status, progress: analyses.progress, result: analyses.result })
+    .from(analyses)
+    .where(
+      and(
+        eq(analyses.userId, userId),
+        eq(analyses.kind, "backtest"),
+        // Sweeps made before run ids were given at the start carry theirs in the result only.
+        sql`(${analyses.request}->>'runId' = ${runId} or ${analyses.result}->>'runId' = ${runId})`,
+      ),
+    );
+  if (!earlier.length) return { error: "Uji yang mau dilanjutkan tidak ditemukan", status: 404 };
+  if (earlier.some((r) => r.status === "queued" || r.status === "running")) {
+    return { error: "Uji ini masih berjalan. Tunggu sampai selesai, atau batalkan dulu.", status: 409 };
+  }
+  // A finished attempt lists the cells in the run; one that stopped counted those it finished.
+  return { done: Math.max(...earlier.map((r) => r.result?.cells.length ?? r.progress?.done ?? 0)) };
+}
+
 api.post("/backtests", async (c) => {
+  const user = c.get("user");
   const parsed = backtestSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: issues(parsed.error) }, 400);
-  const read = await withReadings(c.get("user"), standardFor(c.get("user"), await modelsFor(c.get("user"), parsed.data), parsed.data.tickers));
+  const read = await withReadings(user, standardFor(user, await modelsFor(user, parsed.data), parsed.data.tickers));
   if ("error" in read) return c.json({ error: read.error }, 400);
   const request = read.request;
   if (request.end < request.start) return c.json({ error: "Tanggal akhir sebelum tanggal mulai" }, 400);
@@ -205,22 +241,30 @@ api.post("/backtests", async (c) => {
   }
   const providerError = checkProvider(await getCatalog(), request);
   if (providerError) return c.json({ error: providerError }, 400);
-  const quota = await overLimit(c.get("user"), "analyses", cells);
+  // A sweep continued under its run id skips the cells already in it, so only the rest count toward today.
+  let skipped = 0;
+  if (request.runId) {
+    const so = await runSoFar(user.id, request.runId);
+    if ("error" in so) return c.json({ error: so.error }, so.status);
+    skipped = Math.min(so.done, cells);
+  }
+  const quota = await overLimit(user, "analyses", cells - skipped);
   if (quota) return c.json({ error: quota }, 429);
 
   const [row] = await db
     .insert(analyses)
     .values({
-      userId: c.get("user").id,
+      userId: user.id,
       kind: "backtest",
       ticker: request.tickers.map((t) => t.toUpperCase()).join(","),
       tradeDate: request.start,
-      request,
-      progress: { done: 0, total: cells, ticker: null, date: null },
+      // The run id is given now, not by the worker at the end, so a sweep a restart cuts off can be continued.
+      request: { ...request, runId: request.runId ?? newRunId() },
+      progress: { done: 0, total: cells, skipped, ticker: null, date: null },
     })
     .returning({ id: analyses.id });
   enqueue(row!.id);
-  await track(c.get("user"), "backtest", request.tickers.length === 1 ? request.tickers[0].toUpperCase() : null, { cells });
+  await track(user, "backtest", request.tickers.length === 1 ? request.tickers[0].toUpperCase() : null, { cells });
   return c.json({ id: row!.id, cells }, 201);
 });
 

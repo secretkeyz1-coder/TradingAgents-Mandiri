@@ -47,7 +47,8 @@ export type BacktestRequest = Omit<AnalysisRequest, 'ticker' | 'date'> & {
   runId?: string;
 };
 
-export type BacktestProgress = { done: number; total: number; ticker: string | null; date: string | null };
+/** skipped: cells an earlier attempt under the same run id had finished, counted in done but not charged again. */
+export type BacktestProgress = { done: number; total: number; skipped?: number; ticker: string | null; date: string | null };
 
 export type BacktestCell = {
   ticker: string;
