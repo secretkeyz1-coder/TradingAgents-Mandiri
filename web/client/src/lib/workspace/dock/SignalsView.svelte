@@ -413,7 +413,7 @@
                 </li>
               {/each}
             </ul>
-            <button type="button" class="link link-accent w-fit font-medium" onclick={() => ws.go('beranda')}>Lihat semua di Beranda</button>
+            <button type="button" class="link link-accent w-fit font-medium" onclick={() => ws.openCalls()}>Lihat semua di Riwayat call</button>
           {/if}
         </div>
       </section>

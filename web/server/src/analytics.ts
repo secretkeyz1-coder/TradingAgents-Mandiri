@@ -4,10 +4,11 @@
 // member. Online means a beat in the last ONLINE_MINUTES; a session is a run of active minutes
 // with no gap longer than SESSION_GAP_MINUTES. Periods end today and start at a WIB midnight,
 // so a 30-day period has 30 whole days.
-import { and, count, desc, eq, gt, gte, isNotNull, isNull, max, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNotNull, max, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ACTIVITY_SCREENS, ACTIVITY_TABS, KEEP_DAYS, recordMinute } from "./activity";
+import { liveCall, outcomeOf, rOf, type CallOutcome } from "./alerts";
 import { requireAdmin, type AppEnv } from "./auth";
 import { db } from "./db";
 import { activityEvents, activityMinutes, analyses, priceAlerts, signalEvents, users } from "./db/schema";
@@ -56,19 +57,30 @@ export async function previousVisit(userId: string, now = Date.now()): Promise<D
   return null;
 }
 
-/** What happened while the member was away, for Beranda: new signal calls, price levels hit, analyses finished. */
+/** How many calls since the previous visit are read to sum them up; a member away for a month stays well under it. */
+const SINCE_CALLS = 3000;
+/** The newest outcomes kept per asset, one bead each on Beranda. */
+const ASSET_BEADS = 40;
+type Tally = Record<CallOutcome | "total" | "r", number>;
+const emptyTally = (): Tally => ({ total: 0, open: 0, win: 0, loss: 0, other: 0, r: 0 });
+
+/**
+ * What happened while the member was away, for Beranda: the new signal calls counted by where they
+ * stand now and grouped per asset (an active account gets dozens a night, so a list would be cut or
+ * endless), price levels hit, analyses finished.
+ */
 analyticsApi.get("/activity/since", async (c) => {
   const user = c.get("user");
   const since = await previousVisit(user.id);
-  if (!since) return c.json({ since: null, calls: [], hits: [], analyses: [] });
+  if (!since) return c.json({ since: null, signals: emptyTally(), byAsset: [], hits: [], analyses: [] });
   const [calls, hits, finished] = await Promise.all([
     db
-      .select({ id: signalEvents.id, tvSymbol: signalEvents.tvSymbol, indicator: signalEvents.indicator, timeframe: signalEvents.timeframe, label: signalEvents.label, status: signalEvents.status, at: signalEvents.createdAt })
+      .select({ symbol: signalEvents.symbol, tvSymbol: signalEvents.tvSymbol, indicator: signalEvents.indicator, timeframe: signalEvents.timeframe, outcome: outcomeOf, r: rOf })
       .from(signalEvents)
       // A live call, not the history a new notification records silently on its first scan.
-      .where(and(eq(signalEvents.userId, user.id), gt(signalEvents.createdAt, since), or(isNotNull(signalEvents.notifiedAt), isNull(signalEvents.closeNotifiedAt))))
+      .where(and(eq(signalEvents.userId, user.id), gt(signalEvents.createdAt, since), liveCall))
       .orderBy(desc(signalEvents.createdAt))
-      .limit(20),
+      .limit(SINCE_CALLS),
     db
       .select({ id: priceAlerts.id, tvSymbol: priceAlerts.tvSymbol, price: priceAlerts.price, direction: priceAlerts.direction, at: priceAlerts.triggeredAt })
       .from(priceAlerts)
@@ -83,7 +95,26 @@ analyticsApi.get("/activity/since", async (c) => {
       .limit(20),
   ]);
   const stamp = <T extends { at: Date | string | null }>(rows: T[]) => rows.map((r) => ({ ...r, at: iso(r.at) }));
-  return c.json({ since: since.toISOString(), calls: stamp(calls), hits: stamp(hits), analyses: stamp(finished) });
+  const signals = emptyTally();
+  const assets = new Map<string, Tally & { symbol: string; tvSymbol: string; indicators: { indicator: string; timeframe: string }[]; outcomes: CallOutcome[] }>();
+  for (const call of calls) {
+    const r = call.r ?? 0;
+    signals.total++;
+    signals[call.outcome]++;
+    signals.r += r;
+    const key = call.tvSymbol ?? call.symbol ?? "";
+    let asset = assets.get(key);
+    if (!asset) assets.set(key, (asset = { ...emptyTally(), symbol: call.symbol ?? "", tvSymbol: call.tvSymbol ?? "", indicators: [], outcomes: [] }));
+    asset.total++;
+    asset[call.outcome]++;
+    asset.r += r;
+    const indicator = call.indicator ?? "";
+    const timeframe = call.timeframe ?? "";
+    if (!asset.indicators.some((i) => i.indicator === indicator && i.timeframe === timeframe)) asset.indicators.push({ indicator, timeframe });
+    if (asset.outcomes.length < ASSET_BEADS) asset.outcomes.push(call.outcome);
+  }
+  const byAsset = [...assets.values()].sort((a, b) => b.total - a.total);
+  return c.json({ since: since.toISOString(), signals, byAsset, hits: stamp(hits), analyses: stamp(finished) });
 });
 
 analyticsApi.use("/admin/activity", requireAdmin);

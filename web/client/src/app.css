@@ -495,4 +495,94 @@ h2 {
   .ta-closed { grid-template-columns: minmax(0, 1fr) auto 2.25rem; row-gap: 0.25rem; }
   .ta-closed-when { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Beranda (ADR 0021): what changed since the last visit, what runs now and the member's signals in the main column,
+   markets, Pantauanku and the AI brief beside them; on a phone one column in that order. A call is a bead whose shape
+   says its result as well as its colour (a target a dot, a stop a diamond, a running one a ring, the rest a small
+   dot), so a night of calls reads at a glance; Riwayat call groups the calls by the WIB day they came in. */
+.ta-home { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem; width: 100%; max-width: 80rem; margin: 0 auto; padding: 1rem 1rem 2.5rem; }
+.ta-home-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1.5rem; }
+.ta-home-main, .ta-home-side { display: flex; min-width: 0; flex-direction: column; gap: 1.25rem; }
+.ta-home-side { gap: 1rem; }
+@media (min-width: 64rem) {
+  .ta-home { grid-template-columns: minmax(0, 1fr) minmax(19rem, 24rem); column-gap: 1.5rem; padding: 1.5rem 1.5rem 3rem; }
+  .ta-home-head { grid-column: 1 / -1; }
+}
+.ta-pane { display: flex; min-width: 0; flex-direction: column; gap: 0.875rem; padding: 1.125rem 1.25rem; }
+.ta-pane-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 0.75rem; }
+.ta-pane-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding-top: 0.875rem; border-top: 1px solid var(--color-base-300); }
+.ta-say { font-size: 1.375rem; font-weight: 600; line-height: 1.4; letter-spacing: -0.01em; text-wrap: pretty; }
+.ta-say b { font-weight: 750; font-variant-numeric: tabular-nums; }
+@media (max-width: 39.99rem) {
+  .ta-say { font-size: 1.125rem; }
+}
+.ta-mono[data-size="sm"] { width: 2rem; height: 2rem; border-radius: 0.5625rem; }
+
+.ta-beads { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3125rem; }
+.ta-bead { flex: none; width: 0.6875rem; height: 0.6875rem; border-radius: 999px; background: color-mix(in oklch, var(--color-base-content) 45%, transparent); }
+.ta-bead[data-o="win"] { background: var(--color-success); }
+.ta-bead[data-o="loss"] { width: 0.5625rem; height: 0.5625rem; margin: 0.0625rem; border-radius: 0.125rem; rotate: 45deg; background: var(--color-error); }
+.ta-bead[data-o="open"] { background: none; box-shadow: inset 0 0 0 2.5px var(--color-info); }
+.ta-bead[data-o="other"] { width: 0.4375rem; height: 0.4375rem; margin: 0.125rem; }
+.ta-legend { display: flex; flex-wrap: wrap; gap: 0.375rem 0.875rem; font-size: 0.75rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-legend > span { display: inline-flex; align-items: center; gap: 0.375rem; }
+
+/* One asset's calls since the last visit: its name, its beads, their sum; the beads drop under the name on a phone. */
+.ta-dg { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.375rem 0.875rem; width: 100%; min-height: 3.75rem; padding: 0.5rem 0.625rem; border-radius: var(--radius-field); color: var(--color-base-content); text-align: left; cursor: pointer; }
+.ta-dg .ta-beads { grid-column: 2 / -1; grid-row: 2; }
+@media (min-width: 40rem) {
+  .ta-dg { grid-template-columns: 2.5rem minmax(0, 1fr) minmax(7rem, 13rem) minmax(0, 9rem) 1rem; }
+  .ta-dg .ta-beads { grid-column: auto; grid-row: auto; }
+}
+@media (hover: hover) {
+  .ta-dg:hover { background: var(--color-base-200); }
+}
+.ta-dg-sum { font-size: 0.8125rem; text-align: right; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--color-base-content) 78%, transparent); }
+.ta-ev { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; padding: 0.5rem 0.625rem; border-radius: var(--radius-field); background: var(--color-base-200); }
+.ta-ev-icon { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 0.625rem; background: var(--color-base-100); }
+
+/* A call or trade that runs now: who and which way, its track, and the one thing to do with it. */
+.ta-run { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: center; gap: 0.25rem 1rem; padding: 0.75rem 0; }
+.ta-run + .ta-run { border-top: 1px solid var(--color-base-300); }
+.ta-run .ta-track, .ta-run-act { grid-column: 1 / -1; }
+.ta-run .ta-track { margin: 1.5rem 0 1.375rem; }
+@media (min-width: 48rem) {
+  .ta-run { grid-template-columns: 2.5rem minmax(0, 0.9fr) minmax(13rem, 1.4fr) 8rem; }
+  .ta-run .ta-track, .ta-run-act { grid-column: auto; }
+  .ta-run-act { justify-self: end; }
+}
+
+/* Calls by WIB day: the day's heading carries its totals and beads; a call's row its time, asset, indicator, way,
+   levels and result. On a phone the indicator and levels go to a second line under the asset. */
+.ta-cday { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; padding: 0.75rem 0.875rem; background: var(--color-base-200); }
+.ta-cday-name { font-weight: 700; }
+.ta-cday-sum { font-size: 0.8125rem; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--color-base-content) 78%, transparent); }
+.ta-cday .ta-beads { margin-left: auto; max-width: 55%; }
+.ta-call { display: grid; grid-template-columns: 3rem minmax(0, 1fr); align-items: center; gap: 0.375rem 0.75rem; min-height: 3.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--color-base-300); }
+.ta-call-time { font-size: 0.8125rem; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-call-meta { grid-column: 2; grid-row: 3; display: flex; min-width: 0; flex-wrap: wrap; gap: 0.125rem 0.75rem; font-size: 0.75rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-call-levels { font-family: var(--font-mono); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.ta-call-result { grid-column: 2; grid-row: 2; display: flex; align-items: center; gap: 0.5rem; }
+@media (min-width: 64rem) {
+  .ta-call { grid-template-columns: 3rem minmax(0, 1.1fr) minmax(0, 2fr) 12rem; }
+  .ta-call-meta, .ta-call-result { grid-column: auto; grid-row: auto; }
+  .ta-call-meta { flex-wrap: nowrap; justify-content: space-between; gap: 0.75rem; font-size: 0.8125rem; }
+  .ta-call-levels { white-space: nowrap; }
+  .ta-call-result { justify-content: flex-end; }
+}
+.ta-recent { display: grid; grid-template-columns: 3rem 2rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; min-height: 3.25rem; padding: 0.375rem 0.5rem; border-radius: var(--radius-field); }
+
+/* Riwayat call's filters: results as chips that carry their counts, assets and indicators as a list beside. */
+.ta-calls { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem; width: 100%; max-width: 80rem; margin: 0 auto; padding: 1rem 1rem 2.5rem; }
+@media (min-width: 64rem) {
+  .ta-calls { grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr); column-gap: 1.5rem; padding: 1.5rem 1.5rem 3rem; }
+  .ta-calls > :first-child { grid-column: 1 / -1; }
+}
+.ta-facet { display: grid; grid-template-columns: minmax(0, 1fr) auto 4.25rem; align-items: center; gap: 0.625rem; width: 100%; min-height: 2.5rem; padding: 0 0.75rem; border-radius: var(--radius-field); text-align: left; font-size: 0.875rem; cursor: pointer; }
+@media (hover: hover) {
+  .ta-facet:hover { background: var(--color-base-200); }
+}
+.ta-facet[aria-pressed="true"] { background: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-primary) 60%, transparent); }
+.ta-facet-n { font-size: 0.8125rem; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-facet-r { font-size: 0.8125rem; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
 }

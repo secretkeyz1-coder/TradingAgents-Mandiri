@@ -95,6 +95,8 @@ const SCREEN_PATH = /^\/(beranda|pasar|riset|pantau|uji)$/;
 /** The chart a browser that never opened an asset starts on: crypto trades all day, so it always moves. */
 const DEFAULT_SYMBOL = 'BINANCE:BTCUSDT';
 const ID = /^[0-9a-f-]{36}$/;
+/** An asset as the engine spells it (BBCA.JK, BTC-USD, GC=F), for a link to one asset's calls. */
+const YAHOO = /^[A-Z0-9.^=-]{1,20}$/;
 /** On a wide screen Pasar is always split, its list beside a chart (ADR 0018); a phone starts at its board. */
 const splitPasar = () => layoutOf(viewport) !== 'narrow';
 
@@ -115,6 +117,11 @@ class Workspace {
   aiMode = $state<AiMode>('analysis');
   /** The tab the open screen shows (in its bottom panel, or as its page). */
   dock = $state<DockTab>('history');
+  /**
+   * Beranda shows Riwayat call in place of its summary (ADR 0021) while this is set: every call, or one
+   * asset's, or those since a moment (the last visit, from "Sejak kamu terakhir buka").
+   */
+  calls = $state<{ symbol: string | null; since: string | null } | null>(null);
   /**
    * How far each chart screen's bottom panel is open. Both start folded to their tabs, one click
    * away, so the chart gets the height; Riset AI's opens by itself for an analysis (its report or
@@ -148,10 +155,32 @@ class Workspace {
 
   /** Open a screen as it was left; Pasar and Riset AI open at their start (on a wide screen Pasar's start is its chart: keepChart). */
   go(screen: Screen) {
+    // Beranda in the menu is its summary, also from Riwayat call.
+    if (screen === 'beranda') this.calls = null;
     if (screen !== 'beranda' && screenOf(this.dock) !== screen) this.dock = this.#resume(screen);
     if (isChartScreen(screen)) this.open[screen] = screen === 'pasar' && splitPasar();
     if (this.open.pasar && screen === 'pasar') this.market = marketOf(this.symbol) ?? this.market;
     this.screen = screen;
+    this.#write('push');
+  }
+
+  /** Riwayat call on Beranda: every call of the member's notifications, or one asset's, or those since a moment. */
+  openCalls(filter: { symbol?: string | null; since?: string | null } = {}) {
+    this.screen = 'beranda';
+    this.calls = { symbol: filter.symbol ?? null, since: filter.since ?? null };
+    this.#write('push');
+  }
+
+  /** Riwayat call narrowed or widened in place: Back still leaves it in one step. */
+  filterCalls(filter: { symbol?: string | null; since?: string | null }) {
+    if (!this.calls) return;
+    this.calls = { ...this.calls, ...filter };
+    this.#write('replace');
+  }
+
+  /** Back from Riwayat call to Beranda's summary. */
+  closeCalls() {
+    this.calls = null;
     this.#write('push');
   }
 
@@ -434,6 +463,13 @@ class Workspace {
     }
 
     const screen = this.screen;
+    // Riwayat call is Beranda's own view; a link names it, and the asset or moment it was opened for.
+    if (screen !== 'beranda') this.calls = null;
+    else if (q.get('view') === 'calls') {
+      const asset = q.get('asset')?.toUpperCase() ?? null;
+      const since = q.get('since');
+      this.calls = { symbol: asset && YAHOO.test(asset) ? asset : null, since: since && !Number.isNaN(Date.parse(since)) ? new Date(since).toISOString() : null };
+    } else if (canonical) this.calls = null;
     // A link to an analysis, or one naming a bottom tab, shows that panel open.
     if (isChartScreen(screen) && ((screen === 'riset' && this.run) || (dock && screenOf(dock) === screen))) this.#dockSizes[screen] = 'normal';
     if (screen !== 'beranda') {
@@ -457,6 +493,11 @@ class Workspace {
     if (this.run) q.set('run', this.run.id);
     if (this.backtest) q.set('bt', this.backtest.id);
     if (this.screen !== 'beranda' && this.dock !== DEFAULT_TAB[this.screen]) q.set('dock', this.dock);
+    if (this.screen === 'beranda' && this.calls) {
+      q.set('view', 'calls');
+      if (this.calls.symbol) q.set('asset', this.calls.symbol);
+      if (this.calls.since) q.set('since', this.calls.since);
+    }
     if (this.market !== 'idx') q.set('m', this.market);
     if (this.chartView !== 'ai') q.set('v', this.chartView);
     if (this.timeframe !== '1d') q.set('tf', this.timeframe);
