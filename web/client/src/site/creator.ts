@@ -27,7 +27,16 @@ type Page = {
   signals: Signal[];
 };
 
-const STATUS: Record<string, string> = { open: 'berjalan', win: 'kena TP', loss: 'kena SL', exit: 'keluar', expired: 'kedaluwarsa', replaced: 'diganti' };
+const STATUS: Record<string, string> = {
+  open: 'berjalan',
+  win: 'kena TP',
+  loss: 'kena SL',
+  partial: 'kena TP1',
+  exit: 'keluar',
+  expired: 'kedaluwarsa',
+  unfilled: 'tidak terisi',
+  replaced: 'diganti',
+};
 const TF: Record<string, string> = { '15m': '15 menit', '1h': '1 jam', '4h': '4 jam', '1d': 'harian' };
 
 const pick = <T extends Element = HTMLElement>(selector: string) => document.querySelector<T>(selector)!;

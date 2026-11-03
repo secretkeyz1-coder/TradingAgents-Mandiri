@@ -166,7 +166,7 @@ API: `GET /api/watchlist` (tiap simbol dengan `last`, percobaan analisa terakhir
 
 Di chart Keputusan AI, tombol **Notifikasi** menyalakan pesan Telegram per simbol untuk PoB BYSTRA (15m, 1j), Scalper Pro+ (15m) dan Fib Golden Zone (15m, 1j, harian), sebanyak batas notifikasi paket (Gratis 3, Pro 15, Creator 50), yang dipakai bersama notifikasi harga. Menyambungkan Telegram cukup sekali tekan: **Sambungkan Telegram** (Profil → Notifikasi, juga di Beranda) membuka bot dengan tautan sekali pakai yang berlaku 15 menit; menekan Start di bot menautkan chat itu ke akun (`POST /api/me/telegram/link`; instance pemimpin membaca pesan bot lewat `getUpdates`, tanpa webhook, `server/src/telegram.ts`, [ADR 0013](../docs/adr/0013-telegram-sekali-tekan-long-polling.md); bot yang pernah diberi webhook, atau server lain yang memakai token yang sama, membuat penautan gagal). Chat ID tetap bisa diisi sendiri, misalnya ID grup (angka negatif) bila bot dimasukkan ke grup. Memakai bot dan chat ID yang sama dengan analisa terjadwal. Semua notifikasi akun, harga dan sinyal, terkumpul di Pantau → **Alert**, dikelompokkan per aset dan bisa disaring (Berjalan, Kena TP, Kena SL), dengan sakelar Publik (Creator) dan tombol hapus yang meminta konfirmasi; yang baru tetap dipasang dari tombol Notifikasi.
 
-Beranda menghitung **call**: sinyal yang keluar live dari notifikasi (terkirim, atau mestinya terkirim bila Telegram belum diatur), bukan riwayat yang dicatat diam-diam saat notifikasi baru dinyalakan. R dihitung dari yang diselesaikan mesin dengan pasti: TP = jarak target dibagi jarak stop, SL = −1; keluar karena kondisi dan kedaluwarsa dihitung sebagai call tetapi tidak masuk R karena harga keluarnya tidak disimpan. Riwayat tetap ada setelah notifikasinya dihapus (sejak migrasi 0025 tiap sinyal membawa pemilik dan pasangannya sendiri); sinyal yang saat itu masih berjalan ditandai "tidak dipantau lagi". API: `GET /api/alerts/history?days=7|30|90|365` (angka, kurva, per indikator dan per aset, 8 call terbaru, dan semua call yang masih berjalan) dan `GET /api/alerts/calls?days=&status=all|open|win|loss|other&symbol=&indicator=&timeframe=&since=&before=&limit=` (Riwayat call: satu halaman dengan kursor `next`, jumlah per hasil, dan total per hari WIB).
+Beranda menghitung **call**: sinyal yang keluar live dari notifikasi (terkirim, atau mestinya terkirim bila Telegram belum diatur), bukan riwayat yang dicatat diam-diam saat notifikasi baru dinyalakan. R dihitung dari yang diselesaikan mesin dengan pasti: TP = jarak target dibagi jarak stop, SL = −1. Sejak migrasi 0032, call skrip menyimpan R dari runtime-nya (`signal_events.r`): dua target dihitung sebagian di TP1 dan sisanya di TP2, dan SL yang dilompati di harga buka. Call yang kena TP1 lalu titik impas atau SL (**Kena TP1**) dihitung selesai dan masuk R. Keluar karena kondisi, kedaluwarsa, dan order yang tidak terisi dihitung sebagai call tetapi tidak masuk R, karena harga keluarnya tidak disimpan atau tidak pernah ada trade. Riwayat tetap ada setelah notifikasinya dihapus (sejak migrasi 0025 tiap sinyal membawa pemilik dan pasangannya sendiri); sinyal yang saat itu masih berjalan ditandai "tidak dipantau lagi". API: `GET /api/alerts/history?days=7|30|90|365` (angka, kurva, per indikator dan per aset, 8 call terbaru, dan semua call yang masih berjalan) dan `GET /api/alerts/calls?days=&status=all|open|win|loss|other&symbol=&indicator=&timeframe=&since=&before=&limit=` (Riwayat call: satu halaman dengan kursor `next`, jumlah per hasil, dan total per hari WIB).
 
 - Server memindai tiap 5 menit (pasangan 1j tiap 15 menit), satu menit setelah batas slot, lewat perintah worker `signals` yang menjalankan mesin yang sama dengan chart dan agent, hanya pada candle yang sudah tutup.
 - Setiap sinyal disimpan sekali per notifikasi (`signal_events`, indeks unik), jadi terkirim sekali walau ada dua instance server. Pesan susulan dikirim saat sinyal kena TP, SL, kedaluwarsa, atau (Scalper) diganti sinyal baru.
@@ -229,6 +229,7 @@ API:
 - **Hanya harga yang benar-benar terjadi yang dihitung** ([ADR 0023](../docs/adr/0023-uji-hanya-harga-yang-terjadi.md)). Aturan ini berlaku di runtime skrip dan di mesin bawaan, jadi juga di chart, notifikasi, dan rekam jejak live:
   - **Entry di dalam candle.** `entry` selain close candle sinyal adalah order limit atau stop yang terisi di dalam candle itu. Kalau candle itu tidak pernah menyentuhnya, sinyal dibuang dan dihitung "tidak terisi": hasil uji menyebut jumlahnya, sedangkan editor dan chart menulis "N tidak terisi". Kalau candle itu juga menyentuh SL, sinyal dihitung rugi 1R di situ.
   - **SL yang dilompati.** SL yang dilewati harga saat candle dibuka dicatat di harga pembukaan, jadi ruginya lebih dari 1R. TP tetap di harganya sendiri.
+  - **Order yang menunggu** (`wait`, [ADR 0024](../docs/adr/0024-bahasa-skrip-setara-pine-dan-terjemahan-teruji.md)) terisi di candle pertama yang menyentuhnya; order stop yang dilompati terisi di harga buka. TP yang tersentuh di candle pengisi order stop ikut dihitung, karena harga lewat entry dulu; di candle pengisi order limit tidak. Lab menghitung trade skrip di candle isinya, dan order yang habis masa tunggunya masuk hitungan "tidak terisi".
   - **Sebelum 3 November 2026**, entry yang tidak tersentuh tetap dihitung terisi dan SL selalu −1R. Pada BBRI harian, misalnya, 15 dari 70 SL template Donchian ternyata dilompati.
 - Mesin dijalankan worker (`worker/lab.py`, perintah `lab`), skrip di sandbox yang sama dengan chart dengan batas 30 detik. Satu uji berjalan pada satu waktu, sebanyak batas paket per 24 jam (Gratis 5, Pro 60, Creator 120), 30 hasil terakhir disimpan (`lab_runs`). Uji yang dihapus, atau tergeser dari 30 hasil itu, tetap dihitung sampai 24 jamnya lewat.
 - Template skrip "Donchian breakout" dan "Trend EMA 50/200 + pullback" disediakan untuk diuji di 4j dan harian. Strategi yang lolos dicatat live di buku catatan (`LEDGER_SCRIPTS` di `ledger.ts`): saat ini Donchian breakout harian, persis seperti diuji (periode 20, SL 2 ATR, TP 4 ATR, kedaluwarsa 120 candle).
@@ -238,6 +239,18 @@ API:
 - `signal(i, side, { sl, tp, entry, exit, maxBars, exclusive })`: `entry` (bawaannya close candle i) adalah harga isi di dalam candle i, dengan aturan di Uji indikator; `exit` adalah array boolean, posisi ditutup di close candle pertama setelah sinyal yang bernilai true (dicek setelah SL dan TP); `maxBars` menutup posisi setelah sekian candle; `exclusive: true` berarti satu posisi sekaligus.
 - Hasil baru `exit` (keluar oleh kondisi) tampil di chart, editor, notifikasi, Lab dan buku catatan. Win rate di buku catatan dan Lab dihitung dari trade yang untung setelah biaya, bukan dari TP yang tersentuh; jumlah TP dan SL tetap ditampilkan terpisah.
 - Template "RSI(2) pullback" dan "Bollinger revert" (mean reversion: beli saat harga terlalu jauh di bawah rata-rata dalam tren naik, keluar saat kembali ke rata-rata). Di Lab, RSI(2) harian pada S&P 500 menang 78-80% dengan hasil positif setelah biaya, tetapi baru 43 trade dalam 5 tahun.
+
+### Bahasa skrip setara Pine
+
+Bahasa skrip (`shared/script.ts`) memuat yang dipakai skrip Pine pada umumnya ([ADR 0024](../docs/adr/0024-bahasa-skrip-setara-pine-dan-terjemahan-teruji.md)). Panduan lengkapnya ada di tab **Panduan** editor skrip (`shared/script-guide.ts`): cara skrip berjalan, langkah membuat indikator, kamus Pine ke skrip, dan referensi bahasa.
+- **Order yang menunggu.** `signal(i, side, { entry, wait: N })` memasang order stop atau limit sesudah candle i tutup, berlaku N candle. Yang tidak terisi tercatat `unfilled`.
+- **Dua target.** `tp: [tp1, tp2]` dengan `size` (bagian yang ditutup di tp1, bawaan 0,5) dan `breakeven` (SL ke harga isi mulai candle sesudah tp1, bawaan nyala). Hasilnya `win`, `partial` (tp1 lalu SL atau titik impas), atau `loss`.
+- **Waktu.** `timeframe` (menit per candle), `epoch`, `mintick`, `hour/minute/dayofweek(i, tz)`, dan `session("1500-1900", "Asia/Jakarta")`, dengan zona bursa candle dari pemanggil (`exchangeTimezone`).
+- **Timeframe lebih tinggi.** `htf(menit)` dari candle chart, dengan `closed()` (seperti `request.security` dengan `[1]` dan `lookahead_on`) dan `value()`.
+- **ta.\*** dihitung seperti Pine (rma, atr dan rsi diawali SMA), ditambah `dmi`, `supertrend`, `barssince`, `valuewhen`, `linreg`, `obv`, `vwap`, dan lainnya.
+- **Gambar.** `line()` dan `label()` beserta `lineSet`/`labelSet`/`lineDelete`/`labelDelete`. Chart menggambarnya, termasuk garis yang mulai sebelum candle pertama yang tampil atau berakhir sesudah candle terakhir. Lewat 500, yang paling lama dihapus.
+- **Chart.** Order yang masih menunggu digambar putus-putus, dan TP1 dan TP2 digambar terpisah. SL pindah ke titik impas sesudah TP1 kena. Order yang tidak terisi ditandai titik abu-abu. Kartu Rencana menyebut order dan TP1-nya.
+- **Template "Trendline Rejection (dari Pine)".** Terjemahan penuh skrip Pine "Trendline Rejection Scalper". Diuji candle demi candle terhadap jalannya Pine di BTC, ETH dan PAXG 15 menit serta BTC 1 jam: sinyal, skor, entry, SL, TP, candle isi, dan candle keluar sama di 39 trade; R hanya beda saat harga melompat.
 
 ### Indikator (Uji strategi → Indikator)
 
@@ -267,17 +280,33 @@ Mulai 80rem ketiganya berdampingan. Antara 64 dan 80rem kartu Uji turun ke bawah
   - Editor skrip bisa dibuka dari layar mana pun, dan memuat sendiri pilihan model AI-nya. Sebelumnya editor yang dibuka dari Uji strategi menyebut "Model AI belum diatur" sampai Riset AI pernah dibuka.
   - Di sisi kiri editor, nama skrip dan template tersusun rata kiri; nama panjang turun ke baris berikutnya.
 
+### Terjemahan Pine (editor skrip → Dari Pine)
+
+Skrip Pine Script TradingView menjadi skrip aplikasi (`POST /api/scripts/translate`, [ADR 0024](../docs/adr/0024-bahasa-skrip-setara-pine-dan-terjemahan-teruji.md)):
+1. **Terjemahan.** AI membaca referensi bahasa, kamus Pine (`shared/script-guide.ts`, sama dengan tab Panduan), dan terjemahan penuh Trendline Rejection sebagai contoh. AI menjawab dengan kode dan laporan: apa yang **dibawa**, **diubah**, dan **dibuang**.
+2. **Uji di server** (`server/src/script-check.ts`), pada candle chart yang terbuka (tanpa chart: BTC-USD 1 jam). Draf harus:
+   - jalan dalam waktu chart;
+   - menghasilkan sinyal, plot, garis, atau label;
+   - tidak menaruh sebagian besar entry di luar candle sinyal tanpa `wait`;
+   - tidak membaca candle sesudah sinyal. Ini diperiksa dengan menjalankan ulang skrip pada candle sampai beberapa sinyalnya, dengan candle berikutnya dibuat datar; sinyal dan plot yang sudah tutup harus sama.
+3. **Perbaikan.** Masalah yang ditemukan dikirim balik ke AI, paling banyak 2 kali.
+
+Editor menampilkan langkahnya selagi berjalan (bisa dihentikan), lalu panel **Hasil AI** di bawah kode: lolos uji atau masalah yang tersisa, berapa kali diperbaiki, dan laporannya.
+- Jawaban rute ini (juga `/plan` dan `/compose`) berupa stream server-sent events, dengan ping tiap 15 detik supaya Cloudflare tidak memutusnya.
+- Satu panggilan model paling lama `TA_TRANSLATE_LLM_TIMEOUT` detik.
+- Worker demo menjawab dengan draf tetap bila `TA_DEMO_PINE=1` (dipakai tes): draf pertama sengaja membaca candle sesudah sinyal, lalu perbaikannya. Tanpa itu, Pine tetap ke penerjemah sungguhan.
+
 ### Indikator dari prompt (editor skrip → Dari prompt)
 
 Prompt analisa atau aturan strategi dalam kata-kata menjadi skrip lewat dua langkah, masing-masing satu pesan dari kuota chat harian.
 
 1. **Rencana skrip** (`POST /api/scripts/plan`). AI memilah teksnya menjadi tiga daftar:
    - **Akan dikodekan:** aturan yang bisa dihitung dari harga, tiap aturan dengan angka utamanya.
-   - **Diubah supaya bisa diuji:** misalnya beberapa target menjadi satu target per sinyal; buy/sell limit menjadi sinyal di candle saat harga menyentuh entry; timeframe di bawah 15 menit menjadi 15 menit.
+   - **Diubah supaya bisa diuji:** misalnya lebih dari dua target menjadi dua; order limit atau stop tanpa batas waktu diberi masa tunggu; trailing stop menjadi SL tetap; timeframe di bawah 15 menit menjadi 15 menit.
    - **Tidak bisa jadi skrip:** misalnya format laporan analis, penilaian, berita, ukuran posisi, dan membaca screenshot; masing-masing dengan alasannya.
 
    Pengguna mencentang aturan yang dipakai.
-2. **Skrip** (`POST /api/scripts/compose`). AI menulis skrip dari aturan yang dicentang, dengan teks aslinya sebagai konteks. Editor langsung mengujinya di chart, seperti terjemahan Pine. Nama skrip baru diambil dari baris pertama prompt.
+2. **Skrip** (`POST /api/scripts/compose`). AI menulis skrip dari aturan yang dicentang, dengan teks aslinya sebagai konteks. Server menguji dan meminta perbaikannya seperti terjemahan Pine, lalu editor mengujinya di chart. Nama skrip baru diambil dari baris pertama prompt.
 
 Batasnya:
 - Prompt 20 sampai 20.000 huruf, dan paling banyak 30 aturan dikirim.
@@ -603,6 +632,7 @@ Semua opsional, lewat environment variable:
 | `MIGRATE_ON_START` | `1` | `0` kalau migrasi sudah dijalankan langkah deploy sebelumnya (`bun src/migrate.ts`, service `migrate` di compose) |
 | `TA_LLM_TIMEOUT` / `TA_LLM_MAX_RETRIES` | `180` / `2` | Timeout per panggilan LLM (detik) dan retry SDK untuk analisa dan backtest |
 | `TA_AGENT_LLM_TIMEOUT` | `120` | Timeout per panggilan LLM untuk chat agent (retry selalu 1) |
+| `TA_TRANSLATE_LLM_TIMEOUT` | `300` | Timeout per panggilan LLM untuk terjemahan Pine dan skrip dari prompt (detik, 30 sampai 1800; retry selalu 1). Server menunggu tiap langkah dua kali itu ditambah 1 menit |
 
 API key LLM tetap dibaca engine dari `.env` di root repo, tidak lewat web.
 

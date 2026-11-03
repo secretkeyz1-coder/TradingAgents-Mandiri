@@ -1,6 +1,8 @@
 // What the tests share: requests to the app in this process (no server, no port),
-// sign-in, throwaway members made by the admin, the mail outbox, and TOTP codes
-// that never reuse a time step (the server takes each step once).
+// sign-in, throwaway members made by the admin, the mail outbox, TOTP codes
+// that never reuse a time step (the server takes each step once), the events of a
+// streamed answer, and made-up bars for scripts.
+import type { ScriptBar } from "../../shared/script";
 import { app } from "../src/app";
 import { outbox } from "../src/mail";
 import { codeAt } from "../src/totp";
@@ -79,3 +81,33 @@ export async function nextCode(secret: string): Promise<string> {
 }
 
 export { codeAt };
+
+/** The events of a server-sent event stream's body, in order (comment lines left out). */
+export function sseEvents(body: string): { event: string; data: any }[] {
+  return body.split("\n\n").flatMap((block) => {
+    let event = "message";
+    let data = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data += line.slice(5).trim();
+    }
+    return data ? [{ event, data: JSON.parse(data) }] : [];
+  });
+}
+
+/** n bars of a random walk that is the same on every run, `minutes` apart from 2026-01-01 (UTC wall clock). */
+export function walkBars(n: number, minutes = 15): ScriptBar[] {
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let price = 100;
+  const t0 = Date.parse("2026-01-01T00:00:00Z");
+  return Array.from({ length: n }, (_, i) => {
+    const open = price;
+    const close = open * (1 + (rand() - 0.5) * 0.01);
+    const high = Math.max(open, close) * (1 + rand() * 0.003);
+    const low = Math.min(open, close) * (1 - rand() * 0.003);
+    price = close;
+    const t = new Date(t0 + i * minutes * 60_000).toISOString();
+    return { time: `${t.slice(0, 10)} ${t.slice(11, 16)}`, open, high, low, close, volume: 100 + Math.floor(rand() * 100) };
+  });
+}

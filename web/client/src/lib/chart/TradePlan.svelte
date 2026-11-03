@@ -1,6 +1,7 @@
 <script module lang="ts">
   /** An open setup from an indicator on the chart, as the plan card shows it. */
-  export type Plan = { key: string; source: string; side: 'BUY' | 'SELL'; entry: number; stopLoss: number; takeProfit: number; time: string };
+  /** note: what else the setup says, e.g. that its entry is an order still waiting, or where its first of two targets is. */
+  export type Plan = { key: string; source: string; side: 'BUY' | 'SELL'; entry: number; stopLoss: number; takeProfit: number; time: string; note?: string };
 </script>
 
 <script lang="ts">
@@ -199,7 +200,7 @@
   async function copy() {
     if (!plan || !levels) return;
     const side = idxSell ? 'Jual (hindari beli, atau jual kalau sudah punya)' : plan.side === 'BUY' ? 'Beli' : 'Jual';
-    const text = `${friendlyName(ws.symbol)} · ${side} · Entry ${price(levels.entry)} · SL ${price(levels.stopLoss)} · TP ${price(levels.takeProfit)}${rr ? ` · R:R 1:${rr.toFixed(1).replace('.', ',')}` : ''} (${plan.source}). Riset, bukan saran investasi.`;
+    const text = `${friendlyName(ws.symbol)} · ${side} · Entry ${price(levels.entry)} · SL ${price(levels.stopLoss)} · TP ${price(levels.takeProfit)}${rr ? ` · R:R 1:${rr.toFixed(1).replace('.', ',')}` : ''} (${plan.source}${plan.note ? `; ${plan.note}` : ''}). Riset, bukan saran investasi.`;
     try {
       await navigator.clipboard.writeText(text);
       copied = true;
@@ -242,6 +243,7 @@
         <span>dari {plan.source}</span>
       {/if}
       <span>· {when(plan.time)}</span>
+      {#if plan.note}<span>· {plan.note}</span>{/if}
       {#if kind === 'idx'}<span title="Harga order di BEI harus kelipatan fraksi harga: SL ke langkah di luar level indikator, TP ke langkah sebelum level">· dibulatkan ke fraksi harga BEI</span>{/if}
       {#if last != null}<span>· harga sekarang {price(last)} ({percent(levels.entry, last)} dari entry)</span>{/if}
       {#if decision}<span>· keputusan AI terakhir {decision.rating} ({decision.date})</span>{/if}

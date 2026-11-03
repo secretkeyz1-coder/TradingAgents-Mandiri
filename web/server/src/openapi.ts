@@ -16,7 +16,7 @@ import { runSchema } from "./lab";
 import { log } from "./log";
 import { levelSchema } from "./price-alerts";
 import { backtestSchema, createSchema } from "./routes";
-import { composeSchema, planSchema } from "./scripts";
+import { composeSchema, planSchema, translateSchema } from "./scripts";
 import { BRAND } from "../../shared/brand";
 
 export const OPENAPI_FILE = join(config.repoRoot, "docs", "api", "openapi.json");
@@ -31,8 +31,15 @@ const BODIES: Record<string, { summary: string; schema: z.ZodType }> = {
   "POST /api/price-alerts": { summary: "Buat notifikasi harga", schema: levelSchema },
   "POST /api/journal": { summary: "Catat trade ke jurnal", schema: journalSchema },
   "POST /api/lab/run": { summary: "Jalankan uji Lab", schema: runSchema },
-  "POST /api/scripts/plan": { summary: "Rencana skrip indikator dari prompt: aturan yang bisa dihitung, yang diubah, dan yang tidak bisa", schema: planSchema },
-  "POST /api/scripts/compose": { summary: "Skrip indikator dari aturan rencana yang dipilih", schema: composeSchema },
+  "POST /api/scripts/translate": {
+    summary: "Terjemahkan Pine Script ke skrip indikator, diuji dan diperbaiki AI; jawabannya stream SSE: step, result, error, end",
+    schema: translateSchema,
+  },
+  "POST /api/scripts/plan": {
+    summary: "Rencana skrip indikator dari prompt: aturan yang bisa dihitung, yang diubah, dan yang tidak bisa; stream SSE: step, plan, error, end",
+    schema: planSchema,
+  },
+  "POST /api/scripts/compose": { summary: "Skrip indikator dari aturan rencana yang dipilih, diuji dan diperbaiki AI; stream SSE: step, result, error, end", schema: composeSchema },
   "POST /api/activity": { summary: "Detak aktivitas halaman: menit ini dipakai, di layar dan simbol ini", schema: beatSchema },
 };
 

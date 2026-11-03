@@ -11,8 +11,10 @@ export const SIGNAL_STATUS: Record<NonNullable<SignalAlert['last']>['status'], s
   open: 'berjalan',
   win: 'TP kena',
   loss: 'SL kena',
+  partial: 'TP1 kena, sisanya impas atau SL',
   exit: 'keluar (kondisi)',
   expired: 'kedaluwarsa',
+  unfilled: 'order tidak terisi',
   replaced: 'diganti',
 };
 
@@ -26,8 +28,10 @@ export const SIGNAL_STATE: Record<NonNullable<SignalAlert['last']>['status'], st
   open: 'Berjalan',
   win: 'Kena TP',
   loss: 'Kena SL',
+  partial: 'Kena TP1',
   exit: 'Keluar',
   expired: 'Kedaluwarsa',
+  unfilled: 'Tidak terisi',
   replaced: 'Diganti',
 };
 

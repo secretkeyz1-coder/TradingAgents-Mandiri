@@ -23,6 +23,8 @@ export function resultOf(c: Pick<SignalCall, 'status' | 'tracked'>): { label: st
     return c.tracked ? { label: 'Berjalan', short: 'Berjalan', dir: 'run', icon: 'clock' } : { label: 'Tidak dipantau lagi', short: 'Tak dipantau', dir: 'flat', icon: 'minus' };
   if (c.status === 'win') return { label: 'Kena TP', short: 'Kena TP', dir: 'up', icon: 'check' };
   if (c.status === 'loss') return { label: 'Kena SL', short: 'Kena SL', dir: 'down', icon: 'x' };
+  if (c.status === 'partial') return { label: 'Kena TP1, sisanya impas atau SL', short: 'Kena TP1', dir: 'flat', icon: 'check' };
+  if (c.status === 'unfilled') return { label: 'Order tidak terisi', short: 'Tak terisi', dir: 'flat', icon: 'minus' };
   if (c.status === 'exit') return { label: 'Keluar karena kondisi', short: 'Keluar', dir: 'flat', icon: 'minus' };
   if (c.status === 'expired') return { label: 'Kedaluwarsa', short: 'Kedaluwarsa', dir: 'flat', icon: 'minus' };
   return { label: 'Diganti sinyal baru', short: 'Diganti', dir: 'flat', icon: 'minus' };

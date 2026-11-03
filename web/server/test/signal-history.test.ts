@@ -60,3 +60,36 @@ test("the history counts live calls, scores R, stays private, and outlives the a
   expect(after.body.summary).toMatchObject({ total: 5, win: 2, loss: 1, open: 0, stopped: 1, alerts: 0 });
   expect(after.body.calls.every((c: { tracked: boolean }) => !c.tracked)).toBe(true);
 });
+
+test("a script's call is scored at the R its run closed it with: two targets, the first only, or an order that never filled", async () => {
+  const a = await member({ verified: true });
+  const [alert] = await db
+    .insert(signalAlerts)
+    .values({ userId: a.id, symbol: "GC=F", tvSymbol: "COMEX:GC1!", indicator: "script:00000000-0000-0000-0000-000000000000", timeframe: "15m", primed: true })
+    .returning();
+  const pair = { userId: a.id, symbol: alert.symbol, tvSymbol: alert.tvSymbol, indicator: alert.indicator, timeframe: alert.timeframe, venue: "" };
+  const now = new Date();
+  const call_ = (time: string, status: "win" | "partial" | "unfilled", r: number | null) => ({
+    ...pair,
+    alertId: alert.id,
+    signalTime: `2026-11-02 ${time}`,
+    side: "BUY",
+    label: "BUY · dua target",
+    entry: 100,
+    stopLoss: 95,
+    // The last of two targets: 2R from its levels, though half the position closed at 1R.
+    takeProfit: 110,
+    status,
+    r,
+    notifiedAt: now,
+    closeNotifiedAt: now,
+  });
+  await db.insert(signalEvents).values([call_("09:00", "win", 1.5), call_("09:15", "partial", 0.5), call_("09:30", "unfilled", null)]);
+
+  const h = await call("/api/alerts/history?days=7", { cookie: a.cookie });
+  expect(h.body.summary).toMatchObject({ total: 3, win: 1, loss: 0, partial: 1, unfilled: 1, r: 2 });
+  // Finished with a result: the target and the first of two; the order that never filled is not one.
+  expect(h.body.summary.winRate).toBeCloseTo(1 / 2);
+  expect(h.body.calls.find((c: { status: string }) => c.status === "win")).toMatchObject({ r: 1.5 });
+  expect(h.body.calls.find((c: { status: string }) => c.status === "unfilled")).toMatchObject({ r: null });
+});

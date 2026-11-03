@@ -291,8 +291,9 @@
   <div role="note" class="alert alert-soft alert-warning items-start text-sm">
     <Icon name="alert" />
     <span>
-      {unfilled.toLocaleString('id-ID')} sinyal tidak dihitung: harga entry-nya tidak pernah tersentuh di candle sinyal, jadi ordernya
-      tidak pernah terisi. Periksa skripnya: order limit atau stop menjadi sinyal di candle tempat harga menyentuh entry.
+      {unfilled.toLocaleString('id-ID')} sinyal tidak dihitung karena ordernya tidak pernah terisi: harga entry tidak tersentuh di candle
+      sinyal, atau order stop/limit habis masa tunggunya sebelum harga sampai. Order yang menunggu harga ditulis dengan <code>wait</code>
+      di <code>signal()</code>; lihat tab Panduan di editor skrip.
     </span>
   </div>
 {/if}

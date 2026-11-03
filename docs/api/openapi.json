@@ -3705,7 +3705,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "Skrip indikator dari aturan rencana yang dipilih",
+        "summary": "Skrip indikator dari aturan rencana yang dipilih, diuji dan diperbaiki AI; stream SSE: step, result, error, end",
         "security": [
           {
             "session": []
@@ -3769,6 +3769,33 @@
                         "const": ""
                       }
                     ]
+                  },
+                  "symbol": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9.\\-=^]{1,20}$"
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "enum": [
+                      "15m",
+                      "1h",
+                      "4h",
+                      "1d"
+                    ]
+                  },
+                  "venue": {
+                    "type": "string",
+                    "enum": [
+                      "binance",
+                      "bybit",
+                      "okx",
+                      "coinbase",
+                      "kraken",
+                      "bitget",
+                      "kucoin",
+                      "gate",
+                      "indodax"
+                    ]
                   }
                 },
                 "required": [
@@ -3800,7 +3827,7 @@
         "tags": [
           "scripts"
         ],
-        "summary": "Rencana skrip indikator dari prompt: aturan yang bisa dihitung, yang diubah, dan yang tidak bisa",
+        "summary": "Rencana skrip indikator dari prompt: aturan yang bisa dihitung, yang diubah, dan yang tidak bisa; stream SSE: step, plan, error, end",
         "security": [
           {
             "session": []
@@ -3919,6 +3946,7 @@
         "tags": [
           "scripts"
         ],
+        "summary": "Terjemahkan Pine Script ke skrip indikator, diuji dan diperbaiki AI; jawabannya stream SSE: step, result, error, end",
         "security": [
           {
             "session": []
@@ -3928,10 +3956,85 @@
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "type": "object",
+                "properties": {
+                  "pine": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 60000
+                  },
+                  "provider": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "quickModel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "deepModel": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "language": {
+                    "default": "Indonesian",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "backendUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 300,
+                        "format": "uri"
+                      },
+                      {
+                        "type": "string",
+                        "const": ""
+                      }
+                    ]
+                  },
+                  "symbol": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9.\\-=^]{1,20}$"
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "enum": [
+                      "15m",
+                      "1h",
+                      "4h",
+                      "1d"
+                    ]
+                  },
+                  "venue": {
+                    "type": "string",
+                    "enum": [
+                      "binance",
+                      "bybit",
+                      "okx",
+                      "coinbase",
+                      "kraken",
+                      "bitget",
+                      "kucoin",
+                      "gate",
+                      "indodax"
+                    ]
+                  }
+                },
+                "required": [
+                  "pine",
+                  "provider",
+                  "quickModel",
+                  "deepModel"
+                ]
               }
             }
           }

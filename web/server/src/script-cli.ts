@@ -14,7 +14,7 @@ import { runScript, toScriptBars, type ScriptBar, type ScriptResult } from "../.
 type Job =
   | { mode?: undefined; code: string; symbol: string; timeframe: string }
   | { mode: "bars"; symbol: string; timeframe: string; days: number }
-  | { mode: "script"; code: string; timeframe: string; bars: ScriptBar[]; cuts: { day: string; start: number; end: number }[] };
+  | { mode: "script"; code: string; timeframe: string; tz?: string | null; bars: ScriptBar[]; cuts: { day: string; start: number; end: number }[] };
 
 /** What the model reads of a script's run: its settings, latest values, signals and a tally over the bars it ran on. */
 function summary(r: ScriptResult, bars: { time: string }[], timeframe: string) {
@@ -32,6 +32,9 @@ function summary(r: ScriptResult, bars: { time: string }[], timeframe: string) {
       entry: s.entry,
       stop_loss: s.stopLoss,
       take_profit: s.takeProfit,
+      // Both targets of two, and an order that waits for its price (stop, limit) rather than filling at the close.
+      targets: s.targets,
+      order: s.order,
       outcome: s.outcome,
       r: s.r,
     })),
@@ -45,14 +48,15 @@ const timeframeOf = (value: string): ScriptTimeframe => ((SCRIPT_TIMEFRAMES as r
 async function answer(job: Job): Promise<unknown> {
   if (job.mode === "bars") {
     const series = await getLabCandles(job.symbol, timeframeOf(job.timeframe) as Interval, job.days);
-    return { ok: true, source: series.source, bars: toScriptBars(series.candles) };
+    // The zone the bars' times are written in, which a script's sessions read (shared/script.ts).
+    return { ok: true, source: series.source, tz: series.exchangeTimezone, bars: toScriptBars(series.candles) };
   }
   if (job.mode === "script") {
     const at: Record<string, unknown> = {};
     for (const cut of job.cuts) {
       const bars = job.bars.slice(cut.start, cut.end);
       // Up to a year of hourly bars per cut, like the lab's long runs.
-      const run = runScript(await quickjs(), job.code, bars, { limits: { timeMs: 30_000 } });
+      const run = runScript(await quickjs(), job.code, bars, { limits: { timeMs: 30_000 }, timeframe: job.timeframe, tz: job.tz });
       at[cut.day] = run.ok ? summary(run.result, bars, job.timeframe) : { error: run.error };
     }
     return { ok: true, at };

@@ -74,6 +74,11 @@ export type ScanSignal = {
   exit_time: string | null;
   bars_ago: number;
   r?: number | null;
+  /** A script's order (shared/script.ts): a pending stop or limit waits `wait` bars for its price. */
+  order?: "market" | "inside" | "stop" | "limit";
+  wait?: number | null;
+  /** A script's targets, when it has two. */
+  targets?: number[];
 };
 type Alert = typeof signalAlerts.$inferSelect;
 /** What the scan asks of a pair: an engine's name runs its defaults; a Scalper variant runs a user's own inputs. */
@@ -119,11 +124,14 @@ function dataNote(a: Alert) {
 }
 
 function openMessage(a: Alert, s: ScanSignal, name?: string) {
+  const pending = s.order === "stop" || s.order === "limit";
+  const entry = pending ? `Order ${s.order} di <b>${price(s.entry)}</b>, berlaku ${s.wait} candle` : `Entry <b>${price(s.entry)}</b>`;
+  const tp = s.targets && s.targets.length === 2 ? `TP1 ${price(s.targets[0])} · TP2 ${price(s.targets[1])}` : `TP ${price(s.take_profit)}`;
   return [
     `<b>🔔 ${escape(s.label)}</b>`,
     escape(head(a, name)),
     s.time.length > 10 ? `Candle ${when(s.time)} (jam bursa), sudah tutup` : `Candle harian ${when(s.time)}, sudah tutup`,
-    `Entry <b>${price(s.entry)}</b> · SL ${price(s.stop_loss)} · TP ${price(s.take_profit)}`,
+    `${entry} · SL ${price(s.stop_loss)} · ${tp}`,
     link(a),
     `<i>${escape(dataNote(a))}. Riset, bukan saran investasi.</i>`,
   ]
@@ -137,13 +145,18 @@ function closeMessage(
   status: SignalStatus,
   exit: string | null,
   name?: string,
+  r?: number | null,
 ) {
   const risk = Math.abs(e.entry - e.stopLoss);
+  // The R the runtime scored (a stop a bar opened past costs more than 1R), else the levels' own.
+  const signed = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(2).replace(".", ",")}R`;
   const what: Record<string, string> = {
-    win: `✅ TP kena · ${price(e.takeProfit)} (+${(Math.abs(e.takeProfit - e.entry) / risk).toFixed(2).replace(".", ",")}R)`,
-    loss: `❌ SL kena · ${price(e.stopLoss)} (−1R)`,
+    win: `✅ TP kena · ${price(e.takeProfit)} (${signed(r ?? Math.abs(e.takeProfit - e.entry) / risk)})`,
+    loss: `❌ SL kena · ${price(e.stopLoss)} (${signed(r ?? -1)})`,
+    partial: `🟡 TP1 kena, sisanya ditutup di SL atau titik impas${r == null ? "" : ` (${signed(r)})`}`,
     exit: "🚪 Keluar oleh kondisi skrip",
     expired: "⏱ Kedaluwarsa tanpa kena TP/SL",
+    unfilled: "⌛ Order tidak terisi: harga tidak sampai ke entry selama masa tunggu",
     replaced: "↩ Diganti sinyal baru",
   };
   return [
@@ -330,6 +343,9 @@ async function scan(only?: string[], withHourly = true) {
             exit_time: s.exitIndex == null ? null : run.bars[s.exitIndex].time,
             bars_ago: last - s.index,
             r: s.r,
+            order: s.order,
+            wait: s.wait,
+            targets: s.targets,
           })),
         );
       } catch (e) {
@@ -376,6 +392,7 @@ async function scan(only?: string[], withHourly = true) {
               takeProfit: s.take_profit,
               status: s.outcome,
               exitTime: s.exit_time,
+              r: s.r ?? null,
               // Old or late signals are history: their outcome is never announced either.
               closeNotifiedAt: fresh ? null : new Date(),
             })
@@ -391,14 +408,14 @@ async function scan(only?: string[], withHourly = true) {
           }
           await db.update(signalEvents).set({ notifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
           // Seen for the first time already finished (it fired and ended between scans).
-          if (s.outcome !== "open" && (await send(chat, closeMessage(alert, row, s.outcome, s.exit_time, scriptName))).ok) {
+          if (s.outcome !== "open" && (await send(chat, closeMessage(alert, row, s.outcome, s.exit_time, scriptName, s.r))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, row.id));
           }
         } else if (seen.status === "open" && s.outcome !== "open") {
-          await db.update(signalEvents).set({ status: s.outcome, exitTime: s.exit_time }).where(eq(signalEvents.id, seen.id));
+          await db.update(signalEvents).set({ status: s.outcome, exitTime: s.exit_time, r: s.r ?? null }).where(eq(signalEvents.id, seen.id));
           // Scored on the public record too, if it went there when it fired (even if the alert is private now).
           await scoreCreatorSignal(seen.id, s).catch((err) => recordError("creator", err));
-          if (seen.notifiedAt && !seen.closeNotifiedAt && (await send(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName))).ok) {
+          if (seen.notifiedAt && !seen.closeNotifiedAt && (await send(chat, closeMessage(alert, seen, s.outcome, s.exit_time, scriptName, s.r))).ok) {
             await db.update(signalEvents).set({ closeNotifiedAt: new Date() }).where(eq(signalEvents.id, seen.id));
           }
         }
@@ -504,18 +521,20 @@ const HISTORY_DAYS = [7, 30, 90, 365];
 /** Beranda's short list: the newest calls; the rest are a click away in Riwayat call. */
 const RECENT_CALLS = 8;
 export const liveCall = or(isNotNull(signalEvents.notifiedAt), isNull(signalEvents.closeNotifiedAt));
-export const rOf = sql<number | null>`case
+// The R the run closed a call with; a row closed before it was kept is scored from its levels: the target, or -1.
+export const rOf = sql<number | null>`coalesce(${signalEvents.r}, case
   when ${signalEvents.status} = 'win' and abs(${signalEvents.entry} - ${signalEvents.stopLoss}) > 0
     then abs(${signalEvents.takeProfit} - ${signalEvents.entry}) / abs(${signalEvents.entry} - ${signalEvents.stopLoss})
   when ${signalEvents.status} = 'loss' then -1
-end`;
+end)`;
 // Where a call stands for its member: still followed, its target or stop hit, or ended another way
-// (an exit by condition, expiry, a newer signal, or its alert removed while it ran).
+// (the first of two targets, an exit by condition, expiry, an order that never filled, a newer signal,
+// or its alert removed while it ran).
 const OUTCOME = {
   open: sql`(${signalEvents.status} = 'open' and ${signalEvents.alertId} is not null)`,
   win: sql`${signalEvents.status} = 'win'`,
   loss: sql`${signalEvents.status} = 'loss'`,
-  other: sql`(${signalEvents.status} in ('exit', 'expired', 'replaced') or (${signalEvents.status} = 'open' and ${signalEvents.alertId} is null))`,
+  other: sql`(${signalEvents.status} in ('partial', 'exit', 'expired', 'unfilled', 'replaced') or (${signalEvents.status} = 'open' and ${signalEvents.alertId} is null))`,
 };
 export type CallOutcome = keyof typeof OUTCOME;
 export const outcomeOf = sql<CallOutcome>`case when ${OUTCOME.open} then 'open' when ${OUTCOME.win} then 'win' when ${OUTCOME.loss} then 'loss' else 'other' end`;
@@ -529,6 +548,7 @@ const tally = {
   total: sql<number>`count(*)::int`,
   win: sql<number>`count(*) filter (where ${signalEvents.status} = 'win')::int`,
   loss: sql<number>`count(*) filter (where ${signalEvents.status} = 'loss')::int`,
+  partial: sql<number>`count(*) filter (where ${signalEvents.status} = 'partial')::int`,
   // Still running only while its alert watches it; a removed alert's open signal is no longer followed.
   open: sql<number>`count(*) filter (where ${OUTCOME.open})::int`,
   r: sql<number>`coalesce(sum(${rOf}), 0)::float`,
@@ -576,6 +596,7 @@ alertsApi.get("/alerts/history", async (c) => {
         ...tally,
         exit: sql<number>`count(*) filter (where ${signalEvents.status} = 'exit')::int`,
         expired: sql<number>`count(*) filter (where ${signalEvents.status} = 'expired')::int`,
+        unfilled: sql<number>`count(*) filter (where ${signalEvents.status} = 'unfilled')::int`,
         replaced: sql<number>`count(*) filter (where ${signalEvents.status} = 'replaced')::int`,
         stopped: sql<number>`count(*) filter (where ${signalEvents.status} = 'open' and ${signalEvents.alertId} is null)::int`,
       })
@@ -611,7 +632,8 @@ alertsApi.get("/alerts/history", async (c) => {
     catalogScripts(),
     db.select({ n: sql<number>`count(*)::int` }).from(signalAlerts).where(eq(signalAlerts.userId, user.id)),
   ]);
-  const decided = totals.win + totals.loss;
+  // Finished with a result: the target, the stop, or the first of two targets and then the stop or breakeven.
+  const decided = totals.win + totals.loss + totals.partial;
   return c.json({
     days,
     summary: { ...totals, winRate: decided ? totals.win / decided : null, alerts: held.n, max: limitsOf(user).alerts },

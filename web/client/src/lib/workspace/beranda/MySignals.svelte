@@ -60,21 +60,27 @@
       Tiap sinyal baru dari notifikasimu dan hasilnya (TP atau SL) tercatat di sini.
     </p>
   {:else}
-    {@const settled = s.win + s.loss}
-    {@const others = s.exit + s.expired + s.replaced + s.stopped}
+    {@const settled = s.win + s.loss + s.partial}
+    {@const others = s.exit + s.expired + s.unfilled + s.replaced + s.stopped}
     <div class="flex flex-wrap items-end gap-x-8 gap-y-3">
       <div class="flex flex-col gap-1">
         <span class="text-4xl font-extrabold tracking-tight tabular-nums {rTone(s.r)}">{rText(s.r)}</span>
-        <span class="text-xs ta-muted">sebelum biaya, dari {settled} call yang kena TP atau SL dalam {period}</span>
+        <span class="text-xs ta-muted">sebelum biaya, dari {settled} call yang kena TP{s.partial ? ', TP1' : ''} atau SL dalam {period}</span>
       </div>
       <dl class="flex flex-wrap gap-x-8 gap-y-2">
         <div class="flex flex-col-reverse"><dt class="text-xs ta-muted">kena TP dari yang selesai</dt><dd class="text-xl font-bold tabular-nums">{s.winRate == null ? '–' : `${Math.round(s.winRate * 100)}%`}</dd></div>
         <div class="flex flex-col-reverse"><dt class="text-xs ta-muted">call</dt><dd class="text-xl font-bold tabular-nums">{s.total}</dd></div>
-        <div class="flex flex-col-reverse"><dt class="text-xs ta-muted">kena TP · kena SL</dt><dd class="text-xl font-bold tabular-nums">{s.win} · {s.loss}</dd></div>
+        <div class="flex flex-col-reverse">
+          <dt class="text-xs ta-muted">{s.partial ? 'kena TP · TP1 · SL' : 'kena TP · kena SL'}</dt>
+          <dd class="text-xl font-bold tabular-nums">{s.partial ? `${s.win} · ${s.partial} · ${s.loss}` : `${s.win} · ${s.loss}`}</dd>
+        </div>
       </dl>
     </div>
     {#if others}
-      <p class="text-xs ta-muted">Juga {others} call diganti, keluar, atau tidak dipantau lagi: dihitung sebagai call, tidak masuk R karena harga keluarnya tidak tercatat.</p>
+      <p class="text-xs ta-muted">
+        Juga {others} call diganti, keluar, ordernya tidak terisi, atau tidak dipantau lagi: dihitung sebagai call, tidak masuk R karena harga keluarnya tidak
+        tercatat.
+      </p>
     {/if}
     {#if history.daily.some((d) => d.win + d.loss > 0)}
       <div class="flex flex-col gap-1">

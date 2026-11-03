@@ -140,6 +140,7 @@ export type Backtest = BacktestSummary & {
 
 import type { PlanId, PlanLimits } from '../../../shared/plans';
 import type { ReadingTimeframe } from '../../../shared/readings';
+import type { GuideSection, PineRow } from '../../../shared/script-guide';
 import { auth } from './auth.svelte';
 
 export type { PlanId, PlanLimits };
@@ -323,8 +324,27 @@ export type UserScripts = {
   max: number;
   templates: { name: string; code: string }[];
   reference: string;
+  /** The editor's Panduan tab: how to write a script, and Pine to this language (shared/script-guide.ts). */
+  guide: GuideSection[];
+  dictionary: { topic: string; rows: PineRow[] }[];
   limits: { timeMs: number; maxCode: number };
 };
+/** What a Pine translation kept, changed and dropped, as the AI reports it. */
+export type ScriptReport = { kept: string[]; changed: { what: string; how: string }[]; dropped: { what: string; why: string }[] };
+/** The draft's test on the chart's bars (server/src/script-check.ts): problems left after the AI's repairs, if any. */
+export type ScriptCheck = {
+  ran: boolean;
+  problems: string[];
+  bars: number;
+  ms: number;
+  where: string;
+  stats: { count: number; unfilled: number } | null;
+  drawn: { plots: number; lines: number; labels: number };
+};
+/** An AI-written script: the code, its report (Pine only), its test, how many repairs it took, and why it is untested. */
+export type ScriptDraft = { code: string; report: ScriptReport | null; check: ScriptCheck | null; repairs: number; note?: string };
+/** The chart a draft is tested on. */
+export type ScriptChart = { symbol?: string; timeframe?: string; venue?: string };
 
 /** GET /api/admin/config: what is switched on and set up, for the console's settings page. */
 export type AdminConfig = {
@@ -389,7 +409,7 @@ export type SignalAlert = {
   settings: 'default' | 'custom';
   /** Scalper: newer chart settings wait until the signal it announced has finished. */
   settingsPending: boolean;
-  last: { signalTime: string; label: string; status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced' } | null;
+  last: { signalTime: string; label: string; status: SignalStatus } | null;
 };
 export type SignalAlerts = {
   items: SignalAlert[];
@@ -423,11 +443,16 @@ export type SignalCall = {
   /** When the call came in. */
   at: string;
 };
-export type SignalTally = { total: number; win: number; loss: number; open: number; r: number };
+/**
+ * Where a recorded signal ended (server/src/db/schema.ts): partial = the first of two targets and then the stop or
+ * breakeven; unfilled = an order that never filled.
+ */
+export type SignalStatus = 'open' | 'win' | 'loss' | 'partial' | 'exit' | 'expired' | 'unfilled' | 'replaced';
+export type SignalTally = { total: number; win: number; loss: number; partial: number; open: number; r: number };
 /** Beranda's numbers for the last `days`: the calls, their results by indicator, asset and day, the newest few, and every one running. */
 export type SignalHistory = {
   days: number;
-  summary: SignalTally & { exit: number; expired: number; replaced: number; stopped: number; winRate: number | null; alerts: number; max: number };
+  summary: SignalTally & { exit: number; expired: number; unfilled: number; replaced: number; stopped: number; winRate: number | null; alerts: number; max: number };
   byIndicator: (SignalTally & { indicator: string; timeframe: SignalAlert['timeframe'] })[];
   bySymbol: (SignalTally & { symbol: string; tvSymbol: string })[];
   daily: { day: string; win: number; loss: number; r: number }[];
@@ -682,7 +707,7 @@ export type LedgerItem = {
   entry: number;
   stopLoss: number;
   takeProfit: number;
-  status: 'open' | 'win' | 'loss' | 'exit' | 'expired' | 'replaced';
+  status: SignalStatus;
   exitTime: string | null;
   grossR: number | null;
   costR: number;
@@ -791,7 +816,7 @@ export type LabConfig = {
   venue?: string;
 };
 export type LabSymbol =
-  /** unfilled: a script's signals at an entry their bar never traded, so no trade (absent on runs before it was counted). */
+  /** unfilled: a script's orders that never filled, so no trade (absent on runs before it was counted). */
   | { symbol: string; source: string; bars: number; from: string; to: string; split: string | null; is: LabStats; oos: LabStats; unfilled?: number }
   | { symbol: string; error: string };
 export type LabRun = {
@@ -833,6 +858,57 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 401) auth.expired();
   if (!res.ok) throw new Error(body.error ?? `Server sedang bermasalah (kode ${res.status}). Coba lagi sebentar lagi.`);
   return body as T;
+}
+
+/** Reads a server-sent event stream to its end, handing on each event's type and data. */
+async function readEvents(body: NonNullable<Response['body']>, onEvent: (type: string, data: any) => void): Promise<void> {
+  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let split: number;
+    while ((split = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      let type = 'message';
+      let data = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) type = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).trim();
+      }
+      if (data) onEvent(type, JSON.parse(data));
+    }
+  }
+}
+
+/**
+ * One piece of the AI script writer's work (server/src/scripts.ts), streamed: `onStep` gets each step as it happens;
+ * resolves with the `want` event's data, or throws the reason it stopped.
+ */
+async function aiWork<T>(path: string, body: unknown, want: 'result' | 'plan', onStep: (text: string) => void, signal?: AbortSignal): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal });
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw e;
+    throw new Error('Tidak bisa terhubung ke server. Periksa koneksi internet, lalu coba lagi.');
+  }
+  if (!res.ok || !res.body) {
+    if (res.status === 401) auth.expired();
+    const failed = await res.json().catch(() => ({}));
+    throw new Error(failed.error ?? `Server sedang bermasalah (kode ${res.status}). Coba lagi sebentar lagi.`);
+  }
+  let out: T | null = null;
+  let error = '';
+  await readEvents(res.body, (type, data) => {
+    if (type === 'step') onStep(String(data.text ?? ''));
+    else if (type === want) out = data as T;
+    else if (type === 'error') error = String(data.message ?? '');
+  });
+  if (out) return out;
+  throw new Error(error || 'Penulis skrip AI berhenti tanpa hasil. Coba lagi.');
 }
 
 export const api = {
@@ -954,12 +1030,15 @@ export const api = {
       '/scripts/run',
       { method: 'POST', body: JSON.stringify(body) },
     ),
-  translateScript: (body: { pine: string } & ScriptModel) => request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
+  /** Pine Script to a script with a report, tested on the chart and repaired by the AI while it fails. */
+  translateScript: (body: { pine: string } & ScriptModel & ScriptChart, onStep: (text: string) => void, signal?: AbortSignal) =>
+    aiWork<ScriptDraft>('/scripts/translate', body, 'result', onStep, signal),
   /** A prompt in plain words, step one: the rules a script can compute, those changed to be testable, and what it cannot do. */
-  planScript: (body: { prompt: string } & ScriptModel) => request<{ plan: ScriptPlan }>('/scripts/plan', { method: 'POST', body: JSON.stringify(body) }),
-  /** Step two: a script from the rules kept. */
-  composeScript: (body: { prompt: string; rules: string[] } & ScriptModel) =>
-    request<{ code: string }>('/scripts/compose', { method: 'POST', body: JSON.stringify(body) }),
+  planScript: (body: { prompt: string } & ScriptModel, onStep: (text: string) => void, signal?: AbortSignal) =>
+    aiWork<{ plan: ScriptPlan }>('/scripts/plan', body, 'plan', onStep, signal),
+  /** Step two: a script from the rules kept, tested and repaired as a translation is. */
+  composeScript: (body: { prompt: string; rules: string[] } & ScriptModel & ScriptChart, onStep: (text: string) => void, signal?: AbortSignal) =>
+    aiWork<ScriptDraft>('/scripts/compose', body, 'result', onStep, signal),
   alerts: () => request<SignalAlerts>('/alerts'),
   alertHistory: (days: number) => request<SignalHistory>(`/alerts/history?days=${days}`),
   /** One page of Riwayat call, filtered on the server. */
@@ -1028,24 +1107,6 @@ export const api = {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ?? `HTTP ${res.status}`);
     }
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += value;
-      let split: number;
-      while ((split = buffer.indexOf('\n\n')) >= 0) {
-        const block = buffer.slice(0, split);
-        buffer = buffer.slice(split + 2);
-        let type = 'message';
-        let data = '';
-        for (const line of block.split('\n')) {
-          if (line.startsWith('event:')) type = line.slice(6).trim();
-          else if (line.startsWith('data:')) data += line.slice(5).trim();
-        }
-        if (data) onEvent(type, JSON.parse(data));
-      }
-    }
+    await readEvents(res.body, onEvent);
   },
 };

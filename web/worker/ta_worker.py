@@ -507,18 +507,20 @@ def signals(job: dict) -> int:
 
 def translate(job: dict) -> int:
     """Pine Script (mode "pine"), or a prompt in two steps ("plan", then "compose" from the rules kept), to the app's
-    indicator script language, on the deep model tier (script_translate.py)."""
-    from script_translate import plan_from_prompt, script_from_rules, translate_pine
+    indicator script language, on the deep model tier (script_translate.py); "repair" fixes a draft the server's
+    check failed. The server sends the time a model call may take (llmTimeout), so it knows how long to wait."""
+    from script_translate import plan_from_prompt, repair_script, script_from_rules, translate_pine
 
     from tradingagents.dataflows.config import run_config
     from tradingagents.llm_clients import create_tier_client
 
     mode = job.get("mode") or "pine"
     language = job.get("language") or "Indonesian"
-    reference, example = job.get("reference") or "", job.get("example") or ""
+    reference, example, dictionary = job.get("reference") or "", job.get("example") or "", job.get("dictionary") or ""
     config = _build_config({**job, "depth": 1})
-    config["llm_timeout"] = float(os.environ.get("TA_AGENT_LLM_TIMEOUT", "120")) * 2
+    config["llm_timeout"] = float(job.get("llmTimeout") or os.environ.get("TA_TRANSLATE_LLM_TIMEOUT", "300"))
     config["llm_max_retries"] = 1
+    report = None
     with run_config(config):
         llm = create_tier_client(config, "deep").get_llm()
         try:
@@ -526,15 +528,20 @@ def translate(job: dict) -> int:
                 plan = plan_from_prompt(llm, job["prompt"], reference, language)
             elif mode == "compose":
                 code = script_from_rules(llm, job["prompt"], list(job.get("rules") or []), reference, example, language)
+            elif mode == "repair":
+                source = job.get("source") or "pine"
+                text = job["pine"] if source == "pine" else job["prompt"]
+                code, report = repair_script(llm, source, text, list(job.get("rules") or []), job["code"],
+                                             list(job.get("problems") or []), reference, dictionary, language)
             else:
-                code = translate_pine(llm, job["pine"], reference, example, language)
+                code, report = translate_pine(llm, job["pine"], reference, dictionary, example, language)
         except Exception as exc:
             emit("error", message=_provider_error(exc, job["deepModel"], config["backend_url"], config["llm_timeout"]))
             return 1
     if mode == "plan":
         emit("plan", plan=plan)
     else:
-        emit("code", code=code)
+        emit("code", code=code, report=report)
     emit("done")
     return 0
 

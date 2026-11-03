@@ -105,15 +105,15 @@ async function engineTrades(name: string, timeframe: string, symbol: string, bar
 }
 
 /**
- * The script's signals on these bars, in the sandbox, with room for years of bars; and how many it gave at an
- * entry their bar never traded, which the runtime drops (shared/script.ts) and the result names.
+ * The script's trades on these bars, in the sandbox, with room for years of bars, each at the bar it filled on (a
+ * pending order fills after its signal); and how many orders never filled, which the result names (shared/script.ts).
  */
-async function scriptTrades(code: string, bars: ScriptBar[], expiry: number): Promise<{ trades: Trade[]; unfilled: number }> {
-  const run = runScript(await quickjs(), code, bars, { expiry, limits: { timeMs: 30_000, maxSignals: 50_000 } });
+async function scriptTrades(code: string, bars: ScriptBar[], expiry: number, timeframe: string, tz: string | null): Promise<{ trades: Trade[]; unfilled: number }> {
+  const run = runScript(await quickjs(), code, bars, { expiry, limits: { timeMs: 30_000, maxSignals: 50_000 }, timeframe, tz });
   if (!run.ok) throw new Error(run.error);
   const trades = run.result.signals
-    .filter((s) => s.outcome !== "open" && s.r != null)
-    .map((s) => ({ index: s.index, time: s.time, side: s.side, entry: s.entry, stopLoss: s.stopLoss, outcome: s.outcome, r: s.r! }));
+    .filter((s) => s.outcome !== "open" && s.r != null && s.fillIndex !== null)
+    .map((s) => ({ index: s.fillIndex!, time: bars[s.fillIndex!].time, side: s.side, entry: s.entry, stopLoss: s.stopLoss, outcome: s.outcome, r: s.r! }));
   return { trades, unfilled: run.result.stats.unfilled };
 }
 
@@ -130,7 +130,7 @@ async function runLab(config: RunConfig, code: string | null) {
       const { trades, unfilled } =
         config.strategy.kind === "engine"
           ? { trades: await engineTrades(config.strategy.name, config.timeframe, symbol, bars, config.expiry), unfilled: 0 }
-          : await scriptTrades(code!, bars, config.expiry);
+          : await scriptTrades(code!, bars, config.expiry, config.timeframe, series.exchangeTimezone);
       const cut = Math.floor(bars.length * config.split);
       const scored = trades.map((t) => {
         const cost = tradeCost(symbol, t.entry, config.costs === "maker", storedVenue(config.venue)) / Math.abs(t.entry - t.stopLoss);

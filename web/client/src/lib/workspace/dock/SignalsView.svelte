@@ -33,7 +33,16 @@
   const NAMES: Record<string, string> = { scalper: 'Scalper Pro+', fib: 'Fib Golden Zone', pob: 'PoB BYSTRA', donchian: 'Donchian breakout harian' };
   const TF = TIMEFRAME_NAMES;
   const SESSION: Record<string, string> = { asia: 'Asia', london: 'London', newyork: 'New York' };
-  const STATUS: Record<string, string> = { open: 'Berjalan', win: 'Kena target', loss: 'Kena stop', exit: 'Keluar', expired: 'Kedaluwarsa', replaced: 'Diganti' };
+  const STATUS: Record<string, string> = {
+    open: 'Berjalan',
+    win: 'Kena target',
+    loss: 'Kena stop',
+    partial: 'Kena target 1',
+    exit: 'Keluar',
+    expired: 'Kedaluwarsa',
+    unfilled: 'Tidak terisi',
+    replaced: 'Diganti',
+  };
   const GROUPS = [
     { key: 'bySource', label: 'Mesin', title: 'Per mesin' },
     { key: 'bySymbol', label: 'Aset', title: 'Per aset' },

@@ -7,9 +7,11 @@ import { runScript, type QuickJSLike, type ScriptBar } from '../../../../shared/
 
 let module: Promise<QuickJSLike> | null = null;
 
-self.onmessage = async (event: MessageEvent<{ id: number; code: string; bars: ScriptBar[]; inputs?: Record<string, number | boolean | string> }>) => {
+type Job = { id: number; code: string; bars: ScriptBar[]; inputs?: Record<string, number | boolean | string>; timeframe?: string; tz?: string | null };
+
+self.onmessage = async (event: MessageEvent<Job>) => {
   module ??= newQuickJSWASMModuleFromVariant(variant) as Promise<QuickJSLike>;
-  const { id, code, bars, inputs } = event.data;
-  const run = runScript(await module, code, bars, { inputs });
+  const { id, code, bars, inputs, timeframe, tz } = event.data;
+  const run = runScript(await module, code, bars, { inputs, timeframe, tz });
   self.postMessage({ id, run });
 };

@@ -214,8 +214,9 @@ export async function ledgerScriptSignals(): Promise<Map<string, LedgerSignal[]>
     if (!code) continue;
     for (const { symbol, venue } of ledgerFeeds()) {
       try {
-        const bars = toScriptBars((await getCandles(symbol, "2y", strategy.timeframe, venue || undefined)).candles);
-        const run = runScript(await quickjs(), code, bars, { expiry: strategy.expiry });
+        const series = await getCandles(symbol, "2y", strategy.timeframe, venue || undefined);
+        const bars = toScriptBars(series.candles);
+        const run = runScript(await quickjs(), code, bars, { expiry: strategy.expiry, timeframe: strategy.timeframe, tz: series.exchangeTimezone });
         if (!run.ok) throw new Error(run.error);
         const last = bars.length - 1;
         found.set(

@@ -8,6 +8,7 @@ indicator readings a request asks for (readings.py): the market report quotes th
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 
@@ -265,13 +266,46 @@ plot(swingLow, "Swing low", "orange");
 """
 
 
+# A Pine translation without a model, for the server's tests (TA_DEMO_PINE=1): a first draft that reads the bar after
+# its signal, which the server's check must catch, and the repair it then asks for.
+DEMO_PINE_DRAFT = """// Demo: EMA cross; draf pertama ini membaca candle sesudah sinyal.
+const len = input("Periode EMA", 10);
+const ema = ta.ema(close, len);
+const atr = ta.atr(14);
+plot(ema, "EMA");
+for (let i = 20; i < n - 1; i++) {
+  if (close[i] <= ema[i] && close[i + 1] > ema[i]) signal(i, "BUY", { sl: close[i] - 2 * atr[i], tp: close[i] + 4 * atr[i] });
+}
+"""
+
+DEMO_PINE_FIXED = """// Demo: EMA cross, BUY saat close menembus EMA dari bawah.
+const len = input("Periode EMA", 10);
+const ema = ta.ema(close, len);
+const atr = ta.atr(14);
+plot(ema, "EMA");
+for (let i = 20; i < n; i++) {
+  if (close[i - 1] <= ema[i - 1] && close[i] > ema[i]) signal(i, "BUY", { sl: close[i] - 2 * atr[i], tp: close[i] + 4 * atr[i] });
+}
+"""
+
+DEMO_REPORT = {
+    "kept": ["Cross EMA ke atas jadi sinyal BUY", "Periode EMA jadi input"],
+    "changed": [{"what": "strategy.entry", "how": "masuk di close candle sinyal"}],
+    "dropped": [{"what": "Warna latar", "why": "tidak bisa digambar"}],
+}
+
+
 def translate(job: dict) -> int:
-    """Without a model: a prompt's plan and its script are fixed examples. Pine still goes to the real translator."""
+    """Without a model: a prompt's plan and its script are fixed examples, and with TA_DEMO_PINE=1 so is a Pine
+    translation and its repair. Otherwise Pine goes to the real translator."""
     mode = job.get("mode")
+    pine = mode == "pine" or (mode == "repair" and job.get("source", "pine") == "pine")
     if mode == "plan":
         emit("plan", plan=DEMO_PLAN)
-    elif mode == "compose":
-        emit("code", code=DEMO_SCRIPT)
+    elif mode == "compose" or (mode == "repair" and not pine):
+        emit("code", code=DEMO_SCRIPT, report=None)
+    elif pine and os.environ.get("TA_DEMO_PINE") == "1":
+        emit("code", code=DEMO_PINE_FIXED if mode == "repair" else DEMO_PINE_DRAFT, report=DEMO_REPORT)
     else:
         return ta_worker.translate(job)
     emit("done")

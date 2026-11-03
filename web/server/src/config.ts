@@ -27,6 +27,7 @@ const SETTINGS = z.object({
   MIGRATE_ON_START: z.preprocess(blank, z.enum(["0", "1"]).optional()),
   METRICS_TOKEN: z.preprocess(blank, z.string().min(16, "minimal 16 karakter").optional()),
   ALERT_CHAT_ID: z.preprocess(blank, z.string().regex(/^(-?\d+|@\w{5,})$/, "chat id Telegram (angka) atau @nama_channel").optional()),
+  TA_TRANSLATE_LLM_TIMEOUT: z.preprocess(blank, z.coerce.number().int().min(30).max(1800).default(300)),
 });
 
 /**
@@ -60,6 +61,8 @@ export const config = {
   maxConcurrent: settings.MAX_CONCURRENT_ANALYSES,
   // A job that sends no event for this long is stuck (a hung LLM call, a dead gateway) and is killed.
   jobIdleMs: settings.JOB_IDLE_MINUTES * 60_000,
+  // Seconds one model call of a script translation may take (scripts.ts); the worker gets it with the job.
+  translateTimeoutS: settings.TA_TRANSLATE_LLM_TIMEOUT,
   // A running job's heartbeat; another instance treats a row quiet for longer than `jobStaleMs` as orphaned.
   heartbeatMs: 30_000,
   jobStaleMs: 120_000,

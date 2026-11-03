@@ -18,7 +18,7 @@
 
   type Status = NonNullable<SignalAlert['last']>['status'];
   const STATE_DIR: Partial<Record<Status, 'run' | 'up' | 'down'>> = { open: 'run', win: 'up', loss: 'down' };
-  const STATE_ICON: Record<Status, IconName> = { open: 'clock', win: 'check', loss: 'x', exit: 'right', expired: 'clock', replaced: 'refresh' };
+  const STATE_ICON: Record<Status, IconName> = { open: 'clock', win: 'check', loss: 'x', partial: 'check', exit: 'right', expired: 'clock', unfilled: 'minus', replaced: 'refresh' };
   const FILTERS: { key: 'all' | Status; label: string }[] = [
     { key: 'all', label: 'Semua' },
     { key: 'open', label: SIGNAL_STATE.open },

@@ -26,5 +26,5 @@ export async function runOnSymbol(
 ): Promise<ScriptRun & { bars: { time: string }[] }> {
   const series = await getCandles(symbol, "1y", timeframe as Interval, venue);
   const bars = toScriptBars(series.candles);
-  return { ...runScript(await quickjs(), code, bars, { inputs }), bars };
+  return { ...runScript(await quickjs(), code, bars, { inputs, timeframe, tz: series.exchangeTimezone }), bars };
 }

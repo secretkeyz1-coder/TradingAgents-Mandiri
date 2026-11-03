@@ -1,10 +1,12 @@
 """Pine Script, or a prompt in plain words, to the app's indicator script
-language (web/shared/script.ts), by an LLM. A prompt goes in two steps: a plan
+language (web/shared/script.ts), by an LLM. A Pine translation comes with a
+report of what was kept, changed and dropped. A prompt goes in two steps: a plan
 that splits it into rules a script can compute from prices, rules changed so
 they can be tested, and what no script can do (an analyst's prose, judgement,
-news); then a script from the rules the user kept. The result is only a draft:
-the page runs it on the chart and the user reviews it before saving or
-switching on notifications."""
+news); then a script from the rules the user kept. The server runs every draft
+on real bars (server/src/script-check.ts) and sends what failed back here to be
+repaired, a few times at most. The result is still a draft: the user reviews it
+on the chart before saving or switching on notifications."""
 
 from __future__ import annotations
 
@@ -12,40 +14,65 @@ import json
 import re
 
 _FENCE = re.compile(r"```(?:js|javascript)?\s*\n(.*?)```", re.S)
+_JSON_FENCE = re.compile(r"```json\s*\n(.*?)```", re.S)
 _OBJECT = re.compile(r"\{.*\}", re.S)
-# What a plan may hold, so a long reply cannot flood the page.
+# What a plan or a report may hold, so a long reply cannot flood the page.
 _MAX_RULES, _MAX_NOTES, _MAX_TEXT, _MAX_PARAM = 20, 10, 240, 60
+_MAX_KEPT, _MAX_CHANGES = 30, 20
+
+_TRANSLATE_RULES = """- Keep the logic exactly: the same conditions, the same order of steps within a bar, the same defaults. Every Pine
+  input becomes input(name, default) with its Pine title as the name and the same default.
+- Pine runs the script once per bar; here it runs once over arrays. Compute ta.* series once, outside the loop, then
+  one for loop over i that does on bar i what the Pine does on a bar, in the same order. var and other state become
+  variables declared before the loop; Pine types become plain objects, their methods functions taking the object.
+- Never read a bar after i to decide anything at bar i. ta.pivothigh and ta.pivotlow already give a pivot on the bar
+  that confirms it. Higher timeframes: request.security(..., expr[1], lookahead = barmerge.lookahead_on) becomes
+  htf(minutes).closed(series), request.security(..., expr) becomes htf(minutes).value(series), with the series
+  computed on the htf bars (h.close, h.high, ...).
+- Sessions: not na(time(timeframe.period, spec, tz)) becomes session(spec, tz)[i]; the chart's timeframe in minutes is
+  timeframe; syminfo.mintick is mintick.
+- Orders: an entry at a price later bars must reach (strategy.entry with stop= or limit=, or the script's own pending
+  order, such as high + mintick after a rejection bar) is signal(i, side, { entry, wait: N, ... }) where N is the
+  number of bars the order stays. Without wait the entry must lie inside bar i, or it never fills. An entry at bar i's
+  close needs no entry. Two exits on parts of the position (qty_percent, or TP1 and TP2) are tp: [tp1, tp2] with
+  size (the part closed at tp1); a stop moved to the entry after tp1 is breakeven (the default). One position at a
+  time (strategy.position_size == 0, or a state machine that ignores new signals while an order or trade runs) is
+  exclusive: true; a trade with no time limit gets maxBars: 2000; an exit on a condition is exit: (a boolean array).
+- signal() on every bar where the Pine decides a buy or sell (its entries, its buy or sell shapes and labels, its
+  alerts), with the Pine's own stop and targets, and never with a NaN price.
+- Drawings: line.new and label.new become line() and label() with the same bars, prices, colours and styles; their
+  setters lineSet() and labelSet(); their deletes lineDelete() and labelDelete(). plot() and hline() stay. Tables,
+  boxes, fills, background and bar colours cannot be drawn: leave them out.
+- Plain JavaScript only: no imports, no network, no DOM."""
+
+_REPORT = """{"kept": ["what works as in the Pine, one item per feature"], "changed": [{"what": "...", "how": "how it works here instead"}], "dropped": [{"what": "...", "why": "..."}]}"""
 
 
-def _prompt(pine: str, reference: str, example: str, language: str) -> str:
-    return f"""Translate this TradingView Pine Script indicator into the JavaScript indicator language below.
+def _prompt(pine: str, reference: str, dictionary: str, example: str, language: str) -> str:
+    return f"""Translate this TradingView Pine Script into the JavaScript indicator language below, so that on the same bars it
+gives the same signals, levels and drawings.
 
 THE LANGUAGE
 {reference}
 
-AN EXAMPLE SCRIPT IN THAT LANGUAGE
+PINE TO THIS LANGUAGE
+{dictionary}
+
+A FULL TRANSLATION IN THAT LANGUAGE (a Pine indicator with trendlines, a higher timeframe, sessions, stop orders and
+two targets)
 ```js
 {example}
 ```
 
-RULES
-- Output exactly one ```js code block and nothing else.
-- Keep the indicator's logic and default inputs: every Pine input(...) becomes input(name, default) with the same default.
-- Work on whole arrays: compute series with ta.* or a for loop over i, never per-bar global state like Pine's implicit bar loop.
-  Pine's x[1] is x[i - 1]; var/state variables become variables updated inside one for loop over i from 1 to n - 1.
-- Signals: call signal(i, "BUY"|"SELL", {{ sl, tp, label }}) exactly where the Pine script decides a buy or sell
-  (its buy/sell conditions, plotshape/label markers or alertcondition). Use the script's own stop loss and take profit;
-  if it has none, use 1.5 * ATR(14) for the stop and 2R for the target, and say so in a comment.
-- Pine strategies that close a position on a condition (strategy.close, strategy.exit with a condition, or a time limit):
-  pass that condition as the signal's exit series (a boolean array over all bars) and the bar limit as maxBars, keep a protective
-  stop as sl and a far target as tp; when the strategy holds one position at a time, add exclusive: true.
-- barstate.isconfirmed / closed-bar logic: the runtime already ignores the forming bar.
-- Keep only plot() lines and hline() levels; drop tables, labels, boxes, colors of backgrounds and other drawings, and say what was
-  dropped in a short comment at the top.
-- request.security / other timeframes cannot be read: build the higher timeframe from these bars if it is simple
-  (e.g. group by hour from time), else leave it out and say so in a comment.
-- No imports, no network, no DOM. Plain JavaScript only.
-- Comments in {language}.
+HOW TO TRANSLATE
+{_TRANSLATE_RULES}
+
+ANSWER WITH EXACTLY TWO BLOCKS
+1. One ```js block: the whole script, opening with a short comment that says what it does and what it left out.
+   Comments in {language}.
+2. One ```json block reporting the translation, every text in {language}, in plain words a trader understands. Name every
+   feature of the Pine in one of the three lists, and keep each item short:
+   {_REPORT}
 
 THE PINE SCRIPT
 ```pine
@@ -53,10 +80,48 @@ THE PINE SCRIPT
 ```"""
 
 
+def _repair_prompt(source: str, text: str, rules: list[str], code: str, problems: list[str], reference: str,
+                   dictionary: str, language: str) -> str:
+    listed = "\n".join(f"- {p}" for p in problems)
+    if source == "pine":
+        origin = f"THE PINE SCRIPT IT TRANSLATES\n```pine\n{text}\n```"
+        report = f"""2. One ```json block with the report of the whole translation, updated, every text in {language}:
+   {_REPORT}"""
+    else:
+        kept = "\n".join(f"- {r}" for r in rules)
+        origin = f"THE RULES IT FOLLOWS\n{kept}\n\nTHE TRADER'S TEXT THEY COME FROM\n<<<\n{text}\n>>>"
+        report = "2. Nothing else."
+    return f"""This script, written in the JavaScript indicator language below, was run on real bars and has these problems:
+{listed}
+
+Fix every problem and keep everything else as it is.
+
+THE LANGUAGE
+{reference}
+
+PINE TO THIS LANGUAGE
+{dictionary}
+
+HOW IT MUST BE WRITTEN
+{_TRANSLATE_RULES}
+
+{origin}
+
+THE SCRIPT
+```js
+{code}
+```
+
+ANSWER WITH
+1. One ```js block: the whole corrected script. Comments in {language}.
+{report}"""
+
+
 def _plan_prompt(text: str, reference: str, language: str) -> str:
     return f"""A trader describes a strategy or pastes an analysis prompt written for an AI. Plan an indicator script for it
-in the JavaScript indicator language below: one timeframe's bars (open, high, low, close, volume, time), ta.* helpers,
-plot/hline lines, and signal(i, side, {{ sl, tp, entry }}) with one stop and one target per signal.
+in the JavaScript indicator language below: one timeframe's bars (open, high, low, close, volume, time) with higher
+timeframes and sessions built from them, ta.* helpers, plot/hline/line/label drawings, and signal(i, side, {{ sl, tp,
+entry, wait }}) with one stop, one or two targets, and orders that wait a number of bars for their price.
 
 THE LANGUAGE
 {reference}
@@ -67,9 +132,10 @@ SORT EVERY PART OF THE TEXT INTO ONE OF THREE LISTS
   breaks of structure, order blocks, fair value gaps, liquidity sweeps, equal highs and lows, premium and discount), chart
   patterns, trendlines from swings, candle patterns, indicator divergences, entry, stop and target rules, a minimum
   risk-reward, and a confluence score in the signal's label all belong here. Higher timeframes can be built from these bars.
-- "adapted": what must change to be testable, each saying the change in one sentence: several targets become one target
-  per signal; a pending (limit or stop) order becomes a signal on the bar where price reaches the entry, cancelled after a
-  number of bars; a timeframe below 15 minutes becomes 15 minutes; a broker's spread becomes the test's cost per trade.
+- "adapted": what must change to be testable, each saying the change in one sentence: more than two targets become two
+  (the first closes part of the position); a pending (limit or stop) order with no expiry gets a number of bars to wait;
+  a trailing stop becomes a fixed stop or an exit condition; a timeframe below 15 minutes becomes 15 minutes; a broker's
+  spread becomes the test's cost per trade.
 - "dropped": what no script can do, each with "why": the format and wording of an analyst's report, judgement calls
   (a market phase, ENTRY VALID / WAIT decisions, confidence in words), news and economic calendars, position size as a
   share of equity, reading screenshots, and any data not in the bars.
@@ -139,10 +205,14 @@ HOW TO WRITE IT
 - Work on whole arrays: ta.* helpers, then one or more for loops over i. Keep state (the last swings, a waiting entry) in
   variables updated inside the loop; never read a bar after i to decide a signal at i.
 - ta.pivothigh and ta.pivotlow give a pivot only on the bar where it is confirmed: use that bar, not the pivot's own.
-- A waiting entry (a limit or stop order) is a signal on the first later bar whose range reaches the entry, with entry set
-  to that price; drop it when it waits longer than its limit or when price breaks its invalidation first.
-- One stop and one target per signal; for BUY sl < entry < tp, for SELL tp < entry < sl. Skip a signal whose risk-reward is
-  below the rules' minimum, and never call signal() with a NaN price.
+- A waiting entry (a limit or stop order) is signal(i, side, {{ entry, wait: N, ... }}) on the bar the order is placed,
+  with N the bars it may wait; the runtime fills it on the first later bar that reaches the entry, or drops it. Without
+  wait, an entry must lie inside bar i.
+- One stop and one or two targets per signal: tp: [tp1, tp2] with size (the part closed at tp1), the stop moving to the
+  fill price after tp1 (breakeven, the default). For BUY sl < entry < tp1 <= tp2, for SELL the reverse. Skip a signal whose
+  risk-reward is below the rules' minimum, and never call signal() with a NaN price.
+- One position at a time is exclusive: true. Sessions are session("HHMM-HHMM", tz)[i]; higher timeframes htf(minutes)
+  with h.closed(series), never a bar that has not closed.
 - Draw the levels the rules use with plot() as step lines (a value per bar, NaN where there is none), at most 8 plots.
 - Put the setup's name and its confluence score (LOW, MEDIUM or HIGH) in the signal's label when the rules ask for one.
 - A short comment at the top says what the script does and what the rules left out. Comments in {language}.
@@ -165,14 +235,49 @@ def _reply_text(llm, prompt: str) -> str:
 
 def _code_of(text: str) -> str:
     match = _FENCE.search(text)
-    code = (match.group(1) if match else text).strip()
+    # A reply with a report but no code block holds no script, only the report.
+    code = (match.group(1) if match else "" if _JSON_FENCE.search(text) else text).strip()
     if not code:
         raise ValueError("model tidak mengembalikan kode")
     return code
 
 
-def translate_pine(llm, pine: str, reference: str, example: str, language: str) -> str:
-    return _code_of(_reply_text(llm, _prompt(pine, reference, example, language)))
+def _report_of(text: str) -> dict | None:
+    """The translation's report as the page shows it: known keys only, strings clipped; None when there is none."""
+    match = _JSON_FENCE.search(text)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    def pairs(items: object, key: str) -> list[dict]:
+        out = []
+        for item in items if isinstance(items, list) else []:
+            item = item if isinstance(item, dict) else {"what": item}
+            what = _clip(item.get("what"), _MAX_TEXT)
+            if what:
+                out.append({"what": what, key: _clip(item.get(key), _MAX_TEXT)})
+        return out[:_MAX_CHANGES]
+
+    kept = [t for t in (_clip(x, _MAX_TEXT) for x in data.get("kept") or [] if isinstance(data.get("kept"), list)) if t]
+    return {"kept": kept[:_MAX_KEPT], "changed": pairs(data.get("changed"), "how"), "dropped": pairs(data.get("dropped"), "why")}
+
+
+def translate_pine(llm, pine: str, reference: str, dictionary: str, example: str, language: str) -> tuple[str, dict | None]:
+    """A Pine script in the app's language, and the report of what was kept, changed and dropped."""
+    reply = _reply_text(llm, _prompt(pine, reference, dictionary, example, language))
+    return _code_of(reply), _report_of(reply)
+
+
+def repair_script(llm, source: str, text: str, rules: list[str], code: str, problems: list[str], reference: str,
+                  dictionary: str, language: str) -> tuple[str, dict | None]:
+    """A draft that failed the server's check, fixed; with a Pine source, its updated report too."""
+    reply = _reply_text(llm, _repair_prompt(source, text, rules, code, problems, reference, dictionary, language))
+    return _code_of(reply), _report_of(reply) if source == "pine" else None
 
 
 def plan_from_prompt(llm, text: str, reference: str, language: str) -> dict:

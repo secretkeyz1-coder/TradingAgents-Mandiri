@@ -22,7 +22,10 @@ function start(): Worker {
   return w;
 }
 
-export function runInSandbox(code: string, bars: ScriptBar[], inputs?: Record<string, number | boolean | string>): Promise<ScriptRun> {
+/** The bars' timeframe ("15m", "1h", …) and the zone their times are written in (a series' exchangeTimezone). */
+export type SandboxContext = { timeframe?: string; tz?: string | null };
+
+export function runInSandbox(code: string, bars: ScriptBar[], inputs?: Record<string, number | boolean | string>, context: SandboxContext = {}): Promise<ScriptRun> {
   worker ??= start();
   const id = ++seq;
   return new Promise((resolve) => {
@@ -40,6 +43,6 @@ export function runInSandbox(code: string, bars: ScriptBar[], inputs?: Record<st
       clearTimeout(timer);
       resolve(run);
     });
-    worker!.postMessage({ id, code, bars, inputs });
+    worker!.postMessage({ id, code, bars, inputs, timeframe: context.timeframe, tz: context.tz });
   });
 }

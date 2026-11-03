@@ -225,6 +225,13 @@
       "when": 1793665008254,
       "tag": "0031_spent_quota",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793724576357,
+      "tag": "0032_signal_result_r",
+      "breakpoints": true
     }
   ]
 }

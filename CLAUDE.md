@@ -51,6 +51,11 @@ Two products live in this repo:
   defaults live once, in `shared/scalper.ts`, which the chart and the signal notifications both read.
 - A trade counts only at prices the market traded (ADR 0023): an `entry` its bar never reached is no trade, and a stop
   a bar opens past fills at that open. Keep it so in the script runtime (`shared/script.ts`) and in both engine copies.
+  An order with `wait` fills on the first later bar that reaches it; a stop order's fill bar may take a target, a limit
+  order's may not (ADR 0024).
+- The script language, the editor's Panduan and the translator's Pine dictionary come from one place: change the
+  language in `shared/script.ts` together with `SCRIPT_REFERENCE` and `shared/script-guide.ts`, so what members read and
+  what the AI is told stay the same.
 
 ## Where things live
 | Need | Look at |
@@ -63,6 +68,8 @@ Two products live in this repo:
 | One-instance work | `server/src/locks.ts` (scheduler leader, leases), `limits.ts` (rate limits), `shared.ts` (shared values) |
 | Sign-in, sessions, 2FA | `server/src/auth.ts`, `server/src/totp.ts` |
 | Pro workspace | `client/src/lib/workspace/`, chart in `client/src/lib/DecisionChart.svelte` |
+| Indicator scripts | runtime `shared/script.ts`, guide and Pine dictionary `shared/script-guide.ts`, templates `shared/script-templates.ts`, editor `client/src/lib/chart/ScriptEditor.svelte` |
+| AI script writer | routes `server/src/scripts.ts` (streamed), draft check `server/src/script-check.ts`, prompts `web/worker/script_translate.py` |
 | Pemula screen | `client/src/lib/beginner/` |
 | Admin console | `client/src/lib/admin/` |
 | Public pages | `client/index.html`, `client/<page>/index.html`, `client/src/site/` |

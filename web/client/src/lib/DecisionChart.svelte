@@ -28,9 +28,9 @@
   import TradePlan, { type Plan } from './chart/TradePlan.svelte';
   import IndicatorPanel from './chart/IndicatorPanel.svelte';
   import ScriptsMenu from './chart/ScriptsMenu.svelte';
-  import { runInSandbox } from './indicators/script-host';
+  import { runInSandbox, type SandboxContext } from './indicators/script-host';
   import { scripts } from './stores/scripts.svelte';
-  import { toScriptBars, type ScriptRun } from '../../../shared/script';
+  import { toScriptBars, type ScriptLine, type ScriptRun, type ScriptSignal } from '../../../shared/script';
   import Navigator from './chart/Navigator.svelte';
   import { BandPrimitive } from './chart/rectangle';
   import { ShapesPrimitive, type Shape } from './chart/shapes';
@@ -290,6 +290,7 @@
     candleSeries.attachPrimitive(pobBand);
     candleSeries.attachPrimitive(fibBand);
     candleSeries.attachPrimitive(shapes);
+    candleSeries.attachPrimitive(scriptShapes);
     chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
       if (r) visible = { from: r.from, to: r.to };
     });
@@ -512,6 +513,8 @@
   // the window the server's alerts and the agent read (a year of bars; 15m: a month), whatever
   // range the chart shows, so a script gives the same signals on the chart as in Telegram.
   let scriptCandles = $state<Candle[]>([]);
+  /** Those bars' timeframe and exchange zone, which a script's `timeframe`, `epoch` and `session()` read. */
+  let scriptContext = $state.raw<SandboxContext>({});
   $effect(() => {
     if (!tools) return;
     const s = symbol;
@@ -521,7 +524,9 @@
     api
       .candles(s, '1y', tf, v)
       .then((series) => {
-        if (!stale) scriptCandles = series.candles;
+        if (stale) return;
+        scriptCandles = series.candles;
+        scriptContext = { timeframe: tf, tz: series.exchangeTimezone };
       })
       .catch(() => {
         if (!stale) scriptCandles = [];
@@ -531,7 +536,9 @@
     };
   });
   $effect(() => {
-    if (tools) scripts.bars = toScriptBars(scriptCandles);
+    if (!tools) return;
+    scripts.bars = toScriptBars(scriptCandles);
+    scripts.context = scriptContext;
   });
   /** Bars the chart shows, so script marks land only where a candle is drawn. */
   const shownTimes = $derived(new Set(candles.map((c) => c.time)));
@@ -553,12 +560,13 @@
   $effect(() => {
     const list = enabledScripts.map((s) => ({ id: s.id, code: s.code }));
     const bars = toScriptBars(scriptCandles);
+    const context = scriptContext;
     if (!list.length || !bars.length) {
       scriptRuns = {};
       return;
     }
     let stale = false;
-    Promise.all(list.map((s) => runInSandbox(s.code, bars).then((run) => [s.id, run] as const))).then((entries) => {
+    Promise.all(list.map((s) => runInSandbox(s.code, bars, undefined, context).then((run) => [s.id, run] as const))).then((entries) => {
       if (!stale) scriptRuns = Object.fromEntries(entries);
     });
     return () => {
@@ -567,7 +575,12 @@
   });
   let scriptLines: IPriceLine[] = [];
   let scriptSeries: ISeriesApi<'Line'>[] = [];
+  /** The scripts' line() and label() drawings. */
+  const scriptShapes = new ShapesPrimitive();
   const PLOT_TOKENS = ['--color-warning', '--color-info', '--color-accent', '--color-success', '--color-error', '--color-secondary'];
+  const DASH: Record<ScriptLine['style'], number[]> = { solid: [], dashed: [6, 4], dotted: [2, 3] };
+  /** Where an open script trade's stop stands now: at the fill once the first of two targets moved it to breakeven. */
+  const stopNow = (o: ScriptSignal) => (o.tp1Index !== null && o.breakeven && o.fill !== null ? o.fill : o.stopLoss);
   $effect(() => {
     if (!mounted) return;
     const p = palette;
@@ -576,11 +589,26 @@
     for (const x of scriptSeries) chart!.removeSeries(x);
     scriptLines = [];
     scriptSeries = [];
+    const drawn: Shape[] = [];
+    // A script's bars can reach further back than the chart shows: its lines count their bars from the newest bar
+    // both have, so a line that starts off the chart still crosses it; a label shows only on a bar the chart has.
+    const anchorAt = scriptCandles.findLastIndex((c) => shownTimes.has(c.time));
+    const plain = tokenColor('--color-info');
     let colorAt = 0;
     for (const s of enabledScripts) {
       const run = runs[s.id];
-      if (!run?.ok || run.result.plots.length === 0 && run.result.hlines.length === 0 && run.result.signals.length === 0) continue;
+      if (!run?.ok) continue;
       const r = run.result;
+      if (anchorAt >= 0) {
+        const anchor = toTime(scriptCandles[anchorAt].time);
+        for (const l of r.lines) {
+          drawn.push({ type: 'segment', anchor, from: l.x1 - anchorAt, to: l.x2 - anchorAt, y1: l.y1, y2: l.y2, color: l.color ?? plain, width: l.width, dash: DASH[l.style], extend: l.extend === 'right' });
+        }
+      }
+      for (const l of r.labels) {
+        const at = scriptCandles[l.index]?.time;
+        if (at && shownTimes.has(at)) drawn.push({ type: 'label', time: toTime(at), price: l.price, color: l.color ?? plain, text: l.text, anchor: l.position });
+      }
       for (const plot of r.plots) {
         const series = chart!.addSeries(LineSeries, {
           color: plot.color ?? tokenColor(PLOT_TOKENS[colorAt++ % PLOT_TOKENS.length]),
@@ -603,11 +631,20 @@
       }
       const open = r.signals.findLast((x) => x.outcome === 'open');
       if (open) {
-        scriptLines.push(candleSeries!.createPriceLine({ price: open.entry, color: p.accent, lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `${s.name} ${open.side}` }));
-        scriptLines.push(candleSeries!.createPriceLine({ price: open.stopLoss, color: p.down, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'SL' }));
-        scriptLines.push(candleSeries!.createPriceLine({ price: open.takeProfit, color: p.up, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'TP' }));
+        const level = (price: number, color: string, style: LineStyle, title: string) =>
+          scriptLines.push(candleSeries!.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+        // An order still waiting for its price is drawn dashed until it fills.
+        if (open.fillIndex === null) level(open.entry, p.accent, LineStyle.Dashed, `${s.name} order ${open.order} ${open.side}`);
+        else level(open.fill ?? open.entry, p.accent, LineStyle.Solid, `${s.name} ${open.side}`);
+        const stop = stopNow(open);
+        level(stop, p.down, LineStyle.Dashed, stop === open.stopLoss ? 'SL' : 'SL impas');
+        if (open.targets.length === 2) {
+          if (open.tp1Index === null) level(open.targets[0], p.up, LineStyle.Dashed, 'TP1');
+          level(open.targets[1], p.up, LineStyle.Dashed, 'TP2');
+        } else level(open.takeProfit, p.up, LineStyle.Dashed, 'TP');
       }
     }
+    scriptShapes.set(drawn, getComputedStyle(container).fontFamily);
   });
   const scriptCards = $derived(
     enabledScripts.map((s) => {
@@ -635,7 +672,15 @@
     for (const card of scriptCards) {
       if ('open' in card && card.open) {
         const o = card.open;
-        out.push({ key: card.id, source: card.name, side: o.side, entry: o.entry, stopLoss: o.stopLoss, takeProfit: o.takeProfit, time: o.time });
+        const note =
+          o.fillIndex === null
+            ? `order ${o.order}, menunggu harga sampai ${o.wait} candle setelah sinyal`
+            : o.tp1Index !== null
+              ? `TP1 sudah kena${o.breakeven ? ', SL di titik impas' : ''}`
+              : o.targets.length === 2
+                ? `TP1 ${priceText(o.targets[0])} menutup ${Math.round(o.size * 100)}%${o.breakeven ? ', lalu SL ke titik impas' : ''}`
+                : undefined;
+        out.push({ key: card.id, source: card.name, side: o.side, entry: o.fill ?? o.entry, stopLoss: stopNow(o), takeProfit: o.takeProfit, time: o.time, note });
       }
     }
     return out.sort((a, b) => b.time.localeCompare(a.time));
@@ -645,7 +690,15 @@
     shows('scalper', indicators.showScalper) || shows('pob', indicators.showPob) || shows('fib', indicators.showFib) || enabledScripts.length > 0,
   );
 
-  const OUTCOME: Record<string, string> = { win: 'TP kena', loss: 'SL kena', exit: 'keluar oleh kondisi skrip', expired: 'kedaluwarsa', open: 'masih berjalan' };
+  const OUTCOME: Record<string, string> = {
+    win: 'TP kena',
+    loss: 'SL kena',
+    partial: 'TP1 kena, sisanya tertutup di SL atau titik impas',
+    exit: 'keluar oleh kondisi skrip',
+    expired: 'kedaluwarsa',
+    unfilled: 'order tidak terisi',
+    open: 'masih berjalan',
+  };
   /** "28 Okt 21:45" for intraday bars, the date for daily ones. */
   const stamp = (t: string) => {
     const d = new Date(`${day(t)}T00:00:00Z`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -676,7 +729,15 @@
     fibOpen ? live(fibOpen.side) : fibRes?.active ? { text: `menunggu pullback ${fibRes.active.dir === 1 ? 'Beli' : 'Jual'}`, tone: 'muted' } : { text: 'menunggu kaki baru', tone: 'muted' },
   );
   const scriptLabel = (card: (typeof scriptCards)[number]): Label =>
-    'loading' in card ? { text: 'menjalankan…', tone: 'muted' } : 'error' in card ? { text: 'skrip error', tone: 'down' } : card.open ? live(card.open.side) : { text: 'tidak ada sinyal aktif', tone: 'muted' };
+    'loading' in card
+      ? { text: 'menjalankan…', tone: 'muted' }
+      : 'error' in card
+        ? { text: 'skrip error', tone: 'down' }
+        : !card.open
+          ? { text: 'tidak ada sinyal aktif', tone: 'muted' }
+          : card.open.fillIndex === null
+            ? { text: `order ${SIDE[card.open.side]} menunggu`, tone: card.open.side === 'BUY' ? 'up' : 'down' }
+            : live(card.open.side);
   /** Under the toolbar when indicators are on but none has an open setup: why the plan card is missing. */
   const noPlan = $derived.by(() => {
     const st = scalperState;
@@ -869,11 +930,17 @@
     for (const s of enabledScripts) {
       const run = scriptRuns[s.id];
       if (!run?.ok) continue;
+      // Marks carry the script's name, so two scripts can be told apart; one that writes its own labels gets bare marks.
+      const name = run.result.labels.length ? '' : s.name.slice(0, 12);
+      const named = (what: string) => (name ? `${name} · ${what}` : what);
       for (const sig of run.result.signals) {
-        const at = scriptCandles[sig.index]?.time;
+        // A position is marked where it opened; an order is marked where it was placed: a dot when it never filled.
+        const at = scriptCandles[sig.fillIndex ?? sig.index]?.time;
         if (!at || !shownTimes.has(at)) continue;
         const buy = sig.side === 'BUY';
-        list.push({ at, time: toTime(at), position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: s.name.slice(0, 12) });
+        const position = buy ? 'belowBar' : 'aboveBar';
+        if (sig.outcome === 'unfilled') list.push({ at, time: toTime(at), position, shape: 'circle', color: palette.neutral, text: named('tak terisi') });
+        else list.push({ at, time: toTime(at), position, shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.up : palette.down, text: sig.fillIndex === null ? named('order') : name });
       }
     }
     if (jumpMark && candles.some((c) => c.time === jumpMark)) {
@@ -1057,15 +1124,22 @@
             <p class="font-mono text-error">{card.error}</p>
           {:else}
             {#if card.open}
-              <p class="font-medium" class:text-success={card.open.side === 'BUY'} class:text-error={card.open.side === 'SELL'}>Aktif: {card.open.label}</p>
-              <p class="font-mono tabular-nums text-base-content/80">E {priceText(card.open.entry)} · SL {priceText(card.open.stopLoss)} · TP {priceText(card.open.takeProfit)}</p>
+              {@const o = card.open}
+              <p class="font-medium" class:text-success={o.side === 'BUY'} class:text-error={o.side === 'SELL'}>
+                {o.fillIndex === null ? `Order ${o.order} menunggu (berlaku ${o.wait} candle)` : 'Aktif'}: {o.label}
+              </p>
+              <p class="font-mono tabular-nums text-base-content/80">
+                E {priceText(o.fill ?? o.entry)} · SL {priceText(stopNow(o))}{stopNow(o) === o.stopLoss ? '' : ' (impas)'} · {o.targets.length === 2
+                  ? `TP1 ${priceText(o.targets[0])}${o.tp1Index === null ? '' : ' ✓'} · TP2 ${priceText(o.targets[1])}`
+                  : `TP ${priceText(o.takeProfit)}`}
+              </p>
             {:else if card.last}
               <p class="text-base-content/70">Tidak ada sinyal aktif. Terakhir: {card.last.label}, {card.last.time}, {OUTCOME[card.last.outcome]}.</p>
             {:else}
               <p class="text-base-content/70">Belum ada sinyal di candle yang dimuat.</p>
             {/if}
             <p class="font-mono tabular-nums text-base-content/70">
-              {card.stats.count} sinyal · {card.stats.tp} TP · {card.stats.sl} SL{card.stats.exits ? ` · ${card.stats.exits} keluar` : ''}{card.stats.unfilled ? ` · ${card.stats.unfilled} tidak terisi` : ''}{card.stats.avgR == null ? '' : ` · ${card.stats.avgR.toFixed(2).replace('.', ',')}R`}
+              {card.stats.count} sinyal · {card.stats.tp} TP · {card.stats.sl} SL{card.stats.partial ? ` · ${card.stats.partial} TP1 saja` : ''}{card.stats.exits ? ` · ${card.stats.exits} keluar` : ''}{card.stats.unfilled ? ` · ${card.stats.unfilled} tidak terisi` : ''}{card.stats.avgR == null ? '' : ` · ${card.stats.avgR.toFixed(2).replace('.', ',')}R`}
             </p>
           {/if}
         </section>

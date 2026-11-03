@@ -118,6 +118,8 @@ class Readings:
         self.days = sorted(set(days))
         self.at: dict[tuple[str, str], list[tuple[dict, dict]]] = {}
         self._bars: dict[tuple[str, str], list[dict] | str] = {}
+        # The zone each series' times are written in, which a script's sessions read.
+        self._tz: dict[tuple[str, str], str | None] = {}
         for ticker in dict.fromkeys(tickers):
             for pick in picks:
                 found = self._read(pick, ticker)
@@ -132,6 +134,7 @@ class Readings:
                 answer = _cli({"mode": "bars", "symbol": ticker, "timeframe": timeframe,
                                "days": span + WINDOW_DAYS[timeframe] + 1}, timeout=180)
                 self._bars[(ticker, timeframe)] = answer["bars"]
+                self._tz[(ticker, timeframe)] = answer.get("tz")
             except Exception as exc:  # the run goes on without this indicator
                 self._bars[(ticker, timeframe)] = f"candle {timeframe} tidak bisa dimuat: {exc}"
         return self._bars[(ticker, timeframe)]
@@ -148,7 +151,7 @@ class Readings:
                 out[day] = {"error": f"belum ada candle {timeframe} sampai {day}"}
         todo = [day for day in self.days if day not in out]
         if "code" in pick and todo:
-            job = {"mode": "script", "code": pick["code"], "timeframe": timeframe, "bars": bars,
+            job = {"mode": "script", "code": pick["code"], "timeframe": timeframe, "tz": self._tz.get((ticker, timeframe)), "bars": bars,
                    "cuts": [{"day": day, "start": cuts[day][0], "end": cuts[day][1]} for day in todo]}
             try:
                 out.update(_cli(job, timeout=60 + 30 * len(todo))["at"])

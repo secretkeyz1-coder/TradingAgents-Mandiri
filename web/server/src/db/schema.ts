@@ -395,8 +395,12 @@ export const indicatorGrants = pgTable(
 
 /** Built-in engines, "script:<user_scripts.id>" for a user's own script, or "catalog:<indicators.id>" for one an admin published. */
 export type SignalIndicator = "pob" | "scalper" | "fib" | `script:${string}` | `catalog:${string}`;
-/** win = target, loss = stop, exit = a script's exit condition, expired = time limit, replaced = a newer signal. */
-export type SignalStatus = "open" | "win" | "loss" | "exit" | "expired" | "replaced";
+/**
+ * win = target (the last of two), loss = stop, partial = the first of two targets and then the stop or breakeven,
+ * exit = a script's exit condition, expired = time limit, unfilled = an order that never filled (shared/script.ts),
+ * replaced = a newer signal.
+ */
+export type SignalStatus = "open" | "win" | "loss" | "partial" | "exit" | "expired" | "unfilled" | "replaced";
 
 /** A user's request to hear about new signals of one indicator on one symbol and timeframe. */
 export const signalAlerts = pgTable(
@@ -453,6 +457,11 @@ export const signalEvents = pgTable(
     takeProfit: doublePrecision("take_profit").notNull(),
     status: text("status").$type<SignalStatus>().notNull().default("open"),
     exitTime: text("exit_time"),
+    /**
+     * The result in R as the run closed it: both targets of two, a fill at a bar's open. Null while open, for an order
+     * that never filled, and on rows closed before it was kept, whose R comes from their levels instead (alerts.ts rOf).
+     */
+    r: doublePrecision("r"),
     notifiedAt: timestamp("notified_at", { withTimezone: true }),
     closeNotifiedAt: timestamp("close_notified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
