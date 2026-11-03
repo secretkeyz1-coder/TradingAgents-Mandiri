@@ -1,8 +1,9 @@
 // A user's own indicator scripts: stored per account, run on the chart (browser)
-// and here (alerts, the agent's CLI) in the same sandbox, and translated from
-// Pine Script by the AI on request.
+// and here (alerts, the agent's CLI) in the same sandbox, and written by the AI on
+// request: translated from Pine Script, or from a prompt in plain words in two
+// steps (a plan the user ticks, then the script from the rules kept).
 import { and, asc, eq, like } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { SCRIPT_LIMITS, SCRIPT_REFERENCE, SCRIPT_TEMPLATES } from "../../shared/script";
 import { track } from "./activity";
@@ -86,20 +87,34 @@ scriptsApi.post("/scripts/run", async (c) => {
   }
 });
 
-const translateSchema = z.object({
-  pine: z.string().trim().min(20, "Tempel skrip Pine-nya").max(60_000),
+const modelFields = {
   provider: z.string().min(1).max(40),
   quickModel: z.string().trim().min(1).max(120),
   deepModel: z.string().trim().min(1).max(120),
   language: z.string().trim().min(1).max(40).default("Indonesian"),
   backendUrl: z.url().max(300).optional().or(z.literal("").transform(() => undefined)),
+};
+type ModelFields = z.infer<z.ZodObject<typeof modelFields>>;
+
+const translateSchema = z.object({ pine: z.string().trim().min(20, "Tempel skrip Pine-nya").max(60_000), ...modelFields });
+const promptText = z.string().trim().min(20, "Tulis prompt atau aturanmu, minimal 20 huruf").max(20_000, "Prompt paling panjang 20.000 huruf");
+export const planSchema = z.object({ prompt: promptText, ...modelFields });
+export const composeSchema = z.object({
+  prompt: promptText,
+  rules: z.array(z.string().trim().min(1).max(300)).min(1, "Pilih minimal satu aturan").max(30, "Paling banyak 30 aturan"),
+  ...modelFields,
 });
 
-/** Pine Script to this app's script language, by the user's deep model. Counts as one chat message. */
-scriptsApi.post("/scripts/translate", async (c) => {
-  const parsed = translateSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: parsed.error.issues.map((i) => i.message).join("; ") }, 400);
-  const job = await modelsFor(c.get("user"), parsed.data);
+/** The script the translator copies the shape of. */
+const EXAMPLE = (SCRIPT_TEMPLATES.find((t) => t.name === "EMA cross + ATR") ?? SCRIPT_TEMPLATES[0]).code;
+
+/**
+ * One job of the worker's translate command (a Pine translation, or a prompt's plan or script) on the user's deep model,
+ * which for a member is the server's (models.ts). Counts as one chat message. Answers `{ [want]: … }` from the
+ * worker's event of that name, else the reason it stopped.
+ */
+async function translateReply(c: Context<AppEnv>, fields: ModelFields, task: Record<string, unknown>, want: "code" | "plan") {
+  const job = await modelsFor(c.get("user"), fields);
   const provider = (await getCatalog()).providers.find((p) => p.key === job.provider);
   if (!provider) return c.json({ error: `Provider tidak dikenal: ${job.provider}` }, 400);
   if (provider.needsUrl && !job.backendUrl) return c.json({ error: `${provider.label} butuh Backend URL` }, 400);
@@ -108,14 +123,43 @@ scriptsApi.post("/scripts/translate", async (c) => {
   const quota = await overLimit(c.get("user"), "chat");
   if (quota) return c.json({ error: quota }, 429);
 
-  let code = "";
+  let out: unknown = null;
   let error = "";
-  const handle = runCommand("translate", { ...job, reference: SCRIPT_REFERENCE, example: (SCRIPT_TEMPLATES.find((t) => t.name === "EMA cross + ATR") ?? SCRIPT_TEMPLATES[0]).code }, { userId: c.get("user").id, kind: "translate" }, async (e) => {
-    if (e.type === "code") code = String(e.code ?? "");
+  const handle = runCommand("translate", { ...job, ...task, reference: SCRIPT_REFERENCE, example: EXAMPLE }, { userId: c.get("user").id, kind: "translate" }, async (e) => {
+    if (e.type === want) out = want === "code" ? String(e.code ?? "") || null : (e.plan ?? null);
     else if (e.type === "error") error = String(e.message ?? "");
   });
   const timer = setTimeout(() => handle.kill(), 5 * 60_000);
   const { exitCode, stderrTail } = await handle.done.finally(() => clearTimeout(timer));
-  if (code) return c.json({ code });
+  if (out) return c.json({ [want]: out });
   return c.json({ error: error || `Penerjemah berhenti tanpa hasil (exit ${exitCode}). ${stderrTail.trim().split("\n").slice(-2).join(" ")}` }, 502);
+}
+
+const invalid = (c: Context<AppEnv>, issues: z.core.$ZodIssue[]) => c.json({ error: issues.map((i) => i.message).join("; ") }, 400);
+
+/** Pine Script to this app's script language, by the user's deep model. Counts as one chat message. */
+scriptsApi.post("/scripts/translate", async (c) => {
+  const parsed = translateSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return invalid(c, parsed.error.issues);
+  const { pine, ...fields } = parsed.data;
+  return translateReply(c, fields, { mode: "pine", pine }, "code");
+});
+
+/**
+ * A prompt or rules in plain words, step one: a plan of rules a script can compute from prices, rules changed so they can be
+ * tested, and what no script can do, for the user to tick. Counts as one chat message.
+ */
+scriptsApi.post("/scripts/plan", async (c) => {
+  const parsed = planSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return invalid(c, parsed.error.issues);
+  const { prompt, ...fields } = parsed.data;
+  return translateReply(c, fields, { mode: "plan", prompt }, "plan");
+});
+
+/** Step two: a script from the rules the user kept, with the prompt for context. Counts as one chat message. */
+scriptsApi.post("/scripts/compose", async (c) => {
+  const parsed = composeSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return invalid(c, parsed.error.issues);
+  const { prompt, rules, ...fields } = parsed.data;
+  return translateReply(c, fields, { mode: "compose", prompt, rules }, "code");
 });

@@ -505,23 +505,35 @@ def signals(job: dict) -> int:
 
 
 def translate(job: dict) -> int:
-    """Pine Script to the app's indicator script language, on the deep model tier (script_translate.py)."""
-    from script_translate import translate_pine
+    """Pine Script (mode "pine"), or a prompt in two steps ("plan", then "compose" from the rules kept), to the app's
+    indicator script language, on the deep model tier (script_translate.py)."""
+    from script_translate import plan_from_prompt, script_from_rules, translate_pine
 
     from tradingagents.dataflows.config import run_config
     from tradingagents.llm_clients import create_tier_client
 
+    mode = job.get("mode") or "pine"
+    language = job.get("language") or "Indonesian"
+    reference, example = job.get("reference") or "", job.get("example") or ""
     config = _build_config({**job, "depth": 1})
     config["llm_timeout"] = float(os.environ.get("TA_AGENT_LLM_TIMEOUT", "120")) * 2
     config["llm_max_retries"] = 1
     with run_config(config):
         llm = create_tier_client(config, "deep").get_llm()
         try:
-            code = translate_pine(llm, job["pine"], job.get("reference") or "", job.get("example") or "", job.get("language") or "Indonesian")
+            if mode == "plan":
+                plan = plan_from_prompt(llm, job["prompt"], reference, language)
+            elif mode == "compose":
+                code = script_from_rules(llm, job["prompt"], list(job.get("rules") or []), reference, example, language)
+            else:
+                code = translate_pine(llm, job["pine"], reference, example, language)
         except Exception as exc:
             emit("error", message=_provider_error(exc, job["deepModel"], config["backend_url"], config["llm_timeout"]))
             return 1
-    emit("code", code=code)
+    if mode == "plan":
+        emit("plan", plan=plan)
+    else:
+        emit("code", code=code)
     emit("done")
     return 0
 

@@ -217,10 +217,71 @@ def agent(job: dict) -> int:
     return 0
 
 
+DEMO_PLAN = {
+    "summary": "(demo) Prompt ini berisi aturan struktur pasar yang bisa dihitung dari harga, dan cara AI menulis analisa yang tidak bisa jadi skrip.",
+    "rules": [
+        {"text": "Swing high dan swing low yang sudah terkonfirmasi", "param": "Pivot 5 candle"},
+        {"text": "Break of structure: close menembus swing terakhir", "param": None},
+        {"text": "Entry saat harga kembali ke level yang ditembus; batal bila terlalu lama", "param": "Tunggu maks 12 candle"},
+        {"text": "SL di balik swing berlawanan, TP pada risk-reward minimum", "param": "RR minimum 2"},
+    ],
+    "adapted": ["TP1, TP2 dan TP3 menjadi satu target per sinyal.", "Buy limit dan sell limit menjadi sinyal di candle saat harga menyentuh entry."],
+    "dropped": [
+        {"text": "Format CALL AI AGENT dan alasan entry", "why": "Tulisan analisa adalah tugas Tanya AI, bukan skrip."},
+        {"text": "Hindari berita ekonomi berdampak tinggi", "why": "Aplikasi belum punya data kalender ekonomi."},
+    ],
+}
+
+DEMO_SCRIPT = """// (demo) Dari rencana: swing terkonfirmasi, break of structure, lalu entry saat harga kembali ke level yang ditembus.
+// Tidak ikut: format analisa AI dan filter berita.
+const len = input("Panjang pivot", 5);
+const rr = input("RR minimum", 2);
+const wait = input("Tunggu maks (candle)", 12);
+const ph = ta.pivothigh(len);
+const pl = ta.pivotlow(len);
+const swingHigh = new Array(n).fill(NaN);
+const swingLow = new Array(n).fill(NaN);
+let lastHigh = NaN, lastLow = NaN, pending = null;
+for (let i = 1; i < n; i++) {
+  if (!isNaN(ph[i])) lastHigh = ph[i];
+  if (!isNaN(pl[i])) lastLow = pl[i];
+  swingHigh[i] = lastHigh;
+  swingLow[i] = lastLow;
+  if (!isNaN(lastHigh) && close[i] > lastHigh && close[i - 1] <= lastHigh) pending = { side: "BUY", level: lastHigh, stop: lastLow, since: i };
+  else if (!isNaN(lastLow) && close[i] < lastLow && close[i - 1] >= lastLow) pending = { side: "SELL", level: lastLow, stop: lastHigh, since: i };
+  else if (pending && i - pending.since > wait) pending = null;
+  else if (pending && pending.side === "BUY" && low[i] <= pending.level && pending.stop < pending.level) {
+    const risk = pending.level - pending.stop;
+    signal(i, "BUY", { entry: pending.level, sl: pending.stop, tp: pending.level + rr * risk, label: "Retest BOS" });
+    pending = null;
+  } else if (pending && pending.side === "SELL" && high[i] >= pending.level && pending.stop > pending.level) {
+    const risk = pending.stop - pending.level;
+    signal(i, "SELL", { entry: pending.level, sl: pending.stop, tp: pending.level - rr * risk, label: "Retest BOS" });
+    pending = null;
+  }
+}
+plot(swingHigh, "Swing high", "teal");
+plot(swingLow, "Swing low", "orange");
+"""
+
+
+def translate(job: dict) -> int:
+    """Without a model: a prompt's plan and its script are fixed examples. Pine still goes to the real translator."""
+    mode = job.get("mode")
+    if mode == "plan":
+        emit("plan", plan=DEMO_PLAN)
+    elif mode == "compose":
+        emit("code", code=DEMO_SCRIPT)
+    else:
+        return ta_worker.translate(job)
+    emit("done")
+    return 0
+
+
 if __name__ == "__main__":
     command = sys.argv[1] if len(sys.argv) > 1 else ""
-    if command in ("run", "backtest", "agent"):
-        code = {"run": run, "backtest": backtest, "agent": agent}[command](json.loads(sys.stdin.read()))
+    if command in ("run", "backtest", "agent", "translate"):
+        code = {"run": run, "backtest": backtest, "agent": agent, "translate": translate}[command](json.loads(sys.stdin.read()))
         # Made-up tokens, so the server's token meter can be tried without a model (server/src/tokens.ts).
         emit("usage", models={"demo-model": {"input": 1800, "output": 400}})
         sys.exit(code)

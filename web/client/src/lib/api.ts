@@ -308,6 +308,15 @@ export type BusinessReport = {
 
 /** A user's own indicator script (web/shared/script.ts). */
 export type UserScript = { id: string; name: string; code: string; pine: string | null; updatedAt: string };
+/** The model a script is written with (a member's is always the server's, server/src/models.ts). */
+export type ScriptModel = { provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string };
+/** A prompt split by the AI (web/worker/script_translate.py): rules to tick, rules changed to be testable, what no script can do. */
+export type ScriptPlan = {
+  summary: string;
+  rules: { text: string; param: string | null }[];
+  adapted: string[];
+  dropped: { text: string; why: string }[];
+};
 export type UserScripts = {
   items: UserScript[];
   max: number;
@@ -914,8 +923,12 @@ export const api = {
       '/scripts/run',
       { method: 'POST', body: JSON.stringify(body) },
     ),
-  translateScript: (body: { pine: string; provider: string; quickModel: string; deepModel: string; language: string; backendUrl?: string }) =>
-    request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
+  translateScript: (body: { pine: string } & ScriptModel) => request<{ code: string }>('/scripts/translate', { method: 'POST', body: JSON.stringify(body) }),
+  /** A prompt in plain words, step one: the rules a script can compute, those changed to be testable, and what it cannot do. */
+  planScript: (body: { prompt: string } & ScriptModel) => request<{ plan: ScriptPlan }>('/scripts/plan', { method: 'POST', body: JSON.stringify(body) }),
+  /** Step two: a script from the rules kept. */
+  composeScript: (body: { prompt: string; rules: string[] } & ScriptModel) =>
+    request<{ code: string }>('/scripts/compose', { method: 'POST', body: JSON.stringify(body) }),
   alerts: () => request<SignalAlerts>('/alerts'),
   alertHistory: (days: number) => request<SignalHistory>(`/alerts/history?days=${days}`),
   priceLevels: (symbol?: string) => request<PriceLevels>(`/price-alerts${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`),

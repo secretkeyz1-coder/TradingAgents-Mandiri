@@ -2,23 +2,33 @@
   // Write, test, translate and save an indicator script. A test runs it in the
   // same sandbox the chart, the alerts and the agent use, on the bars the AI
   // chart has loaded; "Bandingkan dengan server" runs it on the server too and
-  // checks both give the same signals.
-  import { api } from '../api';
+  // checks both give the same signals. The AI writes one from Pine Script, or
+  // from a prompt in two steps: a plan of rules the user ticks (what a script can
+  // compute, what was changed to be testable, what no script can do), then the
+  // script from the rules kept, tested on the chart at once.
+  import { api, type ScriptPlan } from '../api';
   import { runInSandbox } from '../indicators/script-host';
   import { settings as modelSettings } from '../stores/agent.svelte';
+  import { catalog } from '../stores/catalog.svelte';
   import { indicators } from '../stores/indicators.svelte';
   import { scripts } from '../stores/scripts.svelte';
   import { ws } from '../stores/workspace.svelte';
+  import Icon from '../workspace/Icon.svelte';
   import type { ScriptRun } from '../../../../shared/script';
 
   let id = $state<string | null>(null);
   let name = $state('');
   let code = $state('');
   let pine = $state<string | null>(null);
-  let tab = $state<'code' | 'pine' | 'help'>('code');
+  let tab = $state<'code' | 'pine' | 'prompt' | 'help'>('code');
   let pineText = $state('');
+  let promptText = $state('');
+  let plan = $state<ScriptPlan | null>(null);
+  /** Which of the plan's rules go into the script, by index. */
+  let kept = $state<boolean[]>([]);
+  const keptCount = $derived(kept.filter(Boolean).length);
   let run = $state<ScriptRun | null>(null);
-  let busy = $state<'' | 'test' | 'save' | 'compare' | 'translate' | 'delete'>('');
+  let busy = $state<'' | 'test' | 'save' | 'compare' | 'translate' | 'plan' | 'compose' | 'delete'>('');
   let note = $state('');
   let error = $state('');
   let confirmDelete = $state(false);
@@ -32,12 +42,16 @@
     run = null;
     note = error = '';
     confirmDelete = false;
+    plan = null;
     tab = 'code';
   }
   scripts.load().then(() => {
     pick(scripts.editing);
     tab = scripts.startTab;
   });
+  // The model the AI writes with comes from the form options, which only the AI panel loaded: opened from Uji strategi
+  // → Indikator, the editor said no model was set.
+  catalog.load();
 
   function useTemplate(t: { name: string; code: string }) {
     code = t.code;
@@ -122,6 +136,7 @@
 
   async function translate() {
     error = note = '';
+    await catalog.load();
     const model = modelSettings();
     if (!model) {
       error = 'Model AI belum diatur. Admin mengaturnya di Konsol admin → Pengaturan analisa.';
@@ -137,6 +152,65 @@
       busy = '';
       await test();
       note = 'Terjemahan AI siap. Periksa kodenya dan hasil uji sebelum disimpan: terjemahan bisa keliru.';
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      busy = '';
+    }
+  }
+
+  const NO_MODEL = 'Model AI belum diatur. Admin mengaturnya di Konsol admin → Pengaturan analisa.';
+
+  /** A prompt, step one: the AI's plan, every rule ticked to start with. */
+  async function makePlan() {
+    error = note = '';
+    await catalog.load();
+    const model = modelSettings();
+    if (!model) {
+      error = NO_MODEL;
+      return;
+    }
+    busy = 'plan';
+    try {
+      const out = await api.planScript({ prompt: promptText, ...model, backendUrl: model.backendUrl });
+      plan = out.plan;
+      kept = out.plan.rules.map(() => true);
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      busy = '';
+    }
+  }
+
+  /** A name from the prompt's first line, without the symbols and emoji a prompt often opens with. */
+  const nameFrom = (text: string) =>
+    (text
+      .split('\n')
+      .map((l) => l.replace(/^[^\p{L}\p{N}]+/u, '').trim())
+      .find(Boolean) ?? 'Dari prompt'
+    ).slice(0, 40);
+
+  /** Step two: the script from the rules kept, tested on the chart's bars as a Pine translation is. */
+  async function compose() {
+    if (!plan) return;
+    error = note = '';
+    await catalog.load();
+    const model = modelSettings();
+    if (!model) {
+      error = NO_MODEL;
+      return;
+    }
+    const rules = plan.rules.filter((_, i) => kept[i]).map((r) => (r.param ? `${r.text} (${r.param})` : r.text));
+    busy = 'compose';
+    try {
+      const out = await api.composeScript({ prompt: promptText, rules, ...model, backendUrl: model.backendUrl });
+      code = out.code;
+      pine = null;
+      if (!id) name = nameFrom(promptText);
+      tab = 'code';
+      busy = '';
+      await test();
+      note = 'Skrip dari prompt siap. Periksa kode dan hasil uji sebelum disimpan: tulisan AI bisa keliru.';
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -191,7 +265,8 @@
         <input id="script-name" class="input input-sm max-w-72 flex-1 font-medium" bind:value={name} maxlength="40" />
         <div class="join" role="group" aria-label="Bagian editor">
           <button class="btn btn-xs join-item" class:btn-active={tab === 'code'} onclick={() => (tab = 'code')}>Kode</button>
-          <button class="btn btn-xs join-item" class:btn-active={tab === 'pine'} onclick={() => (tab = 'pine')}>Terjemahkan dari Pine</button>
+          <button class="btn btn-xs join-item" class:btn-active={tab === 'pine'} onclick={() => (tab = 'pine')}>Dari Pine</button>
+          <button class="btn btn-xs join-item" class:btn-active={tab === 'prompt'} onclick={() => (tab = 'prompt')}>Dari prompt</button>
           <button class="btn btn-xs join-item" class:btn-active={tab === 'help'} onclick={() => (tab = 'help')}>Referensi</button>
         </div>
         <button class="btn btn-ghost btn-sm btn-square ml-auto" aria-label="Tutup editor" onclick={close}>
@@ -219,6 +294,82 @@
           <button class="btn btn-primary btn-sm self-start" disabled={busy !== '' || pineText.trim().length < 20} onclick={translate}>
             {#if busy === 'translate'}<span class="loading loading-spinner loading-xs"></span> Menerjemahkan…{:else}Terjemahkan dengan AI{/if}
           </button>
+        {:else if tab === 'prompt'}
+          <ol class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" aria-label="Langkah">
+            <li class="flex items-center gap-1.5" class:font-semibold={!plan} aria-current={!plan ? 'step' : undefined}>
+              <span class="badge badge-sm {plan ? 'badge-soft badge-success' : 'badge-primary'}">1</span>Prompt
+            </li>
+            <li aria-hidden="true" class="text-base-content/50">›</li>
+            <li class="flex items-center gap-1.5" class:font-semibold={!!plan} aria-current={plan ? 'step' : undefined}>
+              <span class="badge badge-sm {plan ? 'badge-primary' : 'badge-ghost'}">2</span>Rencana skrip
+            </li>
+            <li aria-hidden="true" class="text-base-content/50">›</li>
+            <li class="flex items-center gap-1.5"><span class="badge badge-sm badge-ghost">3</span>Kode dan uji di chart</li>
+          </ol>
+          {#if !plan}
+            <p class="text-sm text-base-content/80">
+              Tempel prompt analisa, atau tulis aturan strategimu dengan kata-kata. AI memisahkan dulu aturan yang bisa dihitung dari harga, yang diubah supaya bisa
+              diuji, dan yang tidak bisa jadi skrip. Kamu memilih aturannya, lalu AI menulis skripnya. Memakai model AI di pengaturan analisa Anda, 2 pesan dari kuota
+              chat harian.
+            </p>
+            <label class="sr-only" for="prompt-text">Prompt atau aturan strategi</label>
+            <textarea
+              id="prompt-text"
+              class="textarea min-h-0 w-full flex-1 resize-none text-sm leading-6"
+              bind:value={promptText}
+              placeholder="Contoh: cari break of structure dari swing terakhir di 1 jam, lalu entry saat harga kembali ke level itu. SL di balik swing, TP minimal 2 kali risiko."
+            ></textarea>
+            <button class="btn btn-primary btn-sm self-start" disabled={busy !== '' || promptText.trim().length < 20} onclick={makePlan}>
+              {#if busy === 'plan'}<span class="loading loading-spinner loading-xs"></span> Membuat rencana…{:else}Buat rencana skrip{/if}
+            </button>
+          {:else}
+            <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain rounded-box border border-base-300 bg-base-200 p-3 text-sm">
+              {#if plan.summary}<p class="leading-relaxed">{plan.summary}</p>{/if}
+              <section class="flex flex-col gap-1" aria-labelledby="plan-keep">
+                <h3 id="plan-keep" class="flex items-center gap-2 font-semibold">Akan dikodekan <span class="badge badge-sm tabular-nums">{keptCount} dari {plan.rules.length}</span></h3>
+                <ul class="flex flex-col">
+                  {#each plan.rules as r, i (i)}
+                    <li class="border-t border-base-300 first:border-t-0">
+                      <label class="flex cursor-pointer items-start gap-2.5 py-1.5">
+                        <input type="checkbox" class="checkbox checkbox-sm mt-0.5" bind:checked={kept[i]} />
+                        <span class="min-w-0 flex-1">{r.text}</span>
+                        {#if r.param}<span class="badge badge-sm badge-ghost h-auto min-h-5 shrink-0 py-0.5 text-right">{r.param}</span>{/if}
+                      </label>
+                    </li>
+                  {/each}
+                </ul>
+              </section>
+              {#if plan.adapted.length}
+                <section class="flex flex-col gap-1.5" aria-labelledby="plan-adapted">
+                  <h3 id="plan-adapted" class="font-semibold">Diubah supaya bisa diuji</h3>
+                  <ul class="flex flex-col gap-1.5">
+                    {#each plan.adapted as a, i (i)}
+                      <li class="flex items-start gap-2"><Icon name="alert" size={16} class="mt-0.5 shrink-0 text-warning" />{a}</li>
+                    {/each}
+                  </ul>
+                </section>
+              {/if}
+              {#if plan.dropped.length}
+                <section class="flex flex-col gap-1.5" aria-labelledby="plan-dropped">
+                  <h3 id="plan-dropped" class="font-semibold">Tidak bisa jadi skrip</h3>
+                  <ul class="flex flex-col gap-1.5">
+                    {#each plan.dropped as d, i (i)}
+                      <li class="flex items-start gap-2">
+                        <Icon name="minus" size={16} class="mt-0.5 shrink-0 text-base-content/60" />
+                        <span><span class="font-medium">{d.text}</span>{#if d.why}<span class="block text-base-content/70">{d.why}</span>{/if}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                </section>
+              {/if}
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button class="btn btn-primary btn-sm" disabled={busy !== '' || !keptCount} onclick={compose}>
+                {#if busy === 'compose'}<span class="loading loading-spinner loading-xs"></span> Menulis skrip…{:else}Tulis skrip dari {keptCount} aturan{/if}
+              </button>
+              <button class="btn btn-ghost btn-sm" disabled={busy !== ''} onclick={() => (plan = null)}>Ubah prompt</button>
+            </div>
+          {/if}
         {:else}
           <pre class="min-h-0 flex-1 overflow-auto rounded-box bg-base-200 p-3 text-xs leading-5 whitespace-pre-wrap">{scripts.reference}</pre>
         {/if}

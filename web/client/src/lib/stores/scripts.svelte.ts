@@ -12,8 +12,8 @@ class Scripts {
   editorOpen = $state(false);
   /** The script the editor opens on; null = a new one. */
   editing = $state<string | null>(null);
-  /** The tab it opens on: the code, or Pine to paste TradingView code for the AI to translate. */
-  startTab = $state<'code' | 'pine'>('code');
+  /** The tab it opens on: the code, Pine to paste TradingView code for the AI to translate, or a prompt for the AI to write from. */
+  startTab = $state<'code' | 'pine' | 'prompt'>('code');
   /** The AI chart's bars, as the sandbox reads them. */
   bars = $state.raw<ScriptBar[]>([]);
   #loaded = false;
@@ -34,7 +34,7 @@ class Scripts {
     }
   }
 
-  open(id: string | null = null, tab: 'code' | 'pine' = 'code') {
+  open(id: string | null = null, tab: 'code' | 'pine' | 'prompt' = 'code') {
     this.editing = id;
     this.startTab = tab;
     this.editorOpen = true;

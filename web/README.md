@@ -247,7 +247,27 @@ Indikator saya dan Uji indikator digabung menjadi satu tab ([ADR 0020](../docs/a
 
 Mulai 80rem ketiganya berdampingan. Antara 64 dan 80rem kartu Uji turun ke bawah daftar. Di ponsel daftar tampil dulu, lalu indikatornya dengan tab Detail, Chart pasar, dan Uji. Indikator yang dipilih adalah strategi form uji (`lab.strategy`), jadi tombol "Uji" di Rekam jejak live membuka tab ini pada mesin itu. Tautan lama `#/uji?dock=library` dibuka di tab ini.
 
-- Indikator baru dibuat dari template, dari kode Pine TradingView (diterjemahkan AI), atau ditulis sendiri, dari menu **Indikator baru**. Editor skrip bisa dibuka dari layar mana pun. Di sisi kirinya, nama skrip dan template tersusun rata kiri; nama panjang turun ke baris berikutnya.
+- Indikator baru dibuat dari menu **Indikator baru** dengan empat cara: dari template, dari kode Pine TradingView (diterjemahkan AI), dari prompt (lihat di bawah), atau ditulis sendiri.
+  - Editor skrip bisa dibuka dari layar mana pun, dan memuat sendiri pilihan model AI-nya. Sebelumnya editor yang dibuka dari Uji strategi menyebut "Model AI belum diatur" sampai Riset AI pernah dibuka.
+  - Di sisi kiri editor, nama skrip dan template tersusun rata kiri; nama panjang turun ke baris berikutnya.
+
+### Indikator dari prompt (editor skrip → Dari prompt)
+
+Prompt analisa atau aturan strategi dalam kata-kata menjadi skrip lewat dua langkah, masing-masing satu pesan dari kuota chat harian.
+
+1. **Rencana skrip** (`POST /api/scripts/plan`). AI memilah teksnya menjadi tiga daftar:
+   - **Akan dikodekan:** aturan yang bisa dihitung dari harga, tiap aturan dengan angka utamanya.
+   - **Diubah supaya bisa diuji:** misalnya beberapa target menjadi satu target per sinyal; buy/sell limit menjadi sinyal di candle saat harga menyentuh entry; timeframe di bawah 15 menit menjadi 15 menit.
+   - **Tidak bisa jadi skrip:** misalnya format laporan analis, penilaian, berita, ukuran posisi, dan membaca screenshot; masing-masing dengan alasannya.
+
+   Pengguna mencentang aturan yang dipakai.
+2. **Skrip** (`POST /api/scripts/compose`). AI menulis skrip dari aturan yang dicentang, dengan teks aslinya sebagai konteks. Editor langsung mengujinya di chart, seperti terjemahan Pine. Nama skrip baru diambil dari baris pertama prompt.
+
+Batasnya:
+- Prompt 20 sampai 20.000 huruf, dan paling banyak 30 aturan dikirim.
+- Rencana dibatasi 20 aturan, 10 perubahan, dan 10 hal yang tidak bisa (`web/worker/script_translate.py`).
+- Anggota memakai model bawaan server. Hasilnya draf: periksa kode dan hasil ujinya sebelum disimpan.
+- Worker demo (`dev:demo`, tes) menjawab kedua langkah dengan contoh tetap, tanpa model.
 - Jumlah indikator buatan sendiri mengikuti paket (`scripts` di `shared/plans.ts`).
 - Indikator yang sama bisa dibaca AI saat Riset AI dan Uji saran AI (lihat "Indikator yang dibaca AI").
 
@@ -387,7 +407,7 @@ API: `GET /api/session`, `GET /api/auth/config`, `POST /api/login`, `POST /api/l
 - Tagihan: setiap pesanan punya halaman tagihan, yang menjadi bukti pembayaran setelah lunas (`/invoice/:id`). Halaman itu dibuka dari tautan bertanda tangan di email pesanan dan bukti bayar, serta dari dialog Paket & tagihan; tidak perlu masuk, dan bisa dicetak atau disimpan sebagai PDF. Tautan di email butuh `PUBLIC_URL`.
 - Pengingat otomatis lewat email, dan Telegram bila akunnya menautkan Telegram: 7, 3, dan 1 hari sebelum paket berbayar berakhir, sehari sebelum masa coba habis, setelah paket atau masa coba berakhir, dan sehari sebelum pesanan yang belum dibayar kedaluwarsa. Tiap pengingat terkirim sekali per akun dan kejadian (tabel `notices`), dicek tiap jam.
 - Ringkasan bisnis (Konsol admin → **Ringkasan**): pendapatan bulanan berulang dari pelanggan berbayar, pendapatan per bulan selama 12 bulan, konversi trial ke berbayar, paket yang perlu diperpanjang dan yang tidak diperpanjang, pemakaian kupon, serta token model AI 30 hari terakhir per jenis pekerjaan, model, dan akun. Semua rupiah di sini tanpa kode unik.
-- Meteran token: setiap perintah worker yang memanggil model (analisa, backtest, agent chart, terjemahan Pine, ringkasan pasar) melaporkan token per model saat selesai, lewat callback pemakaian LangChain. Server menyimpannya per akun di tabel `llm_usage`, dan `LLM_COST_IDR_PER_MTOK` mengubahnya menjadi perkiraan biaya.
+- Meteran token: setiap perintah worker yang memanggil model (analisa, backtest, agent chart, terjemahan Pine dan skrip dari prompt, ringkasan pasar) melaporkan token per model saat selesai, lewat callback pemakaian LangChain. Server menyimpannya per akun di tabel `llm_usage`, dan `LLM_COST_IDR_PER_MTOK` mengubahnya menjadi perkiraan biaya.
 
 API: `GET /api/billing`, `GET /api/billing/coupon?code=&period=`, `POST /api/billing/orders` (dengan `coupon` opsional), `POST /api/billing/orders/:id/claim`, `POST /api/billing/orders/:id/cancel`; admin: `GET /api/admin/payments?status=open|paid|all`, `POST /api/admin/payments/:id/confirm`, `POST /api/admin/payments/:id/reject`, `GET /api/admin/overview`, `GET`/`POST /api/admin/coupons`, `PATCH /api/admin/coupons/:id`, `GET /api/admin/business`; tanpa masuk: `GET /invoice/:id?t=` (tautan bertanda tangan).
 
@@ -421,7 +441,7 @@ API: `POST /api/activity` (detak halaman, `{ screen, tab, symbol }`); admin: `GE
 - Rekam jejak Creator (`/c/<nama pengguna>`): akun Creator menyalakan halamannya di Profil → Halaman publik (nama tampilan dan bio), lalu memilih alert yang masuk dengan sakelar **Publik** di menu Notifikasi chart. Setiap sinyal baru dari alert itu dicatat saat muncul bersama biaya simulasinya, lalu dinilai otomatis saat selesai (tabel `creator_signals`, `server/src/creators.ts`). Catatan hanya bertambah: alert yang dijadikan privat atau dihapus tetap meninggalkan sinyalnya, dan alert publik yang masih punya sinyal berjalan tidak bisa dihapus. Halaman turun bila pemiliknya mematikannya atau bukan Creator lagi. Data dari `GET /api/public/creators/:username` (di-cache 1 menit); pengaturannya lewat `PATCH /api/me/profile` dan `PATCH /api/alerts/:id/public`.
 - Aplikasi ada di `/app`. Tanpa `PUBLIC_SITE=on`, alamat root langsung membuka aplikasi (landing tetap bisa dilihat di `/index.html`); tautan lama `/#/...` tetap diarahkan ke `/app`.
 - Isi Syarat & Ketentuan, Kebijakan Privasi, dan Disclaimer adalah draf awal: tinjau dengan ahli hukum, dan isi nama usaha serta kontak di `shared/brand.ts`, sebelum situs dibuka.
-- **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim. Hanya admin yang memilih provider, model, dan Backend URL. Analisa, backtest, chat agent, dan terjemahan Pine milik anggota selalu memakai bawaan server, apa pun yang dikirim halamannya (`server/src/models.ts`). Opsi form untuk anggota juga tidak memuat nama key dan URL bawaan. Anggota bahkan tidak melihat panel Pengaturan di form analisa dan backtest: keduanya selalu memakai analisa standar (semua analis yang punya data, kedalaman 1, bahasa Indonesia; `shared/analysis.ts`), dan server menerapkannya apa pun yang dikirim.
+- **Key LLM**: diisi di `web/deploy/.env` (tidak masuk image, tidak di-commit). `ALLOWED_BACKEND_URLS` membatasi ke mana key itu boleh dikirim. Hanya admin yang memilih provider, model, dan Backend URL. Analisa, backtest, chat agent, terjemahan Pine, dan skrip dari prompt milik anggota selalu memakai bawaan server, apa pun yang dikirim halamannya (`server/src/models.ts`). Opsi form untuk anggota juga tidak memuat nama key dan URL bawaan. Anggota bahkan tidak melihat panel Pengaturan di form analisa dan backtest: keduanya selalu memakai analisa standar (semua analis yang punya data, kedalaman 1, bahasa Indonesia; `shared/analysis.ts`), dan server menerapkannya apa pun yang dikirim.
 - **Data**: volume `tradingagents_db` (Postgres) dan `tradingagents_data` (laporan, cache, dan memori keputusan engine).
 - **Proxy**: matikan buffering supaya stream SSE (log analisa, chat agent) jalan, dan beri timeout baca panjang, misalnya di nginx `proxy_buffering off; proxy_read_timeout 3600s;`.
 - File `.env` harus berakhiran baris LF; nilai dengan `\r` dari editor Windows membuat password tidak cocok.
@@ -500,7 +520,7 @@ Cache (candle, katalog model, halaman Creator, jawaban halaman status) tetap per
 **Worker analisa.** Antrean analisa dan backtest ada di Postgres (`jobs.ts`). Di produksi, service `worker` di compose (`bun src/runner.ts`) mengambil baris yang antre (`FOR UPDATE SKIP LOCKED`, jadi satu analisa tidak pernah diambil dua worker) dan menjalankan engine; app sendiri tidak menjalankan analisa (`MAX_CONCURRENT_ANALYSES=0`). Setiap event disimpan di `analysis_events` dan diumumkan lewat `NOTIFY`, jadi stream langsung di browser dan ringkasan watchlist berjalan di instance app mana pun. Tambah worker dengan `docker compose up -d --scale worker=2`; masing-masing menjalankan `MAX_CONCURRENT_ANALYSES` analisa sekaligus.
 - **Batal:** baris langsung ditandai dibatalkan, dan worker yang menjalankannya diberi tahu untuk mematikan prosesnya.
 - **Worker berhenti** (deploy, restart): analisa yang sedang jalan ditandai gagal dengan alasannya, karena analisa tidak bisa dilanjutkan di tengah. Worker yang mati mendadak berhenti mengirim heartbeat, dan analisanya ditandai gagal oleh instance pemegang scheduler dalam sekitar 2 menit.
-- Chat agen, uji indikator, terjemahan Pine, pemindaian sinyal, dan ringkasan AI masih berjalan di proses app.
+- Chat agen, uji indikator, terjemahan Pine dan skrip dari prompt, pemindaian sinyal, dan ringkasan AI masih berjalan di proses app.
 
 Tanpa worker terpisah (development, `bun run dev`), app menjalankan antreannya sendiri selama `MAX_CONCURRENT_ANALYSES` lebih dari 0.
 

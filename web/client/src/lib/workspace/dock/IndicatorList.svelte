@@ -59,6 +59,7 @@
   const STARTS = [
     { title: 'Mulai dari template', sub: 'Pola siap pakai, tinggal diubah.', act: () => scripts.open(null) },
     { title: 'Tempel kode Pine', sub: 'Dari TradingView; AI menerjemahkannya.', act: () => scripts.open(null, 'pine') },
+    { title: 'Tulis dari prompt', sub: 'Jelaskan aturannya dengan kata-kata; AI menulis skripnya.', act: () => scripts.open(null, 'prompt') },
     { title: 'Mulai kosong', sub: 'Tulis sendiri di editor skrip.', act: () => scripts.open(null) },
   ];
   const full = $derived(scripts.items.length >= scripts.max);
@@ -136,7 +137,7 @@
             </button>
           </li>
         {:else}
-          <li class="px-3 py-3 text-sm ta-muted">Belum ada. Buat dari template, tempel kode Pine, atau mulai kosong.</li>
+          <li class="px-3 py-3 text-sm ta-muted">Belum ada. Buat dari template, kode Pine, prompt, atau mulai kosong.</li>
         {/each}
       </ul>
     {/if}
