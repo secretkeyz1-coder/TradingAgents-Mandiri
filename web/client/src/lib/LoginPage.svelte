@@ -8,6 +8,7 @@
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
   import { announcer } from './stores/announcer.svelte';
+  import Wordmark from './Wordmark.svelte';
 
   const contact = supportContact();
 
@@ -80,8 +81,8 @@
 <main class="grid min-h-dvh place-items-center bg-base-100 px-4 py-10">
   <div class="flex w-full max-w-sm flex-col gap-7">
     <a href="/" class="flex items-center gap-2.5 font-semibold tracking-tight">
-      <Logo class="size-8" />
-      <span class="text-lg">{BRAND.name}</span>
+      <Logo class="size-9" />
+      <Wordmark class="text-xl" />
     </a>
 
     <div class="flex flex-col gap-1.5">

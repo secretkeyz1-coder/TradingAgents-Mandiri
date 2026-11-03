@@ -1,4 +1,4 @@
-// daisyUI follows the OS colour scheme (light "cobalt" by default, "cobalt-dark"
+// daisyUI follows the OS colour scheme (light "horas" by default, "horas-dark"
 // when preferred); the TradingView widgets and the canvas chart take the same choice.
 const media = window.matchMedia('(prefers-color-scheme: dark)');
 

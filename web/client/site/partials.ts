@@ -1,7 +1,7 @@
 // The public site's shared pieces (header, footer, pricing, the plan table),
 // written into the pages at build time from shared/brand.ts and shared/plans.ts,
 // so the site, the app and the server always state the same prices and limits.
-import { BRAND } from '../../shared/brand.ts';
+import { BRAND, MARK } from '../../shared/brand.ts';
 import { FOUNDING, PLANS, PLAN_IDS, TRIAL_DAYS, rupiah, type PlanLimits } from '../../shared/plans.ts';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -18,13 +18,18 @@ export const VALUES: Record<string, string> = {
 };
 export const fill = (text: string) => text.replace(/\{\{(\w+)\}\}/g, (match, key: string) => (key in VALUES ? esc(VALUES[key]) : match));
 
-const logo = `<svg class="size-7 shrink-0" viewBox="0 0 32 32" aria-hidden="true">
-  <rect width="32" height="32" rx="7" fill="var(--color-base-content)" />
-  <rect x="6.5" y="12" width="5" height="9" rx="1" fill="var(--color-base-100)" />
-  <path d="M9 7v18M16 5v20" stroke="var(--color-base-100)" stroke-width="1.5" stroke-linecap="round" />
-  <rect x="13.5" y="9" width="5" height="10" rx="1" fill="var(--color-base-100)" />
-  <path d="M23 4v15" stroke="var(--color-accent)" stroke-width="1.5" stroke-linecap="round" />
-  <rect x="20.5" y="6" width="5" height="8" rx="1" fill="var(--color-accent)" />
+// The mark and the wordmark as the app's Logo.svelte and Wordmark.svelte draw them (ADR 0022).
+const logo = `<svg class="size-8 shrink-0" viewBox="${MARK.viewBox}" aria-hidden="true">
+  <path d="${MARK.diamond}" fill="var(--color-primary)" />
+  <path d="${MARK.m}" fill="none" stroke="var(--color-primary-content)" stroke-width="${MARK.stroke}" stroke-linecap="round" stroke-linejoin="round" />
+</svg>`;
+const wordmark = `<span class="font-display font-extrabold tracking-[-0.02em]">${esc(BRAND.wordmark[0])}<span class="text-accent">${esc(BRAND.wordmark[1])}</span></span>`;
+
+// A band of orange triangles, as Batak carving and weaving repeat them. The brand uses it sparingly:
+// once, over the footer of every public page.
+const band = `<svg class="block h-3 w-full text-primary" aria-hidden="true">
+  <defs><pattern id="tm-band" width="24" height="12" patternUnits="userSpaceOnUse"><path d="M0 12 L12 0 L24 12 Z" fill="currentColor" /></pattern></defs>
+  <rect width="100%" height="100%" fill="url(#tm-band)" />
 </svg>`;
 
 const searchIcon = `<svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -35,14 +40,14 @@ const searchIcon = `<svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none"
 export function header(): string {
   return `<header class="border-b border-base-300">
   <nav class="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 md:gap-5" aria-label="Utama">
-    <a href="/" class="flex shrink-0 items-center gap-2.5 text-[17px] font-semibold tracking-tight">${logo}<span class="hidden min-[380px]:inline">${esc(BRAND.name)}</span></a>
-    <a href="/app" aria-label="Buka aplikasi untuk mencari simbol" class="hidden max-w-xs min-w-0 flex-1 items-center gap-2.5 rounded-full bg-base-content/5 px-4 py-2.5 text-sm text-base-content/60 transition-colors hover:bg-base-content/10 md:flex">${searchIcon}<span class="truncate">Cari simbol: BBCA, BTC, emas</span></a>
+    <a href="/" class="flex shrink-0 items-center gap-2.5 text-lg" aria-label="${esc(BRAND.name)}">${logo}<span class="hidden min-[380px]:inline">${wordmark}</span></a>
+    <a href="/app" aria-label="Buka aplikasi untuk mencari simbol" class="hidden max-w-xs min-w-0 flex-1 items-center gap-2.5 rounded-field bg-base-content/5 px-4 py-2.5 text-sm text-base-content/70 transition-colors hover:bg-base-content/10 md:flex">${searchIcon}<span class="truncate">Cari simbol: BBCA, BTC, emas</span></a>
     <div class="ml-auto flex items-center gap-1">
       <a class="btn btn-ghost btn-sm hidden lg:inline-flex" href="/#produk">Produk</a>
       <a class="btn btn-ghost btn-sm hidden lg:inline-flex" href="/#pasar">Pasar</a>
       <a class="btn btn-ghost btn-sm hidden sm:inline-flex" href="/harga">Harga</a>
       <a class="btn btn-ghost btn-sm" href="/app">Masuk</a>
-      <a class="btn btn-primary btn-sm rounded-full px-4 whitespace-nowrap" href="/app#/signup">Mulai gratis</a>
+      <a class="btn btn-primary btn-sm px-4 whitespace-nowrap" href="/app#/signup">Mulai gratis</a>
     </div>
   </nav>
 </header>`;
@@ -63,10 +68,11 @@ export function contactText(): string {
 
 export function footer(): string {
   const link = (href: string, text: string) => `<a class="link link-hover text-base-content/75" href="${href}">${text}</a>`;
-  return `<footer class="border-t border-base-300">
+  return `<footer>
+  ${band}
   <div class="mx-auto grid max-w-6xl gap-8 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4">
     <div class="flex flex-col gap-2.5">
-      <a href="/" class="flex items-center gap-2.5 font-semibold tracking-tight">${logo}<span>${esc(BRAND.name)}</span></a>
+      <a href="/" class="flex items-center gap-2.5 text-lg">${logo}${wordmark}</a>
       <p class="text-sm text-base-content/70">${esc(BRAND.tagline)} Alat riset untuk trader yang ingin tahu apakah caranya benar-benar bekerja.</p>
     </div>
     <nav class="flex flex-col gap-2 text-sm" aria-label="Produk">
@@ -96,7 +102,7 @@ export function pricing(): string {
   const card = (id: (typeof PLAN_IDS)[number]) => {
     const p = PLANS[id];
     const featured = id === 'pro';
-    return `<section class="flex flex-col gap-5 rounded-[1.25rem] border ${featured ? 'border-accent' : 'border-base-300'} bg-base-100 p-7">
+    return `<section class="flex flex-col gap-5 rounded-box border ${featured ? 'border-accent' : 'border-base-300'} bg-base-100 p-7">
     <div class="flex flex-col gap-1.5">
       <h3 class="text-xl font-semibold">${esc(p.name)}</h3>
       <p class="text-sm text-base-content/70">${esc(p.blurb)}</p>
@@ -106,7 +112,7 @@ export function pricing(): string {
       <p class="text-xs text-base-content/70">${p.price.year ? `atau ${rupiah(p.price.year)}/tahun, hemat 2 bulan` : 'Selamanya, tanpa kartu.'}</p>
     </div>
     <ul class="flex flex-col gap-2.5 text-sm text-base-content/80">${p.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul>
-    <a class="btn ${featured ? 'btn-primary' : 'btn-ghost border-base-300'} mt-auto rounded-full whitespace-nowrap" href="/app#/signup">${CTA[id]}</a>
+    <a class="btn ${featured ? 'btn-primary' : 'btn-ghost border-base-300'} mt-auto whitespace-nowrap" href="/app#/signup">${CTA[id]}</a>
   </section>`;
   };
   return `<div class="grid gap-4 md:grid-cols-3">${PLAN_IDS.map(card).join('')}</div>
@@ -115,7 +121,7 @@ export function pricing(): string {
     <h3 class="font-semibold">Founding member: Pro ${rupiah(FOUNDING.price)}/bulan</h3>
     <p class="text-sm text-base-content/70">Untuk ${FOUNDING.seats} pelanggan pertama. Harganya terkunci selama kamu tetap berlangganan.</p>
   </div>
-  <a class="btn btn-ghost btn-sm self-start rounded-full border-base-300 whitespace-nowrap sm:self-auto" href="/app#/signup">Ambil kursi founding</a>
+  <a class="btn btn-ghost btn-sm self-start border-base-300 whitespace-nowrap sm:self-auto" href="/app#/signup">Ambil kursi founding</a>
 </div>
 <p class="mt-3 text-xs text-base-content/70">Akun baru mencoba Pro ${TRIAL_DAYS} hari setelah emailnya terverifikasi. Bayar lewat transfer bank atau QRIS; paket tidak diperpanjang otomatis. Harga dalam rupiah.</p>`;
 }

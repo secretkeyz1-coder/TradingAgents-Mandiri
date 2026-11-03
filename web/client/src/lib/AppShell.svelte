@@ -6,7 +6,7 @@
   // shell only draws the frame. Loaded only once the user is signed in: the workspace
   // store calls the API as soon as it is imported.
   import { untrack } from 'svelte';
-  import { supportContact } from '../../../shared/brand';
+  import { BRAND, supportContact } from '../../../shared/brand';
   import { PLANS } from '../../../shared/plans';
   import { trackActivity } from './activity';
   import { api } from './api';
@@ -15,6 +15,7 @@
   import { auth } from './auth.svelte';
   import BeginnerShell from './beginner/BeginnerShell.svelte';
   import Logo from './Logo.svelte';
+  import Wordmark from './Wordmark.svelte';
   import { announcer } from './stores/announcer.svelte';
   import { layout } from './stores/layout.svelte';
   import { mode } from './stores/mode.svelte';
@@ -92,9 +93,9 @@
 
 <div class="flex h-dvh flex-col bg-base-100">
   <header class="flex shrink-0 items-center gap-3 border-b border-base-300 px-3 py-2 sm:px-4" class:hidden={!framed}>
-    <a href="#/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight" aria-label="TradingAgents">
-      <Logo />
-      <span class="hidden {pro ? 'xl:inline' : 'md:inline'}">TradingAgents</span>
+    <a href="#/" class="flex shrink-0 items-center gap-2" aria-label={BRAND.name}>
+      <Logo class="size-8" />
+      <Wordmark class="hidden text-lg {pro ? 'xl:inline' : 'md:inline'}" />
     </a>
     <!-- Two buttons that pick the mode, not tabs over panels: Tab reaches each, Enter or Space picks it. -->
     <div role="group" class="tabs tabs-box tabs-sm shrink-0" aria-label="Tampilan">

@@ -1,12 +1,12 @@
 # Arsitektur
 
-Aplikasi riset trading berbahasa Indonesia di atas engine TradingAgents (Python, multi-agen). Satu monolit modular (Bun + Hono) melayani API, halaman, dan kerja latar; proses worker terpisah menjalankan analisa; Postgres menyimpan data sekaligus mengoordinasikan semua proses. Keputusan di balik bentuk ini ada di [adr/](adr/).
+TraderMedan: aplikasi riset trading berbahasa Indonesia di atas engine TradingAgents (Python, multi-agen). Satu monolit modular (Bun + Hono) melayani API, halaman, dan kerja latar; proses worker terpisah menjalankan analisa; Postgres menyimpan data sekaligus mengoordinasikan semua proses. Keputusan di balik bentuk ini ada di [adr/](adr/).
 
 ## Konteks
 
 ```mermaid
 flowchart LR
-  member([Anggota]) -->|browser| app[TradingAgents web]
+  member([Anggota]) -->|browser| app[TraderMedan web]
   admin([Admin]) -->|konsol admin, Telegram| app
   app -->|analisa, chat, ringkasan| llm[Penyedia LLM]
   app -->|candle, harga| market[Binance, bursa kripto lain, Yahoo Finance]

@@ -17,6 +17,7 @@ import { log } from "./log";
 import { levelSchema } from "./price-alerts";
 import { backtestSchema, createSchema } from "./routes";
 import { composeSchema, planSchema } from "./scripts";
+import { BRAND } from "../../shared/brand";
 
 export const OPENAPI_FILE = join(config.repoRoot, "docs", "api", "openapi.json");
 
@@ -91,7 +92,7 @@ export function openApiDocument() {
   return {
     openapi: "3.1.0",
     info: {
-      title: "TradingAgents web API",
+      title: `${BRAND.name} web API`,
       version: "1",
       description:
         "Dibangkitkan dari route server (web/server/src/openapi.ts); jangan disunting tangan, jalankan `bun run openapi`. Error dijawab sebagai `{ \"error\": \"...\" }`. `x-admin`: khusus admin.",

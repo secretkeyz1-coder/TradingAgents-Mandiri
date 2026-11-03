@@ -1,6 +1,6 @@
-# TradingAgents Web
+# TraderMedan (web)
 
-Aplikasi web untuk menjalankan analisa TradingAgents dari browser: isi form, pantau progres tiap agent secara live, lalu baca laporan dan keputusan akhirnya. Riwayat analisa tersimpan di Postgres.
+TraderMedan adalah aplikasi web untuk menjalankan analisa engine TradingAgents dari browser: isi form, pantau progres tiap agent secara live, lalu baca laporan dan keputusan akhirnya. Riwayat analisa tersimpan di Postgres. Nama dan tampilannya dibahas di bagian [Merek dan tampilan](#merek-dan-tampilan).
 
 ```
 Browser (Svelte 5 + daisyUI)
@@ -432,11 +432,26 @@ API: `GET /api/indicators` (yang boleh dipakai akun ini, dengan kode skrip untuk
 
 API: `POST /api/activity` (detak halaman, `{ screen, tab, symbol }`); admin: `GET /api/admin/activity?days=7|30|90`, `GET /api/admin/activity/users/:id?days=`. Keputusan desainnya di [ADR 0012](../docs/adr/0012-aktivitas-member-per-menit.md).
 
+### Merek dan tampilan
+
+- **Nama:** TraderMedan, di semua yang dibaca anggota: situs, aplikasi, email, tagihan, Telegram, dan judul API. Engine Python di bawahnya, repo, dan pengenal internal tetap bernama TradingAgents.
+- **Satu sumber:** `shared/brand.ts` menyimpan `BRAND` (nama, wordmark, tagline, kontak) dan `MARK` (path logo).
+  - `client/src/lib/Logo.svelte`, `Wordmark.svelte`, serta header dan footer situs (`client/site/partials.ts`) menggambar dari sana.
+  - `client/public/favicon.svg` menyalin path yang sama.
+- **Tema:** daisyUI `horas` (terang, bawaan) dan `horas-dark` (gelap, mengikuti perangkat), di `client/src/app.css`. Warnanya:
+  - jingga #FF6A13 untuk aksi utama, selalu dengan teks tinta;
+  - accent untuk jingga yang dibaca sebagai teks: jingga tua di latar terang, jingga itu sendiri di latar gelap;
+  - tinta #121212 dan tulang #F2EDE4 sebagai latar dan teks;
+  - hijau, merah, dan kuning tetap untuk untung, rugi, dan peringatan.
+- **Huruf:** Bricolage Grotesque untuk judul dan wordmark, Archivo untuk teks dan angka, dan Geist Mono untuk kode. Semuanya dari paket fontsource.
+- **Hiasan:** pita segitiga jingga, sekali di atas footer situs publik.
+- Keputusan, nilai warna, dan kontrasnya ada di [ADR 0022](../docs/adr/0022-merek-tradermedan-horas.md).
+
 ### Situs publik
 
 - Landing page (`/`), Harga (`/harga`), Syarat & Ketentuan (`/syarat`), Kebijakan Privasi (`/privasi`), Disclaimer risiko (`/disclaimer`), Status layanan (`/status`), dan rekam jejak Creator (`/c/<nama pengguna>`) adalah halaman statis dari build klien (`client/index.html`, `client/harga/` dan seterusnya). Harga dan kapasitas diisi saat build dari `shared/plans.ts`; nama merek dan kontak dari `shared/brand.ts`.
 - Landing page memuat data live tanpa login dari `GET /api/public/market` (BTC, ETH, SOL, emas, IHSG, S&P 500, USD/IDR: lanskap hero dari 30 harga penutupan tiap pasar, chart BTC, daftar pantau, dan ringkasan pasar), `/api/public/crypto-map` (peta 24 koin Binance), `/api/public/signals` (8 sinyal live terbaru dan rekor 90 hari), dan `/api/public/brief` (bacaan AI, juga rata-rata 20 hari dan terendah 30 hari BTC yang digambar di chart); semuanya di-cache (`server/src/site.ts`).
-- Landing page selalu memakai tema gelap (`data-theme="cobalt-dark"` di `client/index.html`); halaman situs lain mengikuti tema perangkat.
+- Landing page selalu memakai tema gelap (`data-theme="horas-dark"` di `client/index.html`); halaman situs lain mengikuti tema perangkat.
 - Ringkasan pasar AI ditulis tiap 6 jam oleh model quick tier server (perintah worker `brief`, `worker/brief.py`) hanya dari angka yang dihitung server: harga, perubahan 1/7/30 hari, rata-rata 20/50 hari, RSI 14, rentang 30 hari, dan sinyal terbaru. Hasilnya (judul, ringkasan, arah per aset dengan argumen bull dan bear, yang dipantau, risiko) disimpan di tabel `market_briefs` bersama angka yang dibacanya, dan angka itu ditampilkan di landing. `SITE_BRIEF=off` mematikannya.
 - Status layanan (`/status`): keadaan sekarang dan 90 hari terakhir dari database, harga kripto (Binance), harga pasar lain (Yahoo), mesin analisa, pemindai sinyal, ringkasan pasar AI, Telegram, dan email. Server memeriksa tiap 5 menit dan menyimpan hitungan harian per bagian di tabel `status_days`; bagian yang belum diatur tidak dihitung. Data dari `GET /api/public/status` (di-cache 30 detik). Pemeriksanya server yang sama, jadi bila server mati halaman ini ikut tidak terbuka; untuk itu pakai pemantau dari luar ke `/healthz`.
 - Rekam jejak Creator (`/c/<nama pengguna>`): akun Creator menyalakan halamannya di Profil → Halaman publik (nama tampilan dan bio), lalu memilih alert yang masuk dengan sakelar **Publik** di menu Notifikasi chart. Setiap sinyal baru dari alert itu dicatat saat muncul bersama biaya simulasinya, lalu dinilai otomatis saat selesai (tabel `creator_signals`, `server/src/creators.ts`). Catatan hanya bertambah: alert yang dijadikan privat atau dihapus tetap meninggalkan sinyalnya, dan alert publik yang masih punya sinyal berjalan tidak bisa dihapus. Halaman turun bila pemiliknya mematikannya atau bukan Creator lagi. Data dari `GET /api/public/creators/:username` (di-cache 1 menit); pengaturannya lewat `PATCH /api/me/profile` dan `PATCH /api/alerts/:id/public`.

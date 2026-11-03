@@ -9,5 +9,16 @@
     "footer": "Ft2 inline single line",
     "enrichment": "none",
     "brief": "TradingAgents web app · audit fixes: replaced stock daisyUI purple/pink + system font"
+  },
+  {
+    "date": "2026-11-03",
+    "macrostructure": "unchanged: rebrand only",
+    "theme": "Horas palette + Bricolage Grotesque / Archivo type",
+    "theme_axes": "light bone / dark ink / warm (orange 44)",
+    "genre": "modern-minimal with a Batak triangle band",
+    "nav": "N13 inline ⌘K, current screen a filled tab",
+    "footer": "triangle band over Ft2",
+    "enrichment": "none",
+    "brief": "Rebrand to TraderMedan, direction B Horas (ADR 0022)"
   }
 ]

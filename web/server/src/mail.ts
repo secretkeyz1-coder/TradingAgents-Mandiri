@@ -38,15 +38,16 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 /** A short message with paragraphs, an optional button, and the brand at the end: as text and as HTML. */
 export function composeMail(to: string, subject: string, lines: string[], button?: { label: string; url: string }, after: string[] = []): Mail {
   const text = [...lines, ...(button ? ["", `${button.label}: ${button.url}`] : []), ...(after.length ? ["", ...after] : []), "", `${BRAND.name}`].join("\n");
-  const p = (l: string, small = false) => `<p style="margin:0 0 14px${small ? ";font-size:13px;color:#5b6170" : ""}">${esc(l)}</p>`;
+  const p = (l: string, small = false) => `<p style="margin:0 0 14px${small ? ";font-size:13px;color:#5F5B55" : ""}">${esc(l)}</p>`;
   const html = [
-    '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.55;color:#1f2430;max-width:520px">',
+    '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:15px;line-height:1.55;color:#121212;max-width:520px">',
     ...lines.map((l) => p(l)),
     button
-      ? `<p style="margin:20px 0"><a href="${esc(button.url)}" style="display:inline-block;background:#1f2430;color:#ffffff;padding:11px 18px;border-radius:8px;text-decoration:none">${esc(button.label)}</a></p>${p(`Atau salin tautan ini: ${button.url}`, true)}`
+      ? `<p style="margin:20px 0"><a href="${esc(button.url)}" style="display:inline-block;background:#FF6A13;color:#121212;font-weight:700;padding:11px 18px;border-radius:6px;text-decoration:none">${esc(button.label)}</a></p>${p(`Atau salin tautan ini: ${button.url}`, true)}`
       : "",
     ...after.map((l) => p(l, true)),
-    p(BRAND.name, true),
+    // The wordmark as the brand sets it, Medan in Jingga tua (5.2:1 on white).
+    `<p style="margin:0;font-size:15px;font-weight:800;letter-spacing:-0.02em">${esc(BRAND.wordmark[0])}<span style="color:#C2410C">${esc(BRAND.wordmark[1])}</span></p>`,
     "</div>",
   ].join("");
   return { to, subject, text, html };

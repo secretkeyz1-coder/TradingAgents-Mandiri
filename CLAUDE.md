@@ -43,6 +43,9 @@ Two products live in this repo:
 - Client: stores are singleton classes with `$state`/`$derived` in `lib/stores/*.svelte.ts`; the workspace state lives in
   the URL hash (`stores/workspace.svelte.ts`); every request goes through `lib/api.ts` (typed).
 - UI: daisyUI components first, colours from theme tokens only, no text under 12px, one primary action per area.
+  Orange text or lines use `accent`, never `primary`: the brand orange reads 2.5:1 on the bone ground (ADR 0022).
+- The product is TraderMedan to anyone who reads it: write `BRAND.name` (`shared/brand.ts`), never the name as a literal.
+  The engine, the repo and internal identifiers stay TradingAgents.
 - The indicator engines exist twice (TypeScript in `client/src/lib/indicators`, Python in `web/worker`): change both
   in the same commit and say so; the parity test (`cd client && bun run test`) must still pass. Scalper's inputs and
   defaults live once, in `shared/scalper.ts`, which the chart and the signal notifications both read.
@@ -61,6 +64,7 @@ Two products live in this repo:
 | Pemula screen | `client/src/lib/beginner/` |
 | Admin console | `client/src/lib/admin/` |
 | Public pages | `client/index.html`, `client/<page>/index.html`, `client/src/site/` |
+| Brand: name, logo, colours, type | `shared/brand.ts` (`BRAND`, `MARK`), `client/src/lib/Logo.svelte` and `Wordmark.svelte`, themes `horas`/`horas-dark` in `client/src/app.css` (ADR 0022) |
 | Backups, restore drill | `web/deploy/backup.sh`, `web/deploy/restore-check.sh` (run on the VPS) |
 | Deploys | `web/deploy/deploy.sh`, `receive-release.sh`, `.github/workflows/deploy.yml` |
 | Architecture, decisions, runbooks | `docs/architecture.md`, `docs/adr/`, `docs/runbooks/` (Indonesian, like `web/README.md`) |

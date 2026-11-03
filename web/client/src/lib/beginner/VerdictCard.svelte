@@ -115,7 +115,7 @@
     <p class="text-sm text-base-content/70">AI belum bisa menganalisa aset ini. Coba aset lain, misalnya Emas atau Bank Central Asia.</p>
   {:else if running}
     <div class="flex items-start gap-3">
-      <span class="loading loading-dots loading-md mt-0.5 text-primary" aria-hidden="true"></span>
+      <span class="loading loading-dots loading-md mt-0.5 text-accent" aria-hidden="true"></span>
       <div class="flex flex-col gap-1">
         <p class="font-medium">AI sedang menganalisa {name}…</p>
         <p class="text-sm text-base-content/70">

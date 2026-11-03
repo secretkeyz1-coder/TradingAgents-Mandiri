@@ -36,8 +36,8 @@
       {#if showDays}<text x={cx(i)} y={H - 6} text-anchor="middle" class="fill-base-content/70 text-xs">{t.day}</text>{/if}
     {/each}
     {#if totals.length}
-      <path d={line} fill="none" class="stroke-primary" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
-      <circle cx={cx(totals.length - 1)} cy={y(total)} r="5" class="fill-primary stroke-base-100" stroke-width="3" />
+      <path d={line} fill="none" class="stroke-accent" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
+      <circle cx={cx(totals.length - 1)} cy={y(total)} r="5" class="fill-accent stroke-base-100" stroke-width="3" />
       <text x={cx(totals.length - 1) + 12} y={y(total) + 5} class="fill-base-content text-sm font-bold tabular-nums">{signedR(total)}</text>
     {/if}
   </svg>

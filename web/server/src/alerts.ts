@@ -32,6 +32,7 @@ import { capMessage, limitsOf, planOf } from "./plans";
 import { settleJournal } from "./journal";
 import { checkPrices, notificationsInUse } from "./price-alerts";
 import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
+import { BRAND } from "../../shared/brand";
 import { scalperSignalSettings, type ScalperSignalSettings } from "../../shared/scalper";
 import { toScriptBars } from "../../shared/script";
 import { binancePair, binancePerpetual } from "./binance";
@@ -752,7 +753,7 @@ alertsApi.post("/alerts/test", async (c) => {
   const user = c.get("user");
   const sent = await sendTelegram(
     user.telegramChatId,
-    `<b>🔔 Notifikasi sinyal TradingAgents</b>\nTersambung untuk ${escape(user.username)}. Sinyal baru dan hasil TP/SL akan dikirim ke chat ini.`,
+    `<b>🔔 Notifikasi sinyal ${BRAND.name}</b>\nTersambung untuk ${escape(user.username)}. Sinyal baru dan hasil TP/SL akan dikirim ke chat ini.`,
   );
   return sent.ok ? c.json({ ok: true }) : c.json({ error: sent.error }, 400);
 });

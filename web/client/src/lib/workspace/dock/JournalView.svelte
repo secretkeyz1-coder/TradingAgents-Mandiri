@@ -245,7 +245,7 @@
               <span class="ta-mono h-7 w-7 rounded-md">{monogram(formSymbol)}</span>
               <span id="add-asset-name" class="truncate">{friendlyName(formSymbol)}</span>
               {#if formPrice != null}<span class="ml-auto tabular-nums ta-muted">{fmt(formPrice)}</span>{/if}
-              <span class="text-sm font-medium text-primary" class:ml-auto={formPrice == null}>Ganti</span>
+              <span class="text-sm font-medium text-accent" class:ml-auto={formPrice == null}>Ganti</span>
             </button>
           {/if}
         </div>

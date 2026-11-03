@@ -26,15 +26,18 @@
   list-style: disc;
 }
 
-/* The landing page. These sit outside Tailwind's layers, like app.css's h1/h2 rule they override. */
+/* The landing page's display type: Bricolage at its heaviest and tight, as the canvas sets it (ADR 0022).
+   These sit outside Tailwind's layers, like app.css's heading rules they override. */
 .hero-title {
-  letter-spacing: -0.055em;
-  line-height: 0.92;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
 }
 
 .section-title {
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
 }
 
 /* Dawn behind the hero's ridges (src/site/landing.ts draws them); it reaches up behind the

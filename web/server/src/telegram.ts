@@ -16,6 +16,7 @@ import { leaderOnly } from "./locks";
 import { log } from "./log";
 import { readShared, writeShared } from "./shared";
 import { escape, sendTelegram, telegramBot, telegramCall } from "./watch";
+import { BRAND } from "../../shared/brand";
 
 const LINK_MS = 15 * 60_000;
 
@@ -60,7 +61,7 @@ export async function handleUpdate(update: Update) {
   // Deleting it is what uses it, so it connects once even if the message came twice.
   const [link] = token ? await db.delete(telegramLinks).where(and(eq(telegramLinks.token, token), gt(telegramLinks.expiresAt, new Date()))).returning() : [];
   if (!link) {
-    await sendTelegram(chat, "Untuk menyambungkan, buka TradingAgents → menu akun → Profil → Notifikasi, lalu tekan <b>Sambungkan Telegram</b>. Tautannya berlaku 15 menit.");
+    await sendTelegram(chat, `Untuk menyambungkan, buka ${BRAND.name} → menu akun → Profil → Notifikasi, lalu tekan <b>Sambungkan Telegram</b>. Tautannya berlaku 15 menit.`);
     return;
   }
   const [user] = await db.update(users).set({ telegramChatId: chat }).where(eq(users.id, link.userId)).returning({ username: users.username });

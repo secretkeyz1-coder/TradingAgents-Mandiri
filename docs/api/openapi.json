@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "TradingAgents web API",
+    "title": "TraderMedan web API",
     "version": "1",
     "description": "Dibangkitkan dari route server (web/server/src/openapi.ts); jangan disunting tangan, jalankan `bun run openapi`. Error dijawab sebagai `{ \"error\": \"...\" }`. `x-admin`: khusus admin."
   },

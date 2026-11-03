@@ -107,7 +107,7 @@ const quote = (label: string) => quotes.find((q) => q.label === label);
 /**
  * Each market's 30 closes as one ridge on its own scale, in a 1440×440 box stretched to the
  * hero. The ridges are opaque, so the nearer ones hide the farther ones and the glow behind
- * shows only above them; their fill runs from a cobalt haze at the back to the page colour at
+ * shows only above them; their fill runs from an orange haze at the back to the page colour at
  * the front. The dot and tag mark the front ridge's live price.
  */
 function renderLandscape() {

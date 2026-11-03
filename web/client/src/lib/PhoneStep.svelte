@@ -3,10 +3,10 @@
   // number, Google's sign-in does not, so the account gives one here before the app opens.
   // The server keeps the rule (needsPhone in server/src/plans.ts): AI features wait for the
   // number, and a Google account cannot remove it later from its profile.
-  import { BRAND } from '../../../shared/brand';
   import { api } from './api';
   import { auth } from './auth.svelte';
   import Logo from './Logo.svelte';
+  import Wordmark from './Wordmark.svelte';
 
   let phone = $state('');
   let busy = $state(false);
@@ -28,9 +28,9 @@
 
 <main class="grid min-h-dvh place-items-center bg-base-100 px-4 py-10">
   <div class="flex w-full max-w-sm flex-col gap-7">
-    <span class="flex items-center gap-2.5 font-semibold tracking-tight">
-      <Logo class="size-8" />
-      <span class="text-lg">{BRAND.name}</span>
+    <span class="flex items-center gap-2.5">
+      <Logo class="size-9" />
+      <Wordmark class="text-xl" />
     </span>
 
     <div class="flex flex-col gap-1.5">

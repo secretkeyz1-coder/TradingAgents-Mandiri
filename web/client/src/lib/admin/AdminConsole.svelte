@@ -5,7 +5,9 @@
   // work in a modal over a chart. #/admin/<page> picks the page.
   import { api } from '../api';
   import { auth } from '../auth.svelte';
+  import { BRAND } from '../../../../shared/brand';
   import Logo from '../Logo.svelte';
+  import Wordmark from '../Wordmark.svelte';
   import ActivityPage from './ActivityPage.svelte';
   import BusinessPage from './BusinessPage.svelte';
   import AnalysisSettingsPage from './AnalysisSettingsPage.svelte';
@@ -55,9 +57,9 @@
 
 <div class="flex min-h-dvh flex-col bg-base-200">
   <header class="flex shrink-0 flex-wrap items-center gap-3 border-b border-base-300 bg-base-100 px-3 py-2 sm:px-4">
-    <a href="#/admin" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight" aria-label="Konsol admin TradingAgents">
-      <Logo />
-      <span class="hidden sm:inline">TradingAgents</span>
+    <a href="#/admin" class="flex shrink-0 items-center gap-2" aria-label="Konsol admin {BRAND.name}">
+      <Logo class="size-8" />
+      <Wordmark class="hidden text-lg sm:inline" />
     </a>
     <span class="badge badge-soft badge-secondary gap-1">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6z" /></svg>

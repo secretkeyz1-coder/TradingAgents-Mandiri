@@ -24,6 +24,7 @@ import { capMessage, limitsOf, needsVerification } from "./plans";
 import { readShared, writeShared } from "./shared";
 import { overLimit, room } from "./usage";
 import { getCatalog } from "./worker";
+import { BRAND } from "../../shared/brand";
 
 const WIB_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
@@ -152,7 +153,7 @@ async function report(userId: string, ids: string[], skipped: string[], title: s
     lines.push("");
   }
   if (skipped.length) lines.push(`Dilewati, kuota analisa harian habis: ${escape(skipped.join(", "))}`, "");
-  lines.push("<i>Riset otomatis TradingAgents, bukan saran investasi.</i>");
+  lines.push(`<i>Riset otomatis ${BRAND.name}, bukan saran investasi.</i>`);
   return lines.join("\n");
 }
 
@@ -329,6 +330,6 @@ watchApi.post("/watchlist/run", async (c) => {
 
 watchApi.post("/watchlist/test", async (c) => {
   const user = c.get("user");
-  const sent = await sendTelegram(user.telegramChatId, `<b>✅ TradingAgents</b>\nNotifikasi analisa harian untuk ${escape(user.username)} tersambung ke chat ini.`);
+  const sent = await sendTelegram(user.telegramChatId, `<b>✅ ${BRAND.name}</b>\nNotifikasi analisa harian untuk ${escape(user.username)} tersambung ke chat ini.`);
   return sent.ok ? c.json({ ok: true }) : c.json({ error: sent.error }, 400);
 });

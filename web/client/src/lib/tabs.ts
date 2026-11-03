@@ -1,6 +1,6 @@
 // TradingView's widgets run in a cross-origin iframe and open their
 // largeChartUrl (this app, with #/?tvwidgetsymbol=…) in a new tab; nothing on
-// this page can stop that. So the new tab hands the symbol to a TradingAgents
+// this page can stop that. So the new tab hands the symbol to an app
 // tab that is already open, which switches to it in place, and the new tab
 // closes itself. With no other tab open, the new tab simply carries on.
 

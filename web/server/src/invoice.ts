@@ -73,22 +73,23 @@ export function renderInvoice(p: Payment, buyer: Buyer, opts: { orderDays: numbe
 <title>${p.status === "paid" ? "Bukti pembayaran" : "Tagihan"} ${esc(p.reference)} · ${esc(BRAND.name)}</title>
 <style>
   :root { color-scheme: light; }
-  body { margin: 0; background: #f3f4f6; color: #1f2430; font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 720px; margin: 32px auto; background: #fff; border: 1px solid #e3e5ea; border-radius: 12px; padding: 40px; }
-  header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; border-bottom: 1px solid #e3e5ea; padding-bottom: 24px; }
-  h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
-  h2 { margin: 28px 0 8px; font-size: 13px; font-weight: 600; color: #5b6170; }
+  body { margin: 0; background: #F2EDE4; color: #121212; font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 720px; margin: 32px auto; background: #FBF8F3; border: 1px solid #DCD3C4; border-radius: 8px; padding: 40px; }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; border-bottom: 1px solid #E4DCCF; padding-bottom: 24px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  h1 span { color: #C2410C; }
+  h2 { margin: 28px 0 8px; font-size: 13px; font-weight: 600; color: #5F5B55; }
   p { margin: 0 0 6px; }
-  .muted { color: #5b6170; font-size: 13px; }
-  .status { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #eef0f4; }
+  .muted { color: #5F5B55; font-size: 13px; }
+  .status { display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: #E9E2D6; }
   .status.paid { background: #e3f4ea; color: #1d6b3f; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  td { padding: 10px 0; border-bottom: 1px solid #eceef2; vertical-align: top; }
+  td { padding: 10px 0; border-bottom: 1px solid #E9E2D6; vertical-align: top; }
   .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 16px; }
   tfoot td { border-bottom: 0; font-weight: 700; font-size: 17px; }
-  .pre { white-space: pre-line; background: #f6f7f9; border-radius: 8px; padding: 12px; }
-  footer { margin-top: 28px; border-top: 1px solid #e3e5ea; padding-top: 16px; }
-  button { margin-top: 20px; font: inherit; padding: 9px 16px; border-radius: 999px; border: 1px solid #c9ccd4; background: #fff; cursor: pointer; }
+  .pre { white-space: pre-line; background: #F2EDE4; border-radius: 8px; padding: 12px; }
+  footer { margin-top: 28px; border-top: 1px solid #E4DCCF; padding-top: 16px; }
+  button { margin-top: 20px; font: inherit; padding: 9px 16px; border-radius: 6px; border: 1px solid #DCD3C4; background: #FBF8F3; cursor: pointer; }
   @media print { body { background: #fff; } main { margin: 0; border: 0; padding: 0; } button { display: none; } }
   @media (max-width: 560px) { main { margin: 0; border-radius: 0; padding: 24px; } }
 </style>
@@ -97,7 +98,7 @@ export function renderInvoice(p: Payment, buyer: Buyer, opts: { orderDays: numbe
 <main>
   <header>
     <div>
-      <h1>${esc(BRAND.name)}</h1>
+      <h1>${esc(BRAND.wordmark[0])}<span>${esc(BRAND.wordmark[1])}</span></h1>
       <p class="muted">${esc(seller === BRAND.name ? BRAND.tagline : seller)}</p>
       ${contact ? `<p class="muted">${esc(contact)}</p>` : ""}
     </div>
