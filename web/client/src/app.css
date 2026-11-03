@@ -252,7 +252,8 @@ h2 {
 .md th, .md td { border: 1px solid var(--color-base-300); padding: 0.35em 0.6em; text-align: left; }
 .md hr { border-color: var(--color-base-300); }
 
-/* Uji strategi (PageScreen and the four views in workspace/dock): the tabs read as a path, each page
+/* Uji strategi (PageScreen and the four views in workspace/dock), and after it Riset AI's start and Pantau
+   (ADR 0019, at the end of this layer): the tabs read as a path, each page
    sets up or lists on the left and opens one item on the right, and a result leads with one verdict
    whose colour always comes with a word and an icon. Colours are theme tokens; text on a tone is mixed
    toward the ink in oklab, as .text-warning is, so it reads in both themes. They sit in the components
@@ -356,4 +357,127 @@ h2 {
 .ta-row-title { display: block; font-weight: 600; }
 .ta-row-sub { display: block; font-size: 0.8125rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
 .ta-group-label { display: flex; justify-content: space-between; padding: 0.875rem 1.25rem 0.25rem; font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+
+/* Riset AI's start and Pantau (ADR 0019) share the vocabulary: an asset is a monogram, its name and its price; the
+   AI's call, a signal's state and a price move are one chip whose colour always comes with an arrow, an icon or a
+   sign; a card says its state before it is opened. Flat like the rest of the app: cards on the base-200 page. */
+.ta-mono { display: grid; flex: none; place-items: center; width: 2.5rem; height: 2.5rem; border: 1px solid var(--color-base-300); border-radius: 0.75rem; background: var(--color-base-200); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.01em; color: color-mix(in oklch, var(--color-base-content) 82%, transparent); }
+.ta-mono[data-size="lg"] { width: 3.25rem; height: 3.25rem; border-radius: 0.875rem; font-size: 0.8125rem; }
+.ta-mono[data-watched] { border-color: color-mix(in oklch, var(--color-primary) 55%, transparent); background: color-mix(in oklab, var(--color-primary) 12%, var(--color-base-100)); color: color-mix(in oklab, var(--color-primary) 70%, var(--color-base-content)); }
+.ta-chip { display: inline-flex; flex: none; align-items: center; gap: 0.3125rem; height: 1.5rem; padding: 0 0.5rem; border-radius: 999px; background: var(--color-base-200); font-size: 0.75rem; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--color-base-content) 82%, transparent); }
+.ta-chip[data-dir="up"] { background: color-mix(in oklch, var(--color-success) 16%, transparent); color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content)); }
+.ta-chip[data-dir="down"] { background: color-mix(in oklch, var(--color-error) 16%, transparent); color: color-mix(in oklab, var(--color-error) 70%, var(--color-base-content)); }
+.ta-chip[data-dir="run"] { background: color-mix(in oklch, var(--color-info) 16%, transparent); color: color-mix(in oklab, var(--color-info) 70%, var(--color-base-content)); }
+.ta-chip[data-dir="warn"] { background: color-mix(in oklch, var(--color-warning) 22%, transparent); color: color-mix(in oklab, var(--color-warning) 55%, var(--color-base-content)); }
+.ta-chip[data-size="lg"] { height: 1.875rem; padding: 0 0.75rem; font-size: 0.875rem; }
+
+/* Riset AI's start: the list on the left, the asset picked on the right (its chart, the AI's last call, how to
+   start); stacked, the start comes right after the call so it never sinks below the history. Side by side, each
+   column scrolls on its own, so the list stays in reach while the preview is read. */
+.ta-research { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1.25rem; padding: 1rem 1rem 2.5rem; }
+@media (min-width: 64rem) {
+  .ta-research { grid-template-columns: minmax(21rem, 29rem) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); align-items: stretch; height: 100%; gap: 0; padding: 0; }
+  .ta-research > * { position: relative; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-block: 1.5rem 3rem; }
+  .ta-research > :first-child { padding-inline: 1.5rem 0.625rem; }
+  .ta-research > :last-child { padding-inline: 0.625rem 1.5rem; }
+}
+.ta-research-two { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "verdict" "start" "history"; align-items: start; gap: 1rem; }
+@media (min-width: 90rem) {
+  .ta-research-two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "verdict start" "history start"; }
+}
+.ta-asset { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; width: 100%; min-height: 3.75rem; padding: 0.5rem 0.625rem; border-radius: var(--radius-field); color: var(--color-base-content); text-align: left; cursor: pointer; }
+@media (hover: hover) {
+  .ta-asset:hover { background: var(--color-base-200); }
+}
+.ta-asset[aria-current="true"] { background: var(--color-base-200); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-primary) 60%, transparent); }
+/* The row the arrow keys are on while the search box has focus: a ring in the accent, as menus mark theirs. */
+.ta-finder:focus-within [data-active] { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.ta-choice { display: flex; align-items: flex-start; gap: 0.75rem; width: 100%; padding: 0.875rem; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); color: var(--color-base-content); text-align: left; cursor: pointer; }
+.ta-choice[aria-pressed="true"] { border-color: var(--color-primary); background: color-mix(in oklab, var(--color-primary) 9%, var(--color-base-100)); box-shadow: inset 0 0 0 1px var(--color-primary); }
+@media (hover: hover) {
+  .ta-choice:not([aria-pressed="true"]):hover { border-color: color-mix(in oklch, var(--color-primary) 55%, transparent); }
+}
+.ta-choice-icon { display: grid; flex: none; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 0.625rem; background: var(--color-base-200); }
+.ta-choice[aria-pressed="true"] .ta-choice-icon { background: var(--color-primary); color: var(--color-primary-content); }
+.ta-setsum { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.625rem; padding: 0.75rem 0.875rem; border-radius: var(--radius-field); background: var(--color-base-200); font-size: 0.8125rem; color: color-mix(in oklch, var(--color-base-content) 80%, transparent); }
+.ta-setsum b { font-weight: 600; color: var(--color-base-content); }
+
+/* Pantau's three tabs as cards that carry their state; on a phone just the name and the count. */
+.ta-ptabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.ta-ptab { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; column-gap: 0.875rem; padding: 0.75rem 1rem 0.75rem 0.75rem; border: 1px solid var(--color-base-300); border-radius: var(--radius-box); background: var(--color-base-100); color: var(--color-base-content); text-align: left; cursor: pointer; }
+.ta-ptab[aria-current="page"] { border-color: color-mix(in oklch, var(--color-primary) 60%, transparent); background: color-mix(in oklab, var(--color-primary) 8%, var(--color-base-100)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-primary) 60%, transparent); }
+@media (hover: hover) {
+  .ta-ptab:not([aria-current="page"]):hover { border-color: color-mix(in oklch, var(--color-base-content) 30%, transparent); }
+}
+.ta-ptab-icon { display: grid; grid-row: span 2; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; background: var(--color-base-200); }
+.ta-ptab[aria-current="page"] .ta-ptab-icon { background: var(--color-primary); color: var(--color-primary-content); }
+.ta-ptab-name { align-self: end; font-weight: 650; }
+.ta-ptab-state { display: flex; min-width: 0; align-self: start; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-ptab-count { grid-row: 1 / 3; grid-column: 3; font-size: 1.625rem; font-weight: 750; line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
+.ta-ptab-count small { display: block; margin-top: 0.25rem; font-size: 0.75rem; font-weight: 550; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+@media (max-width: 47.99rem) {
+  .ta-ptabs { gap: 0.375rem; }
+  .ta-ptab { grid-template-columns: minmax(0, 1fr); padding: 0.5rem 0.625rem; text-align: center; }
+  .ta-ptab-icon, .ta-ptab-state, .ta-ptab-count small { display: none; }
+  .ta-ptab-name { align-self: auto; font-size: 0.875rem; }
+  .ta-ptab-count { grid-row: auto; grid-column: auto; font-size: 1.125rem; text-align: center; }
+}
+
+/* Pantauanku: this week's scheduled days, and each asset as a card. */
+.ta-week { display: grid; gap: 0.375rem; margin: 0; padding: 0; list-style: none; }
+.ta-day { display: flex; flex-direction: column; align-items: center; gap: 0.375rem; padding: 0.5rem 0.25rem; border: 1px solid var(--color-base-300); border-radius: var(--radius-field); font-size: 0.75rem; text-align: center; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-day b { font-size: 0.8125rem; font-weight: 650; color: var(--color-base-content); }
+.ta-day-mark { display: grid; place-items: center; width: 1.625rem; height: 1.625rem; border: 1.5px dashed var(--color-base-300); border-radius: 999px; }
+.ta-day[data-state="done"] .ta-day-mark { border: 0; background: color-mix(in oklch, var(--color-success) 16%, transparent); color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content)); }
+.ta-day[data-state="today"] { border-color: color-mix(in oklch, var(--color-primary) 60%, transparent); background: color-mix(in oklab, var(--color-primary) 8%, var(--color-base-100)); }
+.ta-day[data-state="today"] .ta-day-mark { border: 0; background: var(--color-primary); color: var(--color-primary-content); }
+.ta-watch { display: grid; grid-template-columns: 3.25rem minmax(0, 1.3fr) minmax(5rem, 1fr) minmax(0, 0.9fr) minmax(0, 1.2fr) auto; align-items: center; column-gap: 1rem; row-gap: 0.75rem; padding: 1rem 1.125rem; border: 1px solid var(--color-base-300); border-radius: calc(var(--radius-box) * 1.6); background: var(--color-base-100); }
+@media (max-width: 79.99rem) {
+  .ta-watch { grid-template-columns: 3.25rem minmax(0, 1fr) auto; }
+  .ta-watch-spark { display: none; }
+  .ta-watch-call { grid-column: 2 / -1; }
+  .ta-watch-act { grid-column: 2 / -1; }
+}
+.ta-flag { display: flex; grid-column: 1 / -1; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.625rem 0.75rem; border-radius: var(--radius-field); background: color-mix(in oklch, var(--color-warning) 16%, transparent); font-size: 0.8125rem; }
+.ta-flag[data-tone="info"] { background: color-mix(in oklch, var(--color-info) 12%, transparent); }
+.ta-spark { display: block; width: 100%; height: 2.5rem; overflow: visible; }
+.ta-spark path { fill: none; stroke: color-mix(in oklch, var(--color-base-content) 55%, transparent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.ta-spark[data-dir="up"] path { stroke: var(--color-success); }
+.ta-spark[data-dir="down"] path { stroke: var(--color-error); }
+
+/* Alert: filters by a signal's state, each asset's alerts as one card of rows. */
+.ta-filter { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0 0.875rem; border: 1px solid var(--color-base-300); border-radius: 999px; background: var(--color-base-100); font-size: 0.875rem; font-weight: 550; color: color-mix(in oklch, var(--color-base-content) 78%, transparent); cursor: pointer; }
+.ta-filter[aria-pressed="true"] { border-color: color-mix(in oklch, var(--color-primary) 60%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-primary) 60%, transparent); color: var(--color-base-content); }
+.ta-filter b { font-weight: 700; color: var(--color-base-content); font-variant-numeric: tabular-nums; }
+.ta-group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.875rem 1.125rem; }
+.ta-alert { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.7fr) 8.5rem auto 2.5rem; align-items: center; gap: 0.875rem; padding: 0.625rem 1.125rem; border-top: 1px solid var(--color-base-300); }
+@media (max-width: 47.99rem) {
+  .ta-alert { grid-template-columns: minmax(0, 1fr) auto; }
+  .ta-alert-signal { grid-column: 1 / -1; }
+}
+.ta-tf { display: inline-flex; align-items: center; height: 1.375rem; padding: 0 0.5rem; border-radius: 0.375rem; background: var(--color-base-200); font-size: 0.75rem; font-weight: 600; white-space: nowrap; color: color-mix(in oklch, var(--color-base-content) 82%, transparent); }
+
+/* Jurnal: a running trade between its stop (left) and its target (right), with where the price is now. */
+.ta-trade { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr) auto; align-items: center; gap: 1.5rem; padding: 1rem 1.25rem; border: 1px solid var(--color-base-300); border-radius: calc(var(--radius-box) * 1.6); background: var(--color-base-100); }
+@media (max-width: 63.99rem) {
+  .ta-trade { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; }
+}
+.ta-track { position: relative; display: flex; height: 0.625rem; margin: 1.5rem 0; }
+.ta-track-sl { border-radius: 999px 0 0 999px; background: color-mix(in oklch, var(--color-error) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-error) 45%, transparent); }
+.ta-track-tp { border-radius: 0 999px 999px 0; background: color-mix(in oklch, var(--color-success) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-success) 45%, transparent); }
+.ta-track-entry { position: absolute; top: -0.3125rem; width: 2px; height: 1.25rem; border-radius: 2px; background: color-mix(in oklch, var(--color-base-content) 70%, transparent); translate: -1px 0; }
+.ta-track-now { position: absolute; top: 50%; width: 1rem; height: 1rem; border: 3px solid var(--color-base-100); border-radius: 999px; background: var(--color-base-content); translate: -50% -50%; box-shadow: 0 0 0 1px var(--color-base-300); }
+.ta-track-label { position: absolute; top: 1rem; font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; color: color-mix(in oklch, var(--color-base-content) 70%, transparent); }
+.ta-track-now-label { position: absolute; bottom: 1rem; font-size: 0.75rem; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; translate: -50% 0; }
+.ta-dbars { display: grid; grid-template-columns: minmax(0, 13rem) minmax(0, 1fr) minmax(0, 1fr) 4.75rem; align-items: center; row-gap: 0.75rem; }
+.ta-dbars-neg, .ta-dbars-pos { display: flex; height: 1.5rem; }
+.ta-dbars-neg { justify-content: flex-end; border-right: 1px solid var(--color-base-300); }
+.ta-dbars-neg > span { border-radius: 0.375rem 0 0 0.375rem; background: color-mix(in oklch, var(--color-error) 80%, transparent); }
+.ta-dbars-pos > span { border-radius: 0 0.375rem 0.375rem 0; background: color-mix(in oklch, var(--color-success) 80%, transparent); }
+.ta-closed { display: grid; grid-template-columns: minmax(0, 1.3fr) 6.5rem minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1.4fr) 2.25rem; align-items: center; gap: 0.875rem; padding: 0.625rem 1.125rem; border-top: 1px solid var(--color-base-300); font-size: 0.875rem; }
+/* Narrow: the asset, its R and the delete button on one line, how it closed on the next; source and note hide. */
+@media (max-width: 63.99rem) {
+  .ta-closed { grid-template-columns: minmax(0, 1fr) auto 2.25rem; row-gap: 0.25rem; }
+  .ta-closed-when { grid-column: 1 / -1; grid-row: 2; }
+}
 }

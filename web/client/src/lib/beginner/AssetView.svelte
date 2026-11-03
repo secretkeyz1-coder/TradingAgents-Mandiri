@@ -2,8 +2,22 @@
   // The asset in focus, for a beginner: its name, the latest price and today's
   // change, and one area chart over a span people think in (a day, a week … a
   // year). The candles are the Pro chart's own: crypto live from its venue, the
-  // rest a few minutes late from Yahoo. Green or red follows the span's change.
-  import { AreaSeries, ColorType, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+  // rest a few minutes late from Yahoo. Green or red follows the span's change. Riset AI's start shows
+  // it too (ResearchPreview): there the name is a section heading, the AI's past calls are marked on the
+  // line, and the caller adds its own buttons beside the star.
+  import {
+    AreaSeries,
+    ColorType,
+    createChart,
+    createSeriesMarkers,
+    type IChartApi,
+    type ISeriesApi,
+    type ISeriesMarkersPluginApi,
+    type SeriesMarker,
+    type Time,
+    type UTCTimestamp,
+  } from 'lightweight-charts';
+  import type { Snippet } from 'svelte';
   import { api, type CandleSeries, type Interval } from '../api';
   import { formatPercent, today } from '../format';
   import SessionBadge from '../SessionBadge.svelte';
@@ -14,6 +28,19 @@
   import { assetCode, venueOf } from '../tv';
   import { latest } from './latest.svelte';
   import { friendlyName, priceText, toneOf } from './plain';
+
+  let {
+    heading = 'h1',
+    marks = [],
+    actions,
+  }: {
+    /** h2 where the screen has its own h1 (Riset AI's start). */
+    heading?: 'h1' | 'h2';
+    /** The AI's calls to mark on the line, newest first; shown on the daily spans. */
+    marks?: { day: string; dir: 1 | 0 | -1; text: string }[];
+    /** More buttons beside the star. */
+    actions?: Snippet;
+  } = $props();
 
   type Span = { key: string; short: string; label: string; range: string; interval: Interval; days: 'session' | number | null };
   const SPANS: Span[] = [
@@ -137,6 +164,7 @@
   let box: HTMLDivElement | undefined = $state();
   let chart: IChartApi | undefined;
   let area: ISeriesApi<'Area'> | undefined = $state();
+  let markers: ISeriesMarkersPluginApi<Time> | undefined;
   $effect(() => {
     if (!box) return;
     chart = createChart(box, {
@@ -149,11 +177,15 @@
       handleScroll: false,
       handleScale: false,
     });
-    area = chart.addSeries(AreaSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    // A local first: reading `area` back here would make this effect depend on what it just wrote.
+    const series = chart.addSeries(AreaSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    markers = createSeriesMarkers(series, []);
+    area = series;
     return () => {
       chart?.remove();
       chart = undefined;
       area = undefined;
+      markers = undefined;
     };
   });
   $effect(() => {
@@ -169,6 +201,30 @@
     });
     area.applyOptions({ lineColor: tokenColor(token), topColor: tokenColor(token, 0.22), bottomColor: tokenColor(token, 0.02) });
     area.setData(points);
+    // Each call sits on the last point of its day or before it (an analysis dated on a weekend marks the Friday),
+    // the newest one where two fall on the same point.
+    const placed = new Map<number, SeriesMarker<Time>>();
+    if (span.interval === '1d' && points.length) {
+      for (const m of marks) {
+        const end = Date.parse(`${m.day}T23:59:59Z`) / 1000;
+        if (end < points[0].time) continue;
+        let at: number = points[0].time;
+        for (const p of points) {
+          if (p.time > end) break;
+          at = p.time;
+        }
+        if (placed.has(at)) continue;
+        const token = m.dir > 0 ? '--color-success' : m.dir < 0 ? '--color-error' : '--color-base-content';
+        placed.set(at, {
+          time: at as UTCTimestamp,
+          position: m.dir < 0 ? 'aboveBar' : 'belowBar',
+          shape: m.dir > 0 ? 'arrowUp' : m.dir < 0 ? 'arrowDown' : 'circle',
+          color: tokenColor(token, m.dir ? 1 : 0.6),
+          text: m.text,
+        });
+      }
+    }
+    markers?.setMarkers([...placed.values()].sort((a, b) => (a.time as number) - (b.time as number)));
     chart.timeScale().fitContent();
   });
 </script>
@@ -176,7 +232,7 @@
 <section class="flex min-h-0 flex-col gap-3" aria-labelledby="asset-name">
   <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
     <div class="min-w-0">
-      <h1 id="asset-name" class="truncate text-xl font-semibold tracking-tight sm:text-2xl">{name}</h1>
+      <svelte:element this={heading} id="asset-name" class="truncate text-xl font-semibold tracking-tight sm:text-2xl">{name}</svelte:element>
       <p class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-base-content/70">
         {#if code !== name}<span>{code}</span>{/if}
         {#if daily}
@@ -187,18 +243,21 @@
         <SessionBadge tv={ws.symbol} />
       </p>
     </div>
-    {#if ws.yahoo}
-      <button
-        class="btn btn-sm shrink-0 gap-1.5"
-        class:btn-soft={watched}
-        aria-pressed={watched}
-        title={watched ? 'Hapus dari Pantauanku' : 'Simpan ke Pantauanku: dianalisa AI tiap hari bursa'}
-        onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill={watched ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" class:text-warning={watched} aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>
-        {watched ? 'Dipantau' : 'Pantau'}
-      </button>
-    {/if}
+    <div class="flex shrink-0 flex-wrap items-center gap-2">
+      {@render actions?.()}
+      {#if ws.yahoo}
+        <button
+          class="btn btn-sm gap-1.5"
+          class:btn-soft={watched}
+          aria-pressed={watched}
+          title={watched ? 'Hapus dari Pantauanku' : 'Simpan ke Pantauanku: dianalisa AI tiap hari bursa'}
+          onclick={() => watch.toggle(ws.yahoo!, ws.symbol)}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill={watched ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" class:text-warning={watched} aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" /></svg>
+          {watched ? 'Dipantau' : 'Pantau'}
+        </button>
+      {/if}
+    </div>
   </div>
 
   {#if !ws.yahoo}

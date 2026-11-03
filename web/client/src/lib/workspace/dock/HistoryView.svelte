@@ -29,7 +29,7 @@
       {#if !jobs.loaded}
         Memuat…
       {:else}
-        Belum ada analisa{mine ? ` untuk ${mine}` : ''}. Mulai dari Riset AI, tab Jalankan.
+        Belum ada analisa{mine ? ` untuk ${mine}` : ''}. Mulai dari Riset AI: pilih aset, lalu Mulai analisa.
       {/if}
     </p>
   {:else}

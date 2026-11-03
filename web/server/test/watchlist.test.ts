@@ -3,7 +3,25 @@
 // Analisa terjadwal (its tab), and Pemula's Pantauanku feeds the same list, so no
 // message a member reads says "watchlist".
 import { expect, test } from "bun:test";
+import { db } from "../src/db";
+import { analyses, type AnalysisRequest } from "../src/db/schema";
 import { call, member } from "./helpers";
+
+test("a run that failed does not hide the decision before it", async () => {
+  const m = await member();
+  expect((await call("/api/watchlist", { cookie: m.cookie, body: { symbol: "BBRI.JK", tvSymbol: "IDX:BBRI" } })).status).toBe(201);
+  const request: AnalysisRequest = { ticker: "BBRI.JK", date: "2026-11-02", analysts: ["market"], depth: 1, provider: "openai", quickModel: "m", deepModel: "m", language: "Indonesian" };
+  const row = (extra: Partial<typeof analyses.$inferInsert>) => ({ userId: m.id, ticker: "BBRI.JK", tradeDate: "2026-11-02", request, ...extra });
+  const [decided] = await db
+    .insert(analyses)
+    .values(row({ status: "completed", rating: "Sell", createdAt: new Date(Date.now() - 86_400_000) }))
+    .returning({ id: analyses.id });
+  const [failed] = await db.insert(analyses).values(row({ tradeDate: "2026-11-03", status: "failed", error: "boom" })).returning({ id: analyses.id });
+
+  const { body } = await call("/api/watchlist", { cookie: m.cookie });
+  expect(body.items[0].last).toMatchObject({ id: failed.id, status: "failed" });
+  expect(body.items[0].decision).toMatchObject({ id: decided.id, status: "completed", rating: "Sell", tradeDate: "2026-11-02" });
+});
 
 test("the daily analysis's errors name it as the app does", async () => {
   const verified = await member({ verified: true });

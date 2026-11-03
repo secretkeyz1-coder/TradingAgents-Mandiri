@@ -124,7 +124,7 @@
     error = note = '';
     const model = modelSettings();
     if (!model) {
-      error = 'Model AI belum diatur: buka Riset AI → Jalankan → Pengaturan.';
+      error = 'Model AI belum diatur. Admin mengaturnya di Konsol admin → Pengaturan analisa.';
       return;
     }
     busy = 'translate';

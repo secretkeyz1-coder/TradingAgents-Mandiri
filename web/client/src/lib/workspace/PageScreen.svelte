@@ -5,9 +5,12 @@
   // The tabs move between pages, so they are a nav of buttons marked aria-current, not an ARIA tablist
   // whose arrow keys nothing here implements. Uji strategi's read as a path: each tab with its icon and
   // what it is for, arrows between the steps, and the AI test set apart; a phone shows short names only.
+  // Pantau's are cards that carry each tab's state (PantauHead), on top of the page with its title, so
+  // they line up with what they switch (ADR 0019).
   import { SCREENS, ws, type DockTab } from '../stores/workspace.svelte';
   import Icon from './Icon.svelte';
   import type { IconName } from './icons';
+  import PantauHead from './PantauHead.svelte';
   import TabView from './TabView.svelte';
 
   let { screen }: { screen: 'pantau' | 'uji' } = $props();
@@ -38,9 +41,9 @@
   </button>
 {/snippet}
 
-<section class="flex h-full min-h-0 min-w-0 flex-col {screen === 'uji' ? 'bg-base-200' : 'bg-base-100'}" aria-labelledby="page-title">
-  <h1 id="page-title" class="sr-only">{s.label}</h1>
+<section class="flex h-full min-h-0 min-w-0 flex-col bg-base-200" aria-labelledby="page-title">
   {#if screen === 'uji'}
+    <h1 id="page-title" class="sr-only">{s.label}</h1>
     <nav class="ta-journey" aria-label={s.label}>
       {#each path as t, i (t.key)}
         {#if i}<Icon name="right" size={16} class="ta-journey-arrow" />{/if}
@@ -52,16 +55,12 @@
         </div>
       {/if}
     </nav>
-  {:else}
-    <nav class="tabs tabs-border shrink-0 flex-nowrap overflow-x-auto border-b border-base-300 px-2 sm:px-4" aria-label={s.label}>
-      {#each s.tabs as t (t.key)}
-        <button type="button" class="tab gap-1.5 whitespace-nowrap" class:tab-active={ws.dock === t.key} aria-current={ws.dock === t.key ? 'page' : undefined} onclick={() => ws.setDock(t.key)}>
-          {t.label}{@render running(t.key)}
-        </button>
-      {/each}
-    </nav>
   {/if}
-  <div class="min-h-0 flex-1 overflow-auto" bind:this={scroller}>
-    <div class="mx-auto w-full {screen === 'uji' ? 'max-w-[88rem]' : 'max-w-6xl'}"><TabView tab={ws.dock} /></div>
+  <!-- relative: sr-only text in a long tab is clipped with the scroller instead of lengthening the page. -->
+  <div class="relative min-h-0 flex-1 overflow-auto" bind:this={scroller}>
+    <div class="mx-auto w-full {screen === 'uji' ? 'max-w-[88rem]' : 'max-w-6xl'}">
+      {#if screen === 'pantau'}<PantauHead />{/if}
+      <TabView tab={ws.dock} />
+    </div>
   </div>
 </section>

@@ -389,8 +389,8 @@
             {#each watch.value.items.slice(0, 5) as item (item.symbol)}
               <li class="flex items-center justify-between gap-2 text-sm">
                 <button class="link link-hover font-mono" onclick={() => ws.setSymbol(item.tvSymbol)}>{assetCode(item.symbol)}</button>
-                {#if item.last?.rating}
-                  <button class="badge badge-sm {ratingBadge(item.last.rating)}" onclick={() => ws.openRun(item.last!.id, { symbol: item.tvSymbol })}>{item.last.rating}</button>
+                {#if item.decision?.rating}
+                  <button class="badge badge-sm {ratingBadge(item.decision.rating)}" onclick={() => ws.openRun(item.decision!.id, { symbol: item.tvSymbol })}>{item.decision.rating}</button>
                 {:else}
                   <span class="text-xs text-base-content/70">belum ada hasil</span>
                 {/if}

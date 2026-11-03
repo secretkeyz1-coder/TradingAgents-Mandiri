@@ -4,10 +4,11 @@
   // Uji strategi are pages of tabs. Pasar and Riset AI are chart screens: each of their panels
   // (the market list on Pasar, Riset AI's panel, the bottom panel) is docked to its edge,
   // floats as a window over the chart, or waits in the tray, as the layout store says, and
-  // focus mode gives the chart the whole window. Both open split (ADR 0018): Pasar with its market
-  // list beside the chart of the symbol in focus, the screener below; Riset AI with its asset picker
-  // beside its AI panel, and the chart takes the picker's place once an asset is picked. On a phone
-  // each screen is one column behind a bottom tab bar (PhoneScreen: Pasar's board, then a chart).
+  // focus mode gives the chart the whole window. Pasar opens split (ADR 0018): its market list beside
+  // the chart of the symbol in focus, the screener below. Riset AI opens at its start (ResearchStart,
+  // ADR 0019): the assets on the left, the one picked on the right with how to research it; the chart
+  // and the AI panel come once research starts or the chart is asked for. On a phone each screen is
+  // one column behind a bottom tab bar (PhoneScreen: Pasar's board, then a chart).
   // Panels talk only through the workspace store.
   import { onMount } from 'svelte';
   import ScriptEditor from '../chart/ScriptEditor.svelte';
@@ -21,7 +22,7 @@
   import { layoutOf, viewport } from '../stores/viewport.svelte';
   import { isChartScreen, SCREENS, ws, type Screen } from '../stores/workspace.svelte';
   import AiPanel from './AiPanel.svelte';
-  import AssetPicker from './AssetPicker.svelte';
+  import ResearchStart from './ResearchStart.svelte';
   import ChartPanel from './ChartPanel.svelte';
   import DashboardScreen from './DashboardScreen.svelte';
   import Dock from './Dock.svelte';
@@ -161,6 +162,8 @@
   <div class="min-h-0 flex-1"><DashboardScreen /></div>
 {:else if ws.screen === 'pantau' || ws.screen === 'uji'}
   <div class="min-h-0 flex-1"><PageScreen screen={ws.screen} /></div>
+{:else if ws.screen === 'riset' && !ws.open.riset}
+  <div class="min-h-0 flex-1"><ResearchStart /></div>
 {:else}
   <div class="relative flex min-h-0 flex-1 bg-base-100" data-workspace bind:clientWidth={outerW} bind:clientHeight={outerH}>
     <div class="grid min-h-0 min-w-0 flex-1" style="grid-template-columns: {columns};" bind:clientWidth={boxW} bind:clientHeight={boxH}>
@@ -181,7 +184,7 @@
       {/if}
 
       <div class="grid min-h-0 min-w-0" style="grid-template-rows: {rows};">
-        <div class="min-h-0 min-w-0 overflow-hidden">{#if ws.screen === 'riset' && !ws.open.riset}<AssetPicker />{:else}<ChartPanel />{/if}</div>
+        <div class="min-h-0 min-w-0 overflow-hidden"><ChartPanel /></div>
         {#if hasDock}
           {#if ws.dockSize === 'normal'}
             <div class="flex min-w-0 flex-col">

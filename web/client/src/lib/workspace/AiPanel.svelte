@@ -1,17 +1,19 @@
 <script lang="ts">
-  // Riset AI for the symbol in focus: ask the agent (Tanya), or run a full analysis and
-  // follow it (Jalankan: the open analysis at a glance, the latest decision on record, the
-  // form). The history, report and log of the same work sit in the bottom panel under this
-  // destination; backtests have their own, Uji strategi. Beside Riset AI's asset picker, before a
-  // chart is open, it names the asset it works on, so nothing starts on one the user did not mean.
+  // Riset AI for the symbol in focus, beside its chart: ask the agent (Tanya), or run a full analysis
+  // and follow it (Analisa: the open analysis at a glance, the latest decision on record, the form). The
+  // history, report and log of the same work sit in the bottom panel under this destination; backtests
+  // have their own, Uji strategi. Riset AI's start (ResearchStart) shows neither chart nor panel: it has
+  // the asset picked first, so nothing starts on one the user did not mean.
   import { friendlyName } from '../beginner/plain';
-  import { ratingBadge, ratingTone, renderMarkdown } from '../format';
+  import { formatDay, renderMarkdown } from '../format';
+  import { callOf } from '../marks';
   import { jobs } from '../stores/jobs.svelte';
   import { AI_MODES, ws } from '../stores/workspace.svelte';
   import StatusBadge from '../StatusBadge.svelte';
   import { assetCode, toTradingView } from '../tv';
   import AnalysisForm from './AnalysisForm.svelte';
   import ChatPanel from './ChatPanel.svelte';
+  import Icon from './Icon.svelte';
   import PanelClose from './PanelClose.svelte';
 
   /** `bare`: on a phone the screen's tab row stands in for the header (PhoneScreen). */
@@ -24,10 +26,11 @@
       : undefined,
   );
 
-  function dot(s: string | undefined) {
-    if (s === 'completed') return 'status-success';
-    if (s === 'in_progress') return 'status-info motion-safe:animate-pulse';
-    return 'status-neutral opacity-40';
+  /** An agent's state in the live list, by an icon and a word, never by colour alone. */
+  function stateOf(s: string | undefined) {
+    if (s === 'completed') return { icon: 'check', word: 'selesai', tone: 'ta-up' } as const;
+    if (s === 'in_progress') return { icon: 'clock', word: 'berjalan', tone: 'text-info' } as const;
+    return { icon: 'minus', word: 'menunggu', tone: 'ta-muted' } as const;
   }
 
   async function removeRun() {
@@ -42,9 +45,9 @@
   {#if !bare}
     <header class="flex h-10 shrink-0 items-center gap-2 border-b border-base-300 px-3">
       <h2 class="text-sm font-semibold whitespace-nowrap">Riset AI</h2>
-      <div role="tablist" class="tabs tabs-box tabs-xs ml-auto" aria-label="Riset AI">
+      <div role="group" class="tabs tabs-box tabs-xs ml-auto" aria-label="Riset AI">
         {#each AI_MODES as m (m.key)}
-          <button role="tab" class="tab" class:tab-active={ws.aiMode === m.key} aria-selected={ws.aiMode === m.key} onclick={() => ws.setAiMode(m.key)}>
+          <button type="button" class="tab" class:tab-active={ws.aiMode === m.key} aria-pressed={ws.aiMode === m.key} onclick={() => ws.setAiMode(m.key)}>
             {m.label}
           </button>
         {/each}
@@ -53,19 +56,12 @@
     </header>
   {/if}
 
-  {#if !bare && ws.screen === 'riset' && !ws.open.riset}
-    <p class="shrink-0 border-b border-base-300 bg-base-200/60 px-3 py-2 text-xs">
-      Riset untuk <strong class="font-semibold">{friendlyName(ws.symbol)}</strong>. Pilih aset lain di kiri, atau
-      <button class="link" onclick={() => ws.research(ws.symbol)}>buka chart-nya</button>.
-    </p>
-  {/if}
-
   {#if ws.aiMode === 'chat'}
     <div class="flex min-h-0 flex-1 flex-col p-3">
       {#if ws.yahoo}
         <ChatPanel />
       {:else}
-        <p class="text-sm text-base-content/70">{ws.symbol} belum bisa dipetakan ke data engine (Yahoo Finance).</p>
+        <p class="text-sm text-base-content/70">AI belum bisa meriset {friendlyName(ws.symbol)}. Pilih aset lain lewat kotak cari di bilah atas.</p>
       {/if}
     </div>
   {:else}
@@ -80,8 +76,11 @@
           {#if run.loadError}
             <p class="text-sm text-error">{run.loadError}</p>
           {:else if run.decision}
-            <p class="text-xs text-base-content/70">Keputusan · {run.analysis?.tradeDate}</p>
-            <p class="text-2xl font-semibold leading-tight {ratingTone(run.rating)}">{run.rating ?? '—'}</p>
+            {@const c = callOf(run.rating)}
+            <p class="text-xs text-base-content/70">Keputusan AI{run.analysis?.tradeDate ? ` · ${formatDay(run.analysis.tradeDate, true)}` : ''}</p>
+            <p class="flex items-center gap-2 text-2xl font-semibold leading-tight {c.dir === 'up' ? 'ta-up' : c.dir === 'down' ? 'ta-down' : ''}">
+              <Icon name={c.icon} size={24} stroke={2.2} />{c.label}
+            </p>
             <div class="md line-clamp-6 text-sm">{@html renderMarkdown(run.decision)}</div>
             <button class="link link-hover w-fit text-sm" onclick={() => ws.setDock('report')}>Baca laporan lengkap</button>
           {:else if run.live}
@@ -92,8 +91,9 @@
             <ul class="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
               {#each run.teams as team (team.name)}
                 {#each team.agents as agent (agent)}
+                  {@const s = stateOf(run.agents[agent])}
                   <li class="flex items-center gap-1.5 truncate">
-                    <span class="status status-xs {dot(run.agents[agent])}" aria-hidden="true"></span>{agent}
+                    <Icon name={s.icon} size={14} stroke={2.2} class={s.tone} />{agent}<span class="sr-only">: {s.word}</span>
                   </li>
                 {/each}
               {/each}
@@ -121,15 +121,16 @@
       {/if}
 
       {#if latest}
+        {@const c = callOf(latest.rating)}
         <button
           class="flex items-center justify-between gap-2 rounded-box border border-base-300 px-3 py-2 text-left text-sm hover:bg-base-200"
           onclick={() => ws.openRun(latest.id)}
         >
           <span>
-            <span class="block text-xs text-base-content/70">Keputusan terakhir · {latest.tradeDate}</span>
+            <span class="block text-xs text-base-content/70">Keputusan AI terakhir · {formatDay(latest.tradeDate, true)}</span>
             Buka analisa
           </span>
-          <span class="badge badge-sm {ratingBadge(latest.rating)}">{latest.rating}</span>
+          <span class="ta-chip" data-dir={c.dir}><Icon name={c.icon} size={12} stroke={2.4} />{c.label}</span>
         </button>
       {/if}
 
@@ -138,7 +139,7 @@
         {#if ws.yahoo}
           <AnalysisForm mode="analysis" />
         {:else}
-          <p class="text-sm text-base-content/70">{ws.symbol} belum bisa dipetakan ke data engine (Yahoo Finance).</p>
+          <p class="text-sm text-base-content/70">AI belum bisa meriset {friendlyName(ws.symbol)}. Pilih aset lain lewat kotak cari di bilah atas.</p>
         {/if}
       </div>
 

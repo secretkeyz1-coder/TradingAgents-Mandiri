@@ -36,7 +36,7 @@ const DOCK_TABS: DockTab[] = ['history', 'report', 'log', 'backtest', 'lab', 'si
 /** The AI panel's two tabs: ask the agent, or run a full analysis. */
 export const AI_MODES: { key: AiMode; label: string }[] = [
   { key: 'chat', label: 'Tanya' },
-  { key: 'analysis', label: 'Jalankan' },
+  { key: 'analysis', label: 'Analisa' },
 ];
 /** What the market panel shows, named as a tab where Pasar is one column (a phone). */
 export const MARKET_LIST_LABEL = 'Daftar harga';
@@ -173,6 +173,17 @@ class Workspace {
     this.phonePane.riset = 'chart';
     this.#focus(tv.trim().toUpperCase());
     this.#write('push');
+  }
+
+  /**
+   * Riset AI's start (ADR 0019): a symbol picked in its list is shown beside it. No chart opens, and the recent
+   * list keeps its order, so the rows do not move under the pointer while the user looks around.
+   */
+  preview(tv: string) {
+    const next = tv.trim().toUpperCase();
+    if (!next) return;
+    this.symbol = next;
+    this.market = marketOf(next) ?? this.market;
   }
 
   /** Pasar on a wide screen always shows a chart beside its list (ADR 0018): the symbol in focus, with no history entry of its own. */

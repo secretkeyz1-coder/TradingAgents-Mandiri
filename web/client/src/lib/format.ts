@@ -104,6 +104,25 @@ export function gridDates(start: string, end: string, everyNDays: number): strin
   return dates;
 }
 
+/** A calendar day as the lists write it: "2 Nov", or "2 Nov 2026" with the year. Reads only the date part. */
+export function formatDay(iso: string, year = false): string {
+  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}), timeZone: 'UTC' });
+}
+
+/** A moment in WIB, as a schedule says it: "hari ini, 16.30", "besok, 16.30" or "Rab, 4 Nov, 16.30". */
+export function formatWhen(iso: string, now = new Date()): string {
+  const at = new Date(iso);
+  const day = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+  const time = at.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' });
+  const label =
+    day(at) === day(now)
+      ? 'hari ini'
+      : day(at) === day(new Date(now.getTime() + 86_400_000))
+        ? 'besok'
+        : at.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Jakarta' });
+  return `${label}, ${time}`;
+}
+
 export function today(): string {
   return new Date().toLocaleDateString('en-CA');
 }

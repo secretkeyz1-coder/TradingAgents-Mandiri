@@ -169,7 +169,7 @@
                   <span class="block truncate">{friendlyName(item.tvSymbol)}</span>
                   <span class="block truncate font-mono text-xs text-base-content/70">{item.tvSymbol}</span>
                 </span>
-                {#if item.last?.rating}<span class="badge badge-sm {ratingBadge(item.last.rating)}" title="Keputusan AI terakhir, {item.last.tradeDate}">{item.last.rating}</span>{/if}
+                {#if item.decision?.rating}<span class="badge badge-sm {ratingBadge(item.decision.rating)}" title="Keputusan AI terakhir, {item.decision.tradeDate}">{item.decision.rating}</span>{/if}
                 <span class="tabular-nums">{q ? priceText(q.price, q.currency, item.symbol) : '…'}</span>
                 <span class="w-16 text-right tabular-nums {tone(q?.change)}">{q?.change == null ? '' : percent(q.change)}</span>
               </button>

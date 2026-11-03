@@ -1,12 +1,13 @@
 <script lang="ts">
   // A chart screen on a phone (Pasar or Riset AI), one thing at a time. Pasar starts at its market
   // board, the screener as a second tab; an asset opens its chart behind a back button. Riset AI
-  // starts at its asset picker; then the asset switch heads a row of tabs, the chart first, then the
-  // AI panel's and the bottom panel's: Chart · Tanya · Jalankan · Riwayat · Laporan · Log.
+  // starts at its list of assets and the preview of the one picked (ResearchStart, ADR 0019); once
+  // research starts, the asset switch heads a row of tabs, the chart first, then the AI panel's and
+  // the bottom panel's: Chart · Tanya · Analisa · Riwayat · Laporan · Log.
   // ws.phonePane says which one shows, so leaving the screen and coming back finds it as it was.
   import { AI_MODES, MARKET_LIST_LABEL, SCREENS, ws, type ChartScreen } from '../stores/workspace.svelte';
   import AiPanel from './AiPanel.svelte';
-  import AssetPicker from './AssetPicker.svelte';
+  import ResearchStart from './ResearchStart.svelte';
   import AssetSwitcher from './AssetSwitcher.svelte';
   import ChartPanel from './ChartPanel.svelte';
   import MarketBoard from './MarketBoard.svelte';
@@ -21,7 +22,7 @@
 </script>
 
 {#if screen === 'riset' && start}
-  <AssetPicker />
+  <ResearchStart />
 {:else}
   <section class="flex h-full min-h-0 min-w-0 flex-col bg-base-100" aria-label={s.label}>
     {#if screen === 'riset'}
@@ -60,7 +61,7 @@
     </div>
     <div class="min-h-0 flex-1">
       {#if pane === 'dock'}
-        <div class="h-full overflow-auto"><TabView tab={ws.dock} /></div>
+        <div class="relative h-full overflow-auto"><TabView tab={ws.dock} /></div>
       {:else if screen === 'pasar' && start}
         <MarketBoard />
       {:else if pane === 'side' && screen === 'riset'}

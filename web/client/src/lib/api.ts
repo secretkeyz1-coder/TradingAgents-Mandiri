@@ -584,7 +584,10 @@ export type Watchlist = {
   items: {
     symbol: string;
     tvSymbol: string;
+    /** The newest analysis of the symbol, whatever became of it. */
     last: { id: string; rating: string | null; status: AnalysisStatus; tradeDate: string; createdAt: string } | null;
+    /** The newest one that ended with a rating: a run that failed or is still going does not hide it. */
+    decision: { id: string; rating: string | null; status: AnalysisStatus; tradeDate: string; createdAt: string } | null;
   }[];
   max: number;
   schedule: { time: string; days: number[]; next: string; analysts: string[]; depth: number };

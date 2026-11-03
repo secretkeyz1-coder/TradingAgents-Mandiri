@@ -273,7 +273,14 @@ watchApi.get("/watchlist", async (c) => {
     : [];
   const [lastRun] = await db.select().from(watchRuns).where(eq(watchRuns.userId, user.id)).orderBy(desc(watchRuns.day)).limit(1);
   return c.json({
-    items: items.map((w) => ({ symbol: w.symbol, tvSymbol: w.tvSymbol, last: recent.find((a) => a.ticker === w.symbol) ?? null })),
+    // `last` is the newest attempt whatever became of it; `decision` the newest that ended with a rating,
+    // so a run that failed or is still going never hides the call before it (Pantau → Pantauanku shows both).
+    items: items.map((w) => ({
+      symbol: w.symbol,
+      tvSymbol: w.tvSymbol,
+      last: recent.find((a) => a.ticker === w.symbol) ?? null,
+      decision: recent.find((a) => a.ticker === w.symbol && a.status === "completed" && a.rating) ?? null,
+    })),
     max: limitsOf(user).watchlist,
     schedule: { time: settings.time, days: [...settings.days], next: nextRun(), analysts: settings.analysts, depth: settings.depth },
     telegram: {

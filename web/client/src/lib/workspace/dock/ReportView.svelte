@@ -10,7 +10,7 @@
 </script>
 
 {#if !run}
-  <p class="p-6 text-sm text-base-content/70">Buka analisa dari Riwayat, atau jalankan analisa baru di Riset AI, tab Jalankan.</p>
+  <p class="p-6 text-sm text-base-content/70">Buka analisa dari Riwayat, atau mulai analisa baru di tab Analisa panel Riset AI.</p>
 {:else if run.loadError}
   <p class="p-6 text-sm text-error">Analisa tidak bisa dimuat: {run.loadError}</p>
 {:else if run.analysis}

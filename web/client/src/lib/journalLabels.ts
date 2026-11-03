@@ -17,7 +17,8 @@ export const STATUS_LABEL: Record<JournalStatus, string> = {
   open: 'Berjalan',
   win: 'Kena TP',
   loss: 'Kena SL',
-  closed: 'Ditutup sendiri',
+  // Not "ditutup sendiri": the journal says that of its own close at TP or SL.
+  closed: 'Kamu tutup',
   cancelled: 'Tidak jadi',
 };
 

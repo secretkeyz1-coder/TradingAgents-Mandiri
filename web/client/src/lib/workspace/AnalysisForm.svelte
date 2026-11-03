@@ -30,7 +30,8 @@
   const longDate = (day: string) =>
     new Date(`${day}T00:00:00Z`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-  let { mode }: { mode: 'analysis' | 'backtest' } = $props();
+  /** `folded`: Riset AI's start (ResearchPreview), where the settings fold to one line above a large start button. */
+  let { mode, folded = false }: { mode: 'analysis' | 'backtest'; folded?: boolean } = $props();
 
   // Must match MAX_BACKTEST_CELLS on the server (default 40).
   const MAX_CELLS = 40;
@@ -45,6 +46,8 @@
 
   let submitting = $state(false);
   let submitError = $state('');
+  /** Folded: whether the settings are open under their one-line summary. */
+  let open = $state(false);
 
   let date = $state(today());
   // A backtest starts on the asset in focus; more are added as chips.
@@ -131,6 +134,8 @@
     const short = readingTf === '15m' ? ' Candle 15 menit saham hanya ada sekitar sebulan terakhir; tanggal yang lebih lama dibaca tanpa indikator itu.' : '';
     return `Di tiap tanggal uji, indikator dihitung hanya dari candle sampai tanggal itu, jadi AI tidak melihat data sesudahnya.${pob}${short}`;
   });
+  /** The picked indicators by name, for the folded summary. */
+  const pickedNames = $derived(choices.filter((c) => picked.includes(c.key)).map((c) => c.name).join(', '));
 
   function pick(key: string) {
     chosen = picked.includes(key) ? picked.filter((k) => k !== key) : [...picked, key].slice(0, MAX_READINGS);
@@ -173,7 +178,8 @@
     try {
       if (mode === 'analysis') {
         const { id } = await api.create({ ...shared, ticker, date, ...(reads.length ? { indicators: reads } : {}) });
-        ws.openRun(id, { show: false });
+        // From Riset AI's start the asset was only previewed: opening its run also puts it first among the recent ones.
+        ws.openRun(id, { show: false, symbol: folded ? ws.symbol : '' });
         ws.setDock('log');
       } else {
         const { id } = await api.createBacktest({ ...shared, tickers, start, end, everyNDays, ...(reads.length ? { indicators: reads } : {}) });
@@ -188,6 +194,13 @@
     }
   }
 </script>
+
+{#snippet adminLine()}
+  <p class="rounded-field border border-base-300 px-3 py-2 text-xs text-base-content/70">
+    Pengaturan admin: {adminSettings.providerKey || '…'} · {adminSettings.deepModel || '…'} · {depthLabel} · {adminSettings.language} · {adminSettings.analysts.length} analis.
+    <a class="link" href="#/admin/analisa">Ubah di Konsol admin</a>
+  </p>
+{/snippet}
 
 {#snippet readings()}
   {#if unread}
@@ -218,20 +231,40 @@
 
 <form class="flex flex-col gap-3" onsubmit={(e) => e.preventDefault()}>
   {#if catalog.error}
-    <p role="alert" class="text-sm text-error">Opsi model gagal dimuat: {catalog.error}</p>
+    <p role="alert" class="text-sm text-error">
+      Opsi analisa gagal dimuat. <button type="button" class="link" onclick={() => catalog.load()}>Coba lagi</button> atau muat ulang halaman.
+    </p>
   {/if}
 
   {#if mode === 'analysis'}
-    <label class="fieldset py-0">
-      <span class="fieldset-legend pt-0">Tanggal analisa</span>
-      <input class="input input-sm w-full" type="date" bind:value={date} max={today()} required />
-      <!-- The date field's own format follows the browser's language; this line is always Indonesian. -->
-      {#if date}<span class="text-xs text-base-content/70">{longDate(date)}{date === today() ? ' (hari ini)' : ''}</span>{/if}
-    </label>
-    <fieldset class="fieldset py-0">
-      <legend class="fieldset-legend pt-0">Indikator yang ikut dibaca AI <span class="font-normal text-base-content/70">(maks {MAX_READINGS})</span></legend>
-      {@render readings()}
-    </fieldset>
+    {#if folded}
+      <div class="ta-setsum">
+        <Icon name="sliders" size={16} />
+        <span><b>{date === today() ? 'Hari ini' : longDate(date)}</b></span>
+        <span aria-hidden="true">·</span>
+        <span>Indikator <b>{pickedNames || 'standar AI'}</b></span>
+        <span aria-hidden="true">·</span>
+        <span>Candle <b>{READING_LABELS[readingTf].toLowerCase()}</b></span>
+        <button type="button" class="link link-hover ml-auto font-medium text-base-content" aria-expanded={open} aria-controls="analysis-settings" onclick={() => (open = !open)}>
+          {open ? 'Tutup' : 'Ubah'}
+        </button>
+      </div>
+    {/if}
+    {#if !folded || open}
+      <div id="analysis-settings" class="flex flex-col gap-3">
+        <label class="fieldset py-0">
+          <span class="fieldset-legend pt-0">Tanggal analisa</span>
+          <input class="input input-sm w-full" type="date" bind:value={date} max={today()} required />
+          <!-- The date field's own format follows the browser's language; this line is always Indonesian. -->
+          {#if date}<span class="text-xs text-base-content/70">{longDate(date)}{date === today() ? ' (hari ini)' : ''}</span>{/if}
+        </label>
+        <fieldset class="fieldset py-0">
+          <legend class="fieldset-legend pt-0">Indikator yang ikut dibaca AI <span class="font-normal text-base-content/70">(maks {MAX_READINGS})</span></legend>
+          {@render readings()}
+        </fieldset>
+        {#if folded && auth.isAdmin}{@render adminLine()}{/if}
+      </div>
+    {/if}
   {:else}
     {#if fittedNote}<p class="alert alert-soft alert-info items-start text-sm"><Icon name="info" />{fittedNote}</p>{/if}
     <ol class="ta-steps">
@@ -296,29 +329,35 @@
     </div>
   {/if}
 
-  {#if auth.isAdmin}
-    <p class="rounded-field border border-base-300 px-3 py-2 text-xs text-base-content/70">
-      Pengaturan admin: {adminSettings.providerKey || '…'} · {adminSettings.deepModel || '…'} · {depthLabel} · {adminSettings.language} · {adminSettings.analysts.length} analis.
-      <a class="link" href="#/admin/analisa">Ubah di Konsol admin</a>
-    </p>
-  {/if}
+  {#if auth.isAdmin && !folded}{@render adminLine()}{/if}
 
   {#if submitError}
     <p role="alert" class="text-sm text-error">{submitError}</p>
   {/if}
 
-  <button class="btn btn-primary whitespace-nowrap {mode === 'backtest' ? 'btn-lg w-full' : 'btn-sm'}" type="button" onclick={submit} disabled={blocked}>
-    {#if submitting}<span class="loading loading-spinner loading-xs" aria-hidden="true"></span>{/if}
-    {#if mode === 'analysis'}Analisa {ticker ? friendlyName(ws.symbol) : 'simbol ini'}{:else}Mulai uji · {cellCount} analisa{/if}
+  <button class="btn btn-primary whitespace-nowrap {mode === 'backtest' || folded ? 'btn-lg w-full' : 'btn-sm'}" type="button" onclick={submit} disabled={blocked}>
+    {#if submitting}<span class="loading loading-spinner loading-xs" aria-hidden="true"></span>{:else if folded}<Icon name="play" />{/if}
+    {#if mode === 'analysis'}{folded ? 'Mulai analisa' : 'Analisa'} {ticker ? friendlyName(ws.symbol) : 'simbol ini'}{:else}Mulai uji · {cellCount} analisa{/if}
   </button>
   {#if auth.unverified}
     <VerifyNote />
+  {:else if mode === 'analysis' && folded}
+    <p class="text-sm tabular-nums" class:text-warning={overQuota}>
+      {overQuota
+        ? 'Kuota analisa hari ini habis; terisi lagi pukul 00.00 WIB.'
+        : Number.isFinite(left)
+          ? `Memakai 1 dari ${left} kuota analisa yang tersisa hari ini.`
+          : 'Memakai 1 kuota analisa.'}
+      <span class="ta-muted">
+        {options?.typicalMinutes ? `Biasanya selesai ±${options.typicalMinutes} menit;` : 'Butuh beberapa menit;'} kamu boleh pindah layar, hasilnya muncul di Riwayat.
+      </span>
+    </p>
   {:else if mode === 'analysis'}
     <p class="text-xs text-base-content/70">
       {options?.typicalMinutes ? `Biasanya selesai dalam ±${options.typicalMinutes} menit.` : 'Butuh beberapa menit.'} Kamu boleh pindah layar; hasilnya muncul di Riwayat.
     </p>
   {/if}
-  {#if mode === 'analysis' && quota?.limit}
+  {#if mode === 'analysis' && !folded && quota?.limit}
     <p class="text-xs tabular-nums" class:text-warning={overQuota} class:text-base-content={!overQuota}>
       Kuota hari ini: {quota.used} / {quota.limit} analisa{#if overQuota}. Tidak cukup untuk {need}; kuota penuh lagi pukul 00.00 WIB.{/if}
     </p>

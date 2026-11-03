@@ -46,7 +46,7 @@
     {:else}
       <ul class="menu w-full gap-0.5 p-0">
         {#each items as item (item.symbol)}
-          {@const lean = item.last?.status === 'completed' ? ratingLean(item.last.rating) : null}
+          {@const lean = item.decision ? ratingLean(item.decision.rating) : null}
           <li>
             <button class="grid-cols-[minmax(0,1fr)_auto] gap-3 py-2" class:menu-active={item.tvSymbol === ws.symbol} aria-current={item.tvSymbol === ws.symbol ? 'true' : undefined} onclick={() => open(item.tvSymbol)}>
               <span class="flex min-w-0 flex-col">
