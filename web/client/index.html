@@ -13,10 +13,8 @@
     <meta property="og:title" content="{{BRAND}}: riset trading dengan AI, diuji dengan jujur" />
     <meta property="og:description" content="Pasar dibaca AI tiap enam jam. Strategimu diuji dengan biaya nyata. Setiap sinyal tercatat, termasuk yang rugi." />
     <link rel="stylesheet" href="/src/site.css" />
-    <script>
-      // Links from before the site existed opened the app at the root (#/?s=…).
-      if (location.hash.startsWith('#/')) location.replace('/app' + location.hash);
-    </script>
+    <!-- Old links open the root with the app's hash (#/?s=…); this sends them on to /app before anything shows. -->
+    <script src="/legacy-hash.js"></script>
   </head>
   <body class="bg-base-200 text-base-content">
     <!-- site:header -->
