@@ -49,6 +49,8 @@ Two products live in this repo:
 - The indicator engines exist twice (TypeScript in `client/src/lib/indicators`, Python in `web/worker`): change both
   in the same commit and say so; the parity test (`cd client && bun run test`) must still pass. Scalper's inputs and
   defaults live once, in `shared/scalper.ts`, which the chart and the signal notifications both read.
+- A trade counts only at prices the market traded (ADR 0023): an `entry` its bar never reached is no trade, and a stop
+  a bar opens past fills at that open. Keep it so in the script runtime (`shared/script.ts`) and in both engine copies.
 
 ## Where things live
 | Need | Look at |

@@ -1065,7 +1065,7 @@
               <p class="text-base-content/70">Belum ada sinyal di candle yang dimuat.</p>
             {/if}
             <p class="font-mono tabular-nums text-base-content/70">
-              {card.stats.count} sinyal · {card.stats.tp} TP · {card.stats.sl} SL{card.stats.exits ? ` · ${card.stats.exits} keluar` : ''}{card.stats.avgR == null ? '' : ` · ${card.stats.avgR.toFixed(2).replace('.', ',')}R`}
+              {card.stats.count} sinyal · {card.stats.tp} TP · {card.stats.sl} SL{card.stats.exits ? ` · ${card.stats.exits} keluar` : ''}{card.stats.unfilled ? ` · ${card.stats.unfilled} tidak terisi` : ''}{card.stats.avgR == null ? '' : ` · ${card.stats.avgR.toFixed(2).replace('.', ',')}R`}
             </p>
           {/if}
         </section>

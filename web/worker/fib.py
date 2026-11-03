@@ -3,7 +3,8 @@
 zone; a candle that closes back out of the zone in the leg's direction is the
 signal. Stop beyond 0.786, target the leg's end (or the -0.272 extension when
 that end is closer than 1R). A close beyond 0.786 kills the leg; each leg gives
-at most one signal. Closed bars only; every signal is followed to its outcome.
+at most one signal. Closed bars only; every signal is followed to its outcome,
+and a stop that a bar opens past is filled at that open.
 Mirrors web/client/src/lib/indicators/fib.ts; change both together.
 """
 
@@ -52,7 +53,9 @@ def fib(bars: list[dict], s: dict | None = None) -> dict | None:
             buy = sig["side"] == "BUY"
             risk = abs(sig["entry"] - sig["stop_loss"])
             if (l[i] <= sig["stop_loss"]) if buy else (h[i] >= sig["stop_loss"]):
-                sig.update(outcome="loss", r=-1.0, exit_index=i)
+                # A bar that opens past the stop fills it at the open: a loss beyond 1R.
+                fill = min(o[i], sig["stop_loss"]) if buy else max(o[i], sig["stop_loss"])
+                sig.update(outcome="loss", r=(fill - sig["entry"]) * (1 if buy else -1) / risk, exit_index=i)
             elif (h[i] >= sig["take_profit"]) if buy else (l[i] <= sig["take_profit"]):
                 sig.update(outcome="win", r=abs(sig["take_profit"] - sig["entry"]) / risk, exit_index=i)
             elif i - sig["index"] >= s["expiry_bars"]:

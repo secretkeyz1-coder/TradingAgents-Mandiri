@@ -378,7 +378,7 @@
           <div class="max-h-44 shrink-0 overflow-auto rounded-box border border-base-300 p-2 text-xs" role="status">
             {#if run.ok}
               <p class="font-medium">
-                {run.result.stats.count} sinyal · {run.result.stats.tp} TP · {run.result.stats.sl} SL{run.result.stats.exits ? ` · ${run.result.stats.exits} keluar` : ''} ·
+                {run.result.stats.count} sinyal · {run.result.stats.tp} TP · {run.result.stats.sl} SL{run.result.stats.exits ? ` · ${run.result.stats.exits} keluar` : ''}{run.result.stats.unfilled ? ` · ${run.result.stats.unfilled} tidak terisi` : ''} ·
                 menang {run.result.stats.wins + run.result.stats.losses ? Math.round((run.result.stats.wins / (run.result.stats.wins + run.result.stats.losses)) * 100) : 0}% · rata-rata
                 {run.result.stats.avgR == null ? '—' : `${run.result.stats.avgR.toFixed(2).replace('.', ',')}R`} · {run.ms} ms ·
                 {scripts.bars.length} candle

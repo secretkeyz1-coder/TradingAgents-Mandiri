@@ -12,10 +12,13 @@
 //   plot(series, title, color?)     a line on the chart
 //   hline(price, title, color?)     a horizontal level
 //   signal(i, "BUY"|"SELL", { sl, tp, entry?, label?, exit?, maxBars?, exclusive? })   a trade signal at bar i
+//     entry: a fill inside bar i (a limit or stop order); left out, the trade starts at bar i's close
 //     exit: a boolean series; the trade closes at the close of the first later bar where it is true
 //     maxBars: closes at the close that many bars later (default: the run's expiry)
 //     exclusive: skipped while the previous trade is still open (one position at a time)
 // The newest bar may still be forming: signals on it are dropped.
+// A trade is counted only at prices the market traded: an entry bar i never reached is no trade, an
+// entry bar i reached together with the stop is a loss there, and a stop a bar opens past fills at the open.
 
 export type ScriptBar = { time: string; open: number; high: number; low: number; close: number; volume: number };
 
@@ -38,8 +41,11 @@ export type ScriptResult = {
   plots: { title: string; color: string | null; values: (number | null)[] }[];
   hlines: { price: number; title: string; color: string | null }[];
   inputs: { name: string; value: number | boolean | string; default: number | boolean | string }[];
-  /** wins and losses: closed with R above zero or not; tp, sl, exits, expired: how they closed. */
-  stats: { count: number; wins: number; losses: number; tp: number; sl: number; exits: number; expired: number; open: number; avgR: number | null };
+  /**
+   * wins and losses: closed with R above zero or not; tp, sl, exits, expired: how they closed;
+   * unfilled: signals dropped because their bar never traded the entry they gave.
+   */
+  stats: { count: number; wins: number; losses: number; tp: number; sl: number; exits: number; expired: number; open: number; unfilled: number; avgR: number | null };
 };
 
 export type ScriptRun = { ok: true; result: ScriptResult; ms: number } | { ok: false; error: string; ms: number };
@@ -216,26 +222,40 @@ function signal(i, side, opts) {
  * Follows every signal on closed bars, in a bar's order: its stop (first when stop and target are
  * both touched), its target, its exit condition at the close, its time limit at the close. An
  * exclusive signal that fires while the previous trade is still open is dropped. Then tallies them.
+ *
+ * Only prices the market traded count. An entry other than the bar's close is a fill inside that
+ * bar, so a bar that never reached it made no trade, and a bar that reached the stop as well may
+ * have hit it after the fill: a loss there, since the order within a bar is unknown. A stop that a
+ * bar opens past is filled at that open, a loss of more than 1R. A target stays filled at its own
+ * price even when a bar opens past it, so no gap ever makes a result better.
  */
 const EPILOGUE = String.raw`
 ;(() => {
   const sigs = __signals.slice().sort((a, b) => a.index - b.index);
   const kept = [];
   let busyUntil = -1;
+  let unfilled = 0;
   for (const s of sigs) {
     if (s.exclusive && s.index <= busyUntil) continue;
+    const i = s.index;
     const dir = s.side === "BUY" ? 1 : -1;
+    const inside = s.entry !== close[i];
+    if (inside && (s.entry > high[i] || s.entry < low[i])) { unfilled++; continue; }
     const risk = Math.abs(s.entry - s.stopLoss);
     const life = s.maxBars === null ? __in.expiry : s.maxBars;
     let outcome = "open", r = null, exitIndex = null;
-    for (let k = s.index + 1; k <= n - 2; k++) {
-      if (dir === 1 ? low[k] <= s.stopLoss : high[k] >= s.stopLoss) { outcome = "loss"; r = -1; exitIndex = k; break; }
+    if (inside && (dir === 1 ? low[i] <= s.stopLoss : high[i] >= s.stopLoss)) { outcome = "loss"; r = -1; exitIndex = i; }
+    else for (let k = i + 1; k <= n - 2; k++) {
+      if (dir === 1 ? low[k] <= s.stopLoss : high[k] >= s.stopLoss) {
+        const fill = dir === 1 ? Math.min(open[k], s.stopLoss) : Math.max(open[k], s.stopLoss);
+        outcome = "loss"; r = ((fill - s.entry) * dir) / risk; exitIndex = k; break;
+      }
       if (dir === 1 ? high[k] >= s.takeProfit : low[k] <= s.takeProfit) { outcome = "win"; r = Math.abs(s.takeProfit - s.entry) / risk; exitIndex = k; break; }
       if (s.exit && s.exit[k]) { outcome = "exit"; r = ((close[k] - s.entry) * dir) / risk; exitIndex = k; break; }
-      if (k - s.index >= life) { outcome = "expired"; r = ((close[k] - s.entry) * dir) / risk; exitIndex = k; break; }
+      if (k - i >= life) { outcome = "expired"; r = ((close[k] - s.entry) * dir) / risk; exitIndex = k; break; }
     }
     busyUntil = exitIndex === null ? Infinity : exitIndex;
-    kept.push({ index: s.index, time: s.time, side: s.side, label: s.label, entry: s.entry, stopLoss: s.stopLoss, takeProfit: s.takeProfit, outcome, r, exitIndex });
+    kept.push({ index: i, time: s.time, side: s.side, label: s.label, entry: s.entry, stopLoss: s.stopLoss, takeProfit: s.takeProfit, outcome, r, exitIndex });
   }
   const closed = kept.filter((s) => s.r !== null);
   const count = (outcome) => kept.filter((s) => s.outcome === outcome).length;
@@ -253,6 +273,7 @@ const EPILOGUE = String.raw`
       exits: count("exit"),
       expired: count("expired"),
       open: count("open"),
+      unfilled,
       avgR: closed.length ? closed.reduce((a, s) => a + s.r, 0) / closed.length : null,
     },
   };
@@ -300,6 +321,9 @@ Series (array sepanjang n, NaN selama pemanasan): ta.sma(src,len) ta.ema(src,len
   ta.pivothigh(len) ta.pivotlow(len) -> harga pivot, diletakkan di candle saat pivot baru terkonfirmasi (len candle sesudahnya), NaN di tempat lain
 Gambar: plot(series, judul, warna?) (maks 8)   hline(harga, judul, warna?)
 Sinyal: signal(i, "BUY"|"SELL", { sl, tp, entry?, label?, exit?, maxBars?, exclusive? }) -- entry default close[i]; BUY: sl < entry < tp, SELL: tp < entry < sl.
+  entry selain close[i] = order limit/stop yang terisi di dalam candle i: harus di antara low[i] dan high[i], kalau tidak sinyalnya
+  dibuang (tidak terisi); bila candle i juga menyentuh SL, dihitung rugi 1R. SL yang terlewati saat candle dibuka dicatat di harga
+  pembukaan itu (rugi bisa lebih dari 1R); TP tetap di harganya sendiri.
   Keluar lebih awal: exit = array boolean sepanjang n, posisi ditutup di close candle pertama setelah i yang bernilai true
   (dicek setelah SL dan TP), misalnya close.map((c, k) => c > ta_sma5[k]); maxBars = tutup di close setelah sekian candle;
   exclusive: true = satu posisi sekaligus, sinyal yang muncul saat posisi sebelumnya masih terbuka diabaikan.

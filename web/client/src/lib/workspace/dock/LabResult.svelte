@@ -43,6 +43,8 @@
   const lostLate = $derived(!thin && !lostEarly && (oos.net ?? 0) <= 0);
   const engine = $derived(r.config.strategy.kind === 'engine' ? r.config.strategy.name : null);
   const splitDay = $derived(day(tested.find((s) => s.split)?.split));
+  /** Signals the script gave at an entry their bar never traded: not trades, so not in any number below. */
+  const unfilled = $derived(tested.reduce((sum, s) => sum + (s.unfilled ?? 0), 0));
   const meta = $derived(
     [
       joinId(r.config.symbols.map(name)),
@@ -284,6 +286,16 @@
   <Icon name="info" />
   <span>{insight}</span>
 </div>
+
+{#if unfilled}
+  <div role="note" class="alert alert-soft alert-warning items-start text-sm">
+    <Icon name="alert" />
+    <span>
+      {unfilled.toLocaleString('id-ID')} sinyal tidak dihitung: harga entry-nya tidak pernah tersentuh di candle sinyal, jadi ordernya
+      tidak pernah terisi. Periksa skripnya: order limit atau stop menjadi sinyal di candle tempat harga menyentuh entry.
+    </span>
+  </div>
+{/if}
 
 <section class="ta-card" aria-labelledby="lab-curve">
   <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-base-300 px-5 py-3">

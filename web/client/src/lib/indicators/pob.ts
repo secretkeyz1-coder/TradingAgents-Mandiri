@@ -4,7 +4,8 @@
 // engulfing) feed six setups (SNR V1/V2, QM Continuation, QM Reversal,
 // QM Failed, Manipulation) plus the CK2/CK3 labels; one signal per bar at
 // most, levels frozen at the signal bar, and every signal followed to its
-// outcome so the chart can show a quick per-setup tally.
+// outcome (a stop that a bar opens past is filled at that open) so the chart
+// can show a quick per-setup tally.
 //
 // Bars are walked once, oldest first, and only closed bars are used: the
 // newest bar may still be forming. Mirrors web/worker/pob.py; change both.
@@ -185,7 +186,9 @@ export function pob(candles: Candle[], timeframe: '15m' | '1h', s: PobSettings =
       const buy = sig.side === 'BUY';
       const risk = Math.abs(sig.entry - sig.stopLoss);
       if (buy ? l[i] <= sig.stopLoss : h[i] >= sig.stopLoss) {
-        Object.assign(sig, { outcome: 'loss', r: -1, exitIndex: i });
+        // A bar that opens past the stop fills it at the open: a loss beyond 1R.
+        const fill = buy ? Math.min(o[i], sig.stopLoss) : Math.max(o[i], sig.stopLoss);
+        Object.assign(sig, { outcome: 'loss', r: ((fill - sig.entry) * (buy ? 1 : -1)) / risk, exitIndex: i });
         if (sig.setup === 'QMR' || sig.setup === 'QMF') {
           failed.push({ dir: buy ? 1 : -1, top: sig.zoneTop!, bottom: sig.zoneBottom!, idx: i });
           if (failed.length > s.failedMemory) failed.shift();

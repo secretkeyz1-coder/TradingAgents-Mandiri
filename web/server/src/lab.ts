@@ -104,13 +104,17 @@ async function engineTrades(name: string, timeframe: string, symbol: string, bar
     .map((s) => ({ index: s.index, time: bars[s.index].time, side: s.side, entry: s.entry, stopLoss: s.stop_loss, outcome: s.outcome, r: s.r! }));
 }
 
-/** The script's signals on these bars, in the sandbox, with room for years of bars. */
-async function scriptTrades(code: string, bars: ScriptBar[], expiry: number): Promise<Trade[]> {
+/**
+ * The script's signals on these bars, in the sandbox, with room for years of bars; and how many it gave at an
+ * entry their bar never traded, which the runtime drops (shared/script.ts) and the result names.
+ */
+async function scriptTrades(code: string, bars: ScriptBar[], expiry: number): Promise<{ trades: Trade[]; unfilled: number }> {
   const run = runScript(await quickjs(), code, bars, { expiry, limits: { timeMs: 30_000, maxSignals: 50_000 } });
   if (!run.ok) throw new Error(run.error);
-  return run.result.signals
+  const trades = run.result.signals
     .filter((s) => s.outcome !== "open" && s.r != null)
     .map((s) => ({ index: s.index, time: s.time, side: s.side, entry: s.entry, stopLoss: s.stopLoss, outcome: s.outcome, r: s.r! }));
+  return { trades, unfilled: run.result.stats.unfilled };
 }
 
 async function runLab(config: RunConfig, code: string | null) {
@@ -122,9 +126,10 @@ async function runLab(config: RunConfig, code: string | null) {
       const series = await getLabCandles(symbol, config.timeframe as Interval, config.days, config.venue);
       const bars = toScriptBars(series.candles);
       if (bars.length < 100) throw new Error(`baru ${bars.length} candle, terlalu sedikit`);
-      const trades =
+      // The engines always enter at the signal bar's close, so they have no unfilled signals.
+      const { trades, unfilled } =
         config.strategy.kind === "engine"
-          ? await engineTrades(config.strategy.name, config.timeframe, symbol, bars, config.expiry)
+          ? { trades: await engineTrades(config.strategy.name, config.timeframe, symbol, bars, config.expiry), unfilled: 0 }
           : await scriptTrades(code!, bars, config.expiry);
       const cut = Math.floor(bars.length * config.split);
       const scored = trades.map((t) => {
@@ -141,6 +146,7 @@ async function runLab(config: RunConfig, code: string | null) {
         split: bars[cut]?.time ?? null,
         is: stats(scored.filter((t) => !t.oos)),
         oos: stats(scored.filter((t) => t.oos)),
+        unfilled,
       });
     } catch (e) {
       symbols.push({ symbol, error: (e as Error).message.slice(0, 300) });

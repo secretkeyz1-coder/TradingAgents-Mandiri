@@ -4,7 +4,8 @@
 // signal. Stop beyond 0.786, target the leg's end (or the -0.272 extension
 // when that end is closer than 1R). A close beyond 0.786 kills the leg; each
 // leg gives at most one signal. Closed bars only; every signal is followed to
-// its outcome. Mirrors web/worker/fib.py; change both together.
+// its outcome, and a stop that a bar opens past is filled at that open.
+// Mirrors web/worker/fib.py; change both together.
 import type { Candle } from '../api';
 
 export const FIB_DEFAULTS = {
@@ -73,7 +74,11 @@ export function fib(candles: Candle[], s: FibSettings = FIB_DEFAULTS): FibResult
       if (sig.outcome !== 'open' || sig.index >= i) continue;
       const buy = sig.side === 'BUY';
       const risk = Math.abs(sig.entry - sig.stopLoss);
-      if (buy ? l[i] <= sig.stopLoss : h[i] >= sig.stopLoss) Object.assign(sig, { outcome: 'loss', r: -1, exitIndex: i });
+      if (buy ? l[i] <= sig.stopLoss : h[i] >= sig.stopLoss) {
+        // A bar that opens past the stop fills it at the open: a loss beyond 1R.
+        const fill = buy ? Math.min(o[i], sig.stopLoss) : Math.max(o[i], sig.stopLoss);
+        Object.assign(sig, { outcome: 'loss', r: ((fill - sig.entry) * (buy ? 1 : -1)) / risk, exitIndex: i });
+      }
       else if (buy ? h[i] >= sig.takeProfit : l[i] <= sig.takeProfit) Object.assign(sig, { outcome: 'win', r: Math.abs(sig.takeProfit - sig.entry) / risk, exitIndex: i });
       else if (i - sig.index >= s.expiryBars) Object.assign(sig, { outcome: 'expired', r: ((c[i] - sig.entry) * (buy ? 1 : -1)) / risk, exitIndex: i });
     }

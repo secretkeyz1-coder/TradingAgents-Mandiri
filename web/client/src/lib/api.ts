@@ -790,7 +790,8 @@ export type LabConfig = {
   venue?: string;
 };
 export type LabSymbol =
-  | { symbol: string; source: string; bars: number; from: string; to: string; split: string | null; is: LabStats; oos: LabStats }
+  /** unfilled: a script's signals at an entry their bar never traded, so no trade (absent on runs before it was counted). */
+  | { symbol: string; source: string; bars: number; from: string; to: string; split: string | null; is: LabStats; oos: LabStats; unfilled?: number }
   | { symbol: string; error: string };
 export type LabRun = {
   id: string;

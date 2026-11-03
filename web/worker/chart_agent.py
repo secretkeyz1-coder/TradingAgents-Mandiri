@@ -352,7 +352,8 @@ def scalper_signal(
     Mirrors web/client/src/lib/indicators/scalper.ts; change both together.
     Signals come only from closed bars: the newest bar may still be forming.
     history_bars > 0 adds the last ten signals, each followed for at most that
-    many bars to its stop, target or the next signal (for notifications)."""
+    many bars to its stop, target or the next signal (for notifications); a
+    stop that a bar opens past is filled at that open."""
     df = _scalper_bars(m, timeframe)
     n = len(df)
     if n < max(_length(ema_slow), _length(atr_risk)) + 5:
@@ -452,7 +453,14 @@ def scalper_signal(
             if k - i >= history_bars:
                 outcome, exit_at = "expired", k
                 break
-        r = {"win": float(risk_reward), "loss": -1.0}.get(outcome, None if exit_at is None else (c[exit_at] - entry) * sign / risk)
+        if outcome == "win":
+            r = float(risk_reward)
+        elif outcome == "loss":
+            # A bar that opens past the stop fills it at the open: a loss beyond 1R.
+            fill = min(o[exit_at], stop) if sign == 1 else max(o[exit_at], stop)
+            r = (fill - entry) * sign / risk
+        else:
+            r = None if exit_at is None else (c[exit_at] - entry) * sign / risk
         history.append({"time": df["Date"].iloc[i], "side": side, "entry": entry, "stop_loss": stop, "take_profit": target,
                         "outcome": outcome, "exit_time": None if exit_at is None else df["Date"].iloc[exit_at], "bars_ago": last - i, "r": r})
     result: dict = {

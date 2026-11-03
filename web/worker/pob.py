@@ -3,7 +3,8 @@
 building blocks (swings/structure, base zones, strong A/V, trendlines, HTF
 engulfing) feed six setups (SNR V1/V2, QM Continuation, QM Reversal, QM Failed,
 Manipulation) plus the CK2/CK3 labels. One signal per bar at most, levels
-frozen at the signal bar, every signal followed to its outcome.
+frozen at the signal bar, every signal followed to its outcome (a stop that a
+bar opens past is filled at that open).
 
 Bars are walked once, oldest first, and only closed bars are used (the newest
 may still be forming). Mirrors web/client/src/lib/indicators/pob.ts line for
@@ -128,7 +129,9 @@ def pob(bars: list[dict], timeframe: str, s: dict | None = None) -> dict | None:
             buy = sig["side"] == "BUY"
             risk = abs(sig["entry"] - sig["stop_loss"])
             if (l[i] <= sig["stop_loss"]) if buy else (h[i] >= sig["stop_loss"]):
-                sig.update(outcome="loss", r=-1.0, exit_index=i)
+                # A bar that opens past the stop fills it at the open: a loss beyond 1R.
+                fill = min(o[i], sig["stop_loss"]) if buy else max(o[i], sig["stop_loss"])
+                sig.update(outcome="loss", r=(fill - sig["entry"]) * (1 if buy else -1) / risk, exit_index=i)
                 if sig["setup"] in ("QMR", "QMF"):
                     failed.append({"dir": 1 if buy else -1, "top": sig["zone_top"], "bottom": sig["zone_bottom"], "idx": i})
                     if len(failed) > s["failed_memory"]:
