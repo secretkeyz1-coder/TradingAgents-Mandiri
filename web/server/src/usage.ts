@@ -1,8 +1,10 @@
 // Daily caps on what spends the owner's LLM credits: analyses (a backtest
 // counts each of its cells, since each cell is a full analysis) and chat turns
-// with the chart agent. Each user has a cap (their own, or the server default),
-// and the server has a total cap across users. Counted from the rows already
-// stored, per day in WIB, so it survives restarts. A limit of 0 turns that cap off.
+// with the chart agent or the script editor's AI (a Pine translation, a plan from
+// a prompt, a script from its rules: one turn each, spendChat). Each user has a
+// cap (their own, or the server default), and the server has a total cap across
+// users. Counted from the rows already stored, per day in WIB, so it survives
+// restarts. A limit of 0 turns that cap off.
 // A member pays for what they got: a run a restart or deploy cut off is given back,
 // a backtest that stopped early counts the cells it ran, and continuing it counts only
 // the cells it had not run yet. Clearing history gives
@@ -150,6 +152,15 @@ export async function overLimit(user: User, kind: Kind, add = 1): Promise<string
   const more = paymentsOpen() ? " Naikkan paket di menu akun → Paket & tagihan untuk kuota lebih besar." : " Hubungi admin untuk kuota lebih besar.";
   const upgrade = ownFull && user.role !== "admin" && planOf(user) !== "creator" ? more : "";
   return `${head}${add > 1 ? `, permintaan ini butuh ${add}, sisa ${left}` : ""}. Reset pukul 00.00 WIB.${upgrade}`;
+}
+
+/**
+ * Takes chat turns for work that stores no turn of its own: the script editor's AI (scripts.ts), one per request
+ * as it starts, whatever the model then does. Kept beside deleted rows' shares in spent_quota, which the chat count
+ * already adds, so it holds across instances and leaves the window with the day.
+ */
+export async function spendChat(userId: string, amount = 1, at = new Date()) {
+  await db.insert(spentQuota).values({ userId, kind: "chat", amount, at });
 }
 
 /** Deletes kept shares older than two days, past every window (tests pass their own clock). */

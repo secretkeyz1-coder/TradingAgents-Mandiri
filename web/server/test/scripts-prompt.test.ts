@@ -5,7 +5,7 @@
 // (useTestBars), so no model and no market data are touched. Answers stream as server-sent events.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { useTestBars } from "../src/scripts";
-import { call, member, sseEvents, walkBars } from "./helpers";
+import { admin, call, member, sseEvents, walkBars } from "./helpers";
 
 const model = { provider: "openai", quickModel: "m", deepModel: "m", language: "Indonesian" };
 const prompt = "Cari break of structure dari swing terakhir, lalu entry saat harga kembali ke level itu dengan RR minimal 2.";
@@ -82,6 +82,19 @@ describe("AI script writer", () => {
     // Tested on Bitcoin hourly when the editor names no chart.
     expect(result.check.where).toBe("BTC-USD uji");
   }, 60_000);
+
+  test("each step takes one chat turn from the day, and a member out of turns is refused", async () => {
+    const m = await member({ verified: true });
+    const limited = await call(`/api/users/${m.id}`, { method: "PATCH", cookie: await admin(), body: { dailyChatLimit: 1 } });
+    expect(limited.status).toBe(200);
+    expect((await call("/api/usage", { cookie: m.cookie })).body.chat).toMatchObject({ used: 0, limit: 1 });
+    const planned = await call("/api/scripts/plan", { cookie: m.cookie, body: { ...model, prompt } });
+    expect(sseEvents(planned.body).some((e) => e.event === "plan")).toBe(true);
+    expect((await call("/api/usage", { cookie: m.cookie })).body.chat.used).toBe(1);
+    const refused = await call("/api/scripts/translate", { cookie: m.cookie, body: { ...model, pine } });
+    expect(refused.status).toBe(429);
+    expect(refused.body.error).toContain("pesan Tanya AI");
+  }, 30_000);
 
   test("every step needs a session", async () => {
     expect((await call("/api/scripts/plan", { body: { ...model, prompt } })).status).toBe(401);

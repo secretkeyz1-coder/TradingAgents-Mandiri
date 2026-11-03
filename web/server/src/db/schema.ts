@@ -748,8 +748,9 @@ export type QuotaKind = "analyses" | "chat" | "lab";
 
 /**
  * What deleted rows had already taken from a cap (usage.ts keepSpent). The caps count the stored
- * analyses, chat turns and lab runs, so without this, deleting one gave its share back. Pruned
- * after two days, past every window.
+ * analyses, chat turns and lab runs, so without this, deleting one gave its share back. Also the
+ * chat turns of work that stores none (the script editor's AI, usage.ts spendChat). Pruned after
+ * two days, past every window.
  */
 export const spentQuota = pgTable(
   "spent_quota",

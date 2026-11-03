@@ -21,7 +21,7 @@ import { getCandles, SYMBOL_PATTERN, type Interval } from "./market";
 import { checkScript } from "./script-check";
 import { runOnSymbol, SCRIPT_TIMEFRAMES, type ScriptTimeframe } from "./script-run";
 import { capMessage, limitsOf } from "./plans";
-import { overLimit } from "./usage";
+import { overLimit, spendChat } from "./usage";
 import { VENUE_IDS, type VenueId } from "./venues";
 import { getCatalog, runCommand } from "./worker";
 
@@ -156,7 +156,8 @@ type Say = (event: string, data: object) => Promise<void>;
 
 /**
  * The job as it will run (for a member, on the server's own models: models.ts), or why it cannot: an unknown
- * provider, a backend URL this server does not allow, or a used-up quota. Counts as one chat message.
+ * provider, a backend URL this server does not allow, or a used-up quota. Counts as one chat message, taken here
+ * as the work starts (usage.ts spendChat), as the agent's turn is.
  */
 async function ready(c: Context<AppEnv>, fields: ModelFields): Promise<ModelFields | Response> {
   const job = await modelsFor(c.get("user"), fields);
@@ -167,6 +168,7 @@ async function ready(c: Context<AppEnv>, fields: ModelFields): Promise<ModelFiel
   if (refused) return c.json({ error: refused }, 400);
   const quota = await overLimit(c.get("user"), "chat");
   if (quota) return c.json({ error: quota }, 429);
+  await spendChat(c.get("user").id);
   return job;
 }
 

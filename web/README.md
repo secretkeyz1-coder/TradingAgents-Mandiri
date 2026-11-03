@@ -294,6 +294,7 @@ Skrip Pine Script TradingView menjadi skrip aplikasi (`POST /api/scripts/transla
 Editor menampilkan langkahnya selagi berjalan (bisa dihentikan), lalu panel **Hasil AI** di bawah kode: lolos uji atau masalah yang tersisa, berapa kali diperbaiki, dan laporannya.
 - Jawaban rute ini (juga `/plan` dan `/compose`) berupa stream server-sent events, dengan ping tiap 15 detik supaya Cloudflare tidak memutusnya.
 - Satu panggilan model paling lama `TA_TRANSLATE_LLM_TIMEOUT` detik.
+- Satu terjemahan memakai satu pesan dari kuota chat harian, berapa pun perbaikannya. Pesan itu diambil saat terjemahan dimulai, seperti pesan ke chat agent (`spendChat` di `server/src/usage.ts`, disimpan di `spent_quota`). Sebelum 4 November 2026 terjemahan, rencana, dan skrip dari prompt hanya diperiksa terhadap kuota tanpa ikut dihitung.
 - Worker demo menjawab dengan draf tetap bila `TA_DEMO_PINE=1` (dipakai tes): draf pertama sengaja membaca candle sesudah sinyal, lalu perbaikannya. Tanpa itu, Pine tetap ke penerjemah sungguhan.
 
 ### Indikator dari prompt (editor skrip → Dari prompt)
@@ -612,7 +613,7 @@ Semua opsional, lewat environment variable:
 | `TA_WORKER_SCRIPT` | `web/worker/ta_worker.py` | Ganti ke `web/worker/demo_worker.py` untuk mode demo |
 | `JOB_IDLE_MINUTES` | `15` | Analisa/backtest tanpa event selama ini dianggap macet: worker dihentikan, status gagal |
 | `DAILY_ANALYSIS_LIMIT` | `60` | Analisa per hari (WIB) untuk akun admin; anggota mengikuti paketnya. Tiap sel backtest dihitung satu analisa. `0` = tanpa batas. Pemakaian tampil di bawah tombol Analisa/Backtest (`GET /api/usage`) |
-| `DAILY_CHAT_LIMIT` | `300` | Pesan ke chat agent per hari (WIB) untuk akun admin; anggota mengikuti paketnya. `0` = tanpa batas. Pemakaian tampil di footer chat |
+| `DAILY_CHAT_LIMIT` | `300` | Pesan ke chat agent per hari (WIB) untuk akun admin; anggota mengikuti paketnya. Terjemahan Pine, rencana skrip, dan skrip dari prompt dihitung satu pesan masing-masing. `0` = tanpa batas. Pemakaian tampil di footer chat |
 | `DAILY_TOTAL_ANALYSIS_LIMIT` / `DAILY_TOTAL_CHAT_LIMIT` | `200` / `1000` | Batas harian semua akun bersama |
 | `SIGNUP` | `closed` | `open` membuka pendaftaran mandiri (email dan Google) |
 | `PUBLIC_SITE` | `off` | `on` menampilkan landing page di root; aplikasi tetap di `/app` |
